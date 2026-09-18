@@ -25,7 +25,7 @@ directory — see [Skills Reference](#skills-reference).
 ## Project Structure
 
 ```
-.llm/                    Agent context (this folder) - context.md, skills/, references/
+.llm/                    Agent context (this folder) - context.md, skills/, references/, improvement-log.md
 scripts/                 PowerShell automation (index generation, linters, hooks install)
 scripts/tests/           Self-tests for the automation scripts
 .githooks/               Git hooks (pre-commit: linters + index freshness)
@@ -45,6 +45,12 @@ list with trigger descriptions, and open a skill's `SKILL.md` only when its
 description matches the current task. After adding or editing any skill, run
 `pwsh -NoProfile -File scripts/generate-skills-index.ps1` (enforced by hooks
 and CI).
+
+Workflows are modeled as skills (verb-noun kebab-case). The mandatory
+improvement workflow is [reflect-improve](./skills/reflect-improve/SKILL.md):
+after any large change it retrospects the work with evidence, root-causes
+problems, and folds findings into skills, references, and rules — staging
+the outcome in [improvement-log.md](./improvement-log.md) (see rule 15).
 
 ## Critical Rules Summary
 
@@ -95,6 +101,14 @@ and CI).
     after any skill change.
 14. **Skill links are relative and must resolve** (`./*.md`,
     `../<skill>/SKILL.md`, `../../references/*.md`). Broken links fail CI.
+15. **After any large change, run the
+    [reflect-improve](./skills/reflect-improve/SKILL.md) loop** (trigger
+    thresholds are defined in the skill): evidence-first retrospective,
+    blameless root-cause analysis, and triage of findings into skills,
+    references, and rules, gated by red-green verification. Record the
+    outcome in `.llm/improvement-log.md` — the log must exist, use dated
+    `## YYYY-MM-DD` entry headers, and stay compact (enforced by
+    `scripts/lint-llm-instructions.ps1`).
 
 ## Protocol Essentials
 

@@ -47,8 +47,9 @@ the task. Write it like a good search query — concrete nouns and verbs
    Inline code samples stay under ~20 lines; longer ones belong in
    `.llm/code-samples/`.
 6. **Relative links only** between `.llm` files: from a skill use
-   `../<other-name>/SKILL.md`, `../context.md`,
-   `../../references/<file>.md`. The link checker fails CI on broken links.
+   `../<other-name>/SKILL.md`, `../../context.md`,
+   `../../references/<file>.md`, `../../improvement-log.md`. The link
+   checker fails CI on broken links.
 7. **Descriptions are single-line ASCII-ish** — no `|`, no tabs, no newlines
    (they break the generated index table).
 
@@ -83,5 +84,6 @@ Windows.
 
 ## Related Skills
 
+- [reflect-improve](../reflect-improve/SKILL.md) - the mandatory retrospective loop that produces most skill updates
 - [api-design](../api-design/SKILL.md) - rules that most new content should respect
 - [create-test](../create-test/SKILL.md) - when documenting test procedures

@@ -16,6 +16,7 @@ Apply to most tasks in this repository.
 | --- | --- |
 | [api-design](./api-design/SKILL.md) | Design the public C# API surface of the SignalFish.Client library. Use when adding or changing public types, methods, events, async signatures, disposal semantics, or anything visible to consumers of the NuGet package. |
 | [manage-skills](./manage-skills/SKILL.md) | Create, update, split, or remove agent skills in this repository (.llm/skills/<name>/SKILL.md folders). Use when adding a skill, changing a skill's trigger description, fixing a broken skills index, or when the 300-line limit forces a split. |
+| [reflect-improve](./reflect-improve/SKILL.md) | Mandatory post-work retrospective and self-improvement loop - analyze a completed change, root-cause problems, and fold findings back into skills, references, context rules, and the improvement log. Use after finishing any large feature, refactor, protocol or infra change, a debugging effort that took several attempts, or when the user asks to reflect. |
 | [unity-compatibility](./unity-compatibility/SKILL.md) | Keep the SignalFish.Client library Unity compatible on netstandard2.1 (Mono, IL2CPP, WebGL). Use when choosing .NET APIs, adding NuGet dependencies, touching threading, WebAssembly builds, IL2CPP stripping, or anything platform-specific. |
 
 ## Protocol Skills

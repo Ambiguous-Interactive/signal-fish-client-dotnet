@@ -11,6 +11,9 @@
   ([Agent Skills](https://agentskills.io) format, one `SKILL.md` per folder).
 - [Protocol Quick Reference](.llm/references/protocol-quick-reference.md):
   endpoints, message tables, close codes, error codes, limits.
+- [Improvement Log](.llm/improvement-log.md): dated retrospective entries
+  staged by the mandatory reflect-improve loop; durable knowledge graduates
+  into skills and references.
 - Upstream server: https://github.com/Ambiguous-Interactive/signal-fish-server
 
 ## Optional

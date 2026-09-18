@@ -52,6 +52,18 @@ function New-FixtureRepo {
         ''
         '- [AI Agent Guidelines](.llm/context.md): canonical agent context.'
     ) | Out-Null
+    Write-TestFile -Path (Join-Path $repo '.llm/improvement-log.md') -Content @(
+        '# Improvement Log'
+        ''
+        'Episodic staging log for the reflect-improve loop.'
+        ''
+        '## 2026-01-01 - fixture entry'
+        ''
+        '- Trigger: fixture seed.'
+        '- Evidence: none.'
+        '- Applied: none.'
+        '- Open: none.'
+    ) | Out-Null
     Invoke-Pwsh -ScriptPath $generator -Arguments @('-RepoRoot', $repo) | Out-Null
     return $repo
 }
@@ -113,7 +125,32 @@ try {
     Assert-True ($run.ExitCode -ne 0) 'CR bytes in .llm files fail'
     New-TestSkill -RepoRoot $repo -Name 'beta-skill' -Category 'core'
 
-    # 9. Everything green again.
+    # 9. Missing improvement log fails.
+    $logPath = Join-Path $repo '.llm/improvement-log.md'
+    Remove-Item -LiteralPath $logPath -Force
+    $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo)
+    Assert-True ($run.ExitCode -ne 0) 'missing improvement log fails'
+
+    # 10. Improvement log with two H1s fails.
+    Write-TestFile -Path $logPath -Content "# Improvement Log`n`n# Second H1`n`n## 2026-01-01 - fixture`n" | Out-Null
+    $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo)
+    Assert-True ($run.ExitCode -ne 0) 'improvement log with two H1s fails'
+
+    # 11. Undated entry header fails.
+    Write-TestFile -Path $logPath -Content "# Improvement Log`n`n## notes`n" | Out-Null
+    $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo)
+    Assert-True ($run.ExitCode -ne 0) 'undated improvement log entry header fails'
+
+    # 12. Valid log restored.
+    Write-TestFile -Path $logPath -Content @(
+        '# Improvement Log'
+        ''
+        '## 2026-01-01 - fixture entry'
+        ''
+        '- Open: none.'
+    ) | Out-Null
+
+    # 13. Everything green again.
     $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo)
     Assert-Equal 0 $run.ExitCode 'fixture green after all repairs'
 }

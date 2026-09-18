@@ -16,6 +16,9 @@
          the committed index).
       5. No CR bytes in any .llm markdown or pointer file (LF endings only).
       6. Relative markdown links inside .llm files resolve to real files.
+      7. .llm/improvement-log.md (the reflect-improve loop memory) exists,
+         has exactly one H1, and every H2 entry header is date-prefixed
+         ('## YYYY-MM-DD - scope'); see .llm/skills/reflect-improve/SKILL.md.
 
 .PARAMETER RepoRoot
     Repository root. Defaults to the parent of the scripts directory.
@@ -221,6 +224,26 @@ foreach ($file in $linkScope) {
         $resolved = [System.IO.Path]::GetFullPath((Join-Path $file.DirectoryName $target))
         if (-not (Test-Path -LiteralPath $resolved)) {
             Add-LintError "$($file.FullName): broken relative link '$($match.Groups[1].Value)'."
+        }
+    }
+}
+
+# 7. Improvement log exists and is well-formed (reflect-improve loop memory).
+
+$logPath = Test-RepoPath -RelativePath '.llm/improvement-log.md'
+if (-not (Test-Path -LiteralPath $logPath)) {
+    Add-LintError '.llm/improvement-log.md is missing; see .llm/skills/reflect-improve/SKILL.md.'
+}
+else {
+    $logLines = @([System.IO.File]::ReadAllLines($logPath))
+    $logH1Count = @($logLines | Where-Object { $_ -match '^# ' }).Count
+    if ($logH1Count -ne 1) {
+        Add-LintError ".llm/improvement-log.md must contain exactly one H1 (found $logH1Count)."
+    }
+    foreach ($logLine in $logLines) {
+        if ($logLine -match '^## ' -and $logLine -notmatch '^## \d{4}-\d{2}-\d{2}') {
+            Add-LintError ".llm/improvement-log.md entries must use dated H2 headers ('## YYYY-MM-DD - scope'); got: $logLine"
+            break
         }
     }
 }
