@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SignalFish.Client/SignalFish.Client.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj" />
+  </Folder>
+</Solution>

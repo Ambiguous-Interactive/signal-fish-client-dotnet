@@ -1,0 +1,19 @@
+# Signal Fish .NET Client
+
+> C# client SDK (`netstandard2.1`, Unity compatible) for the Signal Fish
+> multiplayer signaling server: rooms, lobbies, reconnection, relay, and
+> optional v3 negotiation over WebSocket.
+
+- [AI Agent Guidelines](.llm/context.md): canonical agent context. All
+  front-end pointer files (CLAUDE.md, AGENTS.md, GEMINI.md, Cursor rules,
+  Copilot instructions) delegate to it.
+- [Skills Index](.llm/skills/index.md): generated catalog of agent skills
+  ([Agent Skills](https://agentskills.io) format, one `SKILL.md` per folder).
+- [Protocol Quick Reference](.llm/references/protocol-quick-reference.md):
+  endpoints, message tables, close codes, error codes, limits.
+- Upstream server: https://github.com/Ambiguous-Interactive/signal-fish-server
+
+## Optional
+
+- [Automation scripts](scripts/): index generation, size/instruction linters,
+  self-tests (`pwsh -NoProfile -File scripts/tests/run-all.ps1`).
