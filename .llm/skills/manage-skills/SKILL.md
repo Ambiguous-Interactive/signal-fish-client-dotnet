@@ -12,7 +12,7 @@ defines the repository-specific rules on top of that standard.
 
 ## Skill anatomy
 
-```
+```text
 .llm/skills/<name>/
 └── SKILL.md        Required; YAML frontmatter + markdown body
 ```

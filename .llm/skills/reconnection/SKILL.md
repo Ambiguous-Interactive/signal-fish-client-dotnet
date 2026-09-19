@@ -53,7 +53,7 @@ metadata:
 
 ## State machine sketch
 
-```
+```text
 Connected --drop--> Disconnected --within window--> Reconnecting
     ^                                                    |
     |                                          Reconnect ok

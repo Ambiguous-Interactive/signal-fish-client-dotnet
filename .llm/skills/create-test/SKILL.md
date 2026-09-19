@@ -88,7 +88,7 @@ server; the client adapts. Resync only from the pinned server commit.
 
 ## Running
 
-```
+```text
 dotnet test                                        # everything
 dotnet test --filter "FullyQualifiedName~Reconnect"  # one area
 ```

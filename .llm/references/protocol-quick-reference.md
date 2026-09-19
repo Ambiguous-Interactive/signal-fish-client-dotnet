@@ -3,9 +3,9 @@
 Canonical facts for the .NET client. When this file and the upstream server
 docs disagree, **the server wins** — verify and update this file.
 
-- Server repo: https://github.com/Ambiguous-Interactive/signal-fish-server
-- Protocol docs: https://github.com/Ambiguous-Interactive/signal-fish-server/blob/main/docs/protocol.md
-- Client-building guide: https://github.com/Ambiguous-Interactive/signal-fish-server/blob/main/docs/guides/building-a-client.md
+- Server repo: <https://github.com/Ambiguous-Interactive/signal-fish-server>
+- Protocol docs: <https://github.com/Ambiguous-Interactive/signal-fish-server/blob/main/docs/protocol.md>
+- Client-building guide: <https://github.com/Ambiguous-Interactive/signal-fish-server/blob/main/docs/guides/building-a-client.md>
 - Machine-readable spec (AsyncAPI 3.0): `spec/signal-fish-protocol.asyncapi.yaml` in the server repo
 
 ## Transport & endpoints
@@ -34,7 +34,7 @@ docs disagree, **the server wins** — verify and update this file.
 
 ## Mandatory v2 lifecycle
 
-```
+```text
 Client                              Server
   |--- Authenticate? ---------------->|
   |<-- Authenticated -----------------|

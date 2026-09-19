@@ -9,6 +9,28 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-18 - M0.3 repo linters + docs pipeline skeleton
+
+- Trigger: PLAN M0.3 / issue #2 — mirror the Rust client's repo hygiene
+  (markdownlint-cli2, typos, lychee) and prove a docs build pipeline.
+- Evidence: first markdownlint run: 16 issues / 7 files (missing fence
+  languages, bare URLs, list numbering broken by tables/headings).
+  Config experiment: a `.llm/.markdownlint.jsonc` tree override REPLACED
+  the root config (no merge) — MD013 flipped back on for `.llm/`.
+- Findings: (1) markdownlint-cli2 cascading configs do not merge; scoped
+  overrides mean full-config duplication — avoid them unless a tree truly
+  needs different rules; (2) `PLAN.md`/`GOAL.md` are gitignored local-only
+  docs in this repo — plan-status updates never ship in commits (agents
+  should not look for them in PR diffs); (3) content fixes beat config
+  relaxations, except where numbering is load-bearing (context.md rules
+  1-15 are cross-referenced — MD029 disabled with rationale instead).
+- Applied: three lint configs + `docs.yml` (markdownlint / typos / lychee /
+  mkdocs-build skeleton, pins mirrored from the green Rust client);
+  6 fences got `text`, 3 URLs angle-bracketed, close-code table moved out
+  of the behavior-rules list; `site/` gitignored; all linters green locally
+  (24 md files, typos clean, lychee 13 OK / 0 errors, mkdocs strict build).
+- Open: none for this scope; M1.1 fixtures tracked as issue #3.
+
 ## 2026-09-18 - PR feedback round 1 (Bugbot): tooling robustness
 
 - Trigger: PR #1 review (Cursor Bugbot, 3 findings) + instruction to mine
