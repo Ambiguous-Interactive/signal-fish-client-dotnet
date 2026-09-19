@@ -24,7 +24,7 @@ directory — see [Skills Reference](#skills-reference).
 
 ## Project Structure
 
-```
+```text
 .llm/                    Agent context (this folder) - context.md, skills/, references/, improvement-log.md
 scripts/                 PowerShell automation (index generation, linters, hooks install)
 scripts/tests/           Self-tests for the automation scripts

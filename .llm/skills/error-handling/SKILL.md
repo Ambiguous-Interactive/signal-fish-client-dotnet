@@ -46,7 +46,7 @@ kicked (never auto-retry).
 
 ## Exception hierarchy
 
-```
+```text
 SignalFishException                        (abstract base; carries ErrorCode? when in-band)
 ├── SignalFishProtocolException            (server rejected a command; has ErrorCode)
 ├── SignalFishConnectionException          (transport-level failure; has CloseCode?)

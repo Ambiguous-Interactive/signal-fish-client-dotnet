@@ -1,0 +1,77 @@
+{
+  "$schema": "https://raw.githubusercontent.com/DavidAnson/markdownlint/main/schema/markdownlint-config-schema.json",
+
+  "comment-0": "Signal Fish Client SDK — markdownlint configuration",
+  "comment-1": "Mirrors signal-fish-client-rust; tuned for mkdocs, C# code",
+  "comment-2": "examples, and LLM context files.",
+
+  "comment-3": "--- Global defaults ---",
+  "default": true,
+
+  "comment-4": "--- Disabled rules ---",
+
+  "comment-5": "MD013: Line length — disabled because C# code blocks, URLs, and",
+  "comment-6": "tables routinely exceed 80 characters and forcing wraps hurts",
+  "comment-7": "readability.",
+  "MD013": false,
+
+  "comment-8": "MD033: Inline HTML — mkdocs uses HTML snippets (e.g. <div>,",
+  "comment-9": "<figure>, attribute lists) so we must allow inline HTML.",
+  "MD033": false,
+
+  "comment-10": "MD041: First line in file must be a top-level heading — disabled",
+  "comment-11": "because front-matter, snippets, and LLM context files don't always",
+  "comment-12": "start with an H1.",
+  "MD041": false,
+
+  "comment-13": "MD046: Code block style — disabled to allow both fenced and",
+  "comment-14": "indented styles; mkdocs tabs and admonitions use indented blocks.",
+  "MD046": false,
+
+  "comment-15": "--- Relaxed rules ---",
+
+  "comment-16": "MD024: Allow duplicate headings in different sections (common in",
+  "comment-17": "changelogs and API reference docs).",
+  "MD024": {
+    "siblings_only": true
+  },
+
+  "comment-18": "MD007: Unordered list indentation — use 2 spaces (mkdocs default).",
+  "MD007": {
+    "indent": 2
+  },
+
+  "comment-19": "MD029: Ordered list style — disabled; context.md numbers its",
+  "comment-20": "critical rules 1-15 continuously across section headings and that",
+  "comment-21": "numbering is load-bearing (cross-referenced as \"rule N\" from skills",
+  "comment-22": "and the improvement log). Renderers normalize numbering anyway.",
+  "MD029": false,
+
+  "comment-23": "MD035: Horizontal rule style — standardize on triple dashes.",
+  "MD035": {
+    "style": "---"
+  },
+
+  "comment-24": "MD048: Fenced code block style — standardize on backtick fences.",
+  "MD048": {
+    "style": "backtick"
+  },
+
+  "comment-25": "MD049: Emphasis style — standardize on asterisks for consistency.",
+  "MD049": {
+    "style": "asterisk"
+  },
+
+  "comment-26": "MD050: Strong emphasis style — standardize on double asterisks.",
+  "MD050": {
+    "style": "asterisk"
+  },
+
+  "comment-27": "MD060: Table column style — disabled; triggers false positives on",
+  "comment-28": "compact pipe-separated tables widely used in this repo. Tables are",
+  "comment-29": "readable as-is.",
+  "MD060": false,
+
+  "comment-30": "MD058: Blanks around tables — disabled for mkdocs compatibility.",
+  "MD058": false
+}

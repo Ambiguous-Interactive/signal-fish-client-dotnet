@@ -1,0 +1,45 @@
+# Signal Fish Client SDK — typos spell-checker configuration
+#
+# typos is a fast source code spell checker.
+# Docs: https://github.com/crate-ci/typos
+# Mirrors signal-fish-client-rust; excludes adapted for .NET artifacts.
+
+# ─────────────────────────────────────────────────────────────
+# Files / directories to skip entirely
+# ─────────────────────────────────────────────────────────────
+[files]
+extend-exclude = [
+    # .NET build artifacts (hashes, generated content)
+    "bin/",
+    "obj/",
+    "TestResults/",
+    "site/",
+    ".git/",
+    ".venv/",
+    # Node modules (if present from docs tooling)
+    "node_modules/",
+    # MkDocs build artifacts
+    "*.min.js",
+    "*.min.css",
+]
+
+# ─────────────────────────────────────────────────────────────
+# Default word list — domain-specific terms that are NOT typos
+# ─────────────────────────────────────────────────────────────
+[default]
+locale = "en-us"
+
+[default.extend-words]
+# Project-specific terms
+signalfish = "signalfish"
+netstandard = "netstandard"
+IL2CPP = "IL2CPP"
+asmdef = "asmdef"
+jslib = "jslib"
+# `Pn` appears in grep flag combinations (`-Pn`, `-oPn`, `-qPn`)
+# in shell scripts and test data — not a misspelling of "On"
+Pn = "Pn"
+# `BRE` and `ERE` are standard POSIX terms: Basic Regular Expression
+# and Extended Regular Expression. Not misspellings of "BE"/"BRIE"/"ERR".
+BRE = "BRE"
+ERE = "ERE"

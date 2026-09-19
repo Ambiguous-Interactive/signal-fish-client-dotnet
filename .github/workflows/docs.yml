@@ -1,0 +1,109 @@
+# Docs validation pipeline for signal-fish-client-dotnet
+#
+# Runs on every push to main and on all pull requests so its checks gate
+# every protected-branch candidate. Jobs: markdownlint, spell-check,
+# link-check, mkdocs-build (skeleton — the real site lands in M7.5).
+#
+# No path filters: typos scans the whole repository, and the remaining jobs
+# are cheap, so a stable always-on gate beats partial coverage.
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Markdownlint — lint markdown files for style consistency
+  # ──────────────────────────────────────────────────────────────
+  markdownlint:
+    name: Markdownlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@v24.2.0
+        with:
+          globs: |
+            **/*.md
+
+  # ──────────────────────────────────────────────────────────────
+  # Spell check — typos scans the whole repository (C#, PowerShell,
+  # TOML, YAML, Markdown, …), not just docs.
+  # ──────────────────────────────────────────────────────────────
+  spell-check:
+    name: Spell Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run typos spell checker
+        uses: crate-ci/typos@v1.50.2
+        with:
+          config: .typos.toml
+
+  # ──────────────────────────────────────────────────────────────
+  # Link check — verify all URLs in markdown files resolve
+  # ──────────────────────────────────────────────────────────────
+  link-check:
+    name: Link Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run lychee link checker
+        uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: >-
+            --config .lychee.toml
+            "**/*.md"
+            "llms.txt"
+          fail: true
+
+  # ──────────────────────────────────────────────────────────────
+  # MkDocs build — prove the docs pipeline end to end. The real
+  # site (mkdocs-material, full page set) lands in M7.5.
+  # ──────────────────────────────────────────────────────────────
+  mkdocs-build:
+    name: MkDocs Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install MkDocs
+        run: pip install -r requirements-docs.txt
+
+      - name: Build docs
+        run: mkdocs build --strict --site-dir site

@@ -47,6 +47,9 @@ CodeCoverage/
 # MSBuild Binary and Structured Log
 *.binlog
 
+# MkDocs build output
+site/
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
