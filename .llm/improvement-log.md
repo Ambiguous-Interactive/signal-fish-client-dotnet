@@ -9,6 +9,39 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-19 - M1.1 golden fixtures (PR #10 Bugbot round)
+
+- Trigger: PR feedback — Cursor Bugbot reported 2 issues in
+  `scripts/sync-protocol-fixtures.ps1` after push.
+- Evidence: (1) "Array unroll breaks single-file corpus" — reproduced under
+  StrictMode: a 1-element function return unrolls to `String` and `.Count`
+  throws (the new script violated the already-documented rule 1 in
+  `powershell-tooling`; the pre-commit crash was the same class). The
+  first fix attempt (comma-prefix + `@()` call sites) NESTED the array
+  (`object[1]`, space-joined rendering, `[string]` binding failure) —
+  caught by the end-to-end stale-file test before shipping. (2) "Sync
+  cannot drop removed fixtures" — `-Sync` overwrote but never deleted, so
+  a pin bump removing a fixture could never converge; the assert also ran
+  before provenance regeneration, leaving derived output stale.
+- Findings: (a) new tooling was written without checking it against the
+  repo's own `powershell-tooling` failure-class list — the class was
+  already documented with prior evidence; adversarial review rounds tested
+  behavior but did not diff new PS code against the known-rules checklist.
+  Rules-check new tooling at write time, not at review time. (b) "sync
+  must converge (delete included), then assert, then derive" was a
+  genuinely new failure class. (c) Two unroll defenses are mutually
+  exclusive: bare-return + `@()` call sites (the repo convention) OR
+  comma-prefix + plain assignment (binary buffers only) — never both.
+- Applied: script fixed (bare name-list returns + `@()` call sites; `-Sync`
+  deletes stale `*.jsonl` before the postcondition assert; provenance
+  regenerated last); `powershell-tooling` rule 1 extended with both
+  instances + the nesting trap, new rule 6 (converge-then-assert-then-
+  derive); index regenerated; verified end-to-end (planted stale fixture
+  deleted, sync + verify green, corpus byte-identical, build + tests green).
+- Open: the network-bound sync script still has no self-test (harness is
+  local-only); noted in `progress/session-004` — acceptable while manual,
+  revisit if it ever joins CI.
+
 ## 2026-09-18 - M0.3 repo linters + docs pipeline skeleton
 
 - Trigger: PLAN M0.3 / issue #2 — mirror the Rust client's repo hygiene

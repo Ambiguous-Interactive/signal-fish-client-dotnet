@@ -1,6 +1,6 @@
 ---
 name: powershell-tooling
-description: PowerShell failure classes proven by real bugs in this repo - strict-mode scalar unroll, array-to-string coercion, Write-Error under Stop inside loops, pwsh -File array binding, and the report-all-then-fail contract.
+description: PowerShell failure classes proven by real bugs in this repo - strict-mode scalar unroll, comma-plus-@() array nesting, array-to-string coercion, Write-Error under Stop inside loops, pwsh -File array binding, sync scripts that cannot converge, and the report-all-then-fail contract.
 metadata:
   category: core
 ---
@@ -10,19 +10,31 @@ metadata:
 This repo's automation (linters, hooks, self-tests) is PowerShell running
 under `$ErrorActionPreference = 'Stop'` and `Set-StrictMode -Version Latest`.
 Each rule below was a real production bug in this repository — do not
-re-introduce them.
+re-introduce them. When writing new tooling, check it against this list
+BEFORE shipping, not only when a reviewer finds a violation.
 
 ## 1. Scalar unroll kills `.Count` under StrictMode
 
-A PowerShell function returning `@($x)` unrolls single-element results to a
-scalar. Under `Set-StrictMode -Version Latest`, `$scalar.Count` throws
-"property 'Count' cannot be found".
+A function returning a collection unrolls single-element results to a scalar
+at the call site. Under `Set-StrictMode -Version Latest`, `$scalar.Count`
+throws "property 'Count' cannot be found". `foreach` over the scalar is
+safe, so the crash surfaces later, at a `.Count` or property access — far
+from the cause.
 
-- **Rule**: wrap any function-result collection at the call site:
-  `$staged = @(Get-StagedFiles)`.
+- **Rule**: bare-`return` the collection and wrap EVERY consuming call site:
+  `$staged = @(Get-StagedFiles)`. That holds for all arities: 1 element ->
+  1-element array, 0 -> empty, N -> unchanged. Never ALSO comma-prefix a
+  return consumed via `@()`: comma-prefixing exists for binary buffers read
+  by plain assignment, and comma + `@()` NESTS the array into
+  `object[1]`, which then space-joins inside string interpolation and fails
+  `[string]` parameter binding.
 - Evidence: `.githooks/pre-commit.ps1` blocked every single-file commit
-  (fixed in commit `Fix pre-commit strict-mode crash on a single staged
-  file`; regression test `scripts/tests/test-pre-commit.ps1`).
+  (fixed in commit "Fix pre-commit strict-mode crash on a single staged
+  file"; regression test `scripts/tests/test-pre-commit.ps1`); Bugbot
+  finding "Array unroll breaks single-file corpus" on
+  `scripts/sync-protocol-fixtures.ps1` (PR #10). The first fix attempt
+  combined comma-prefix with `@()` call sites and nested the list —
+  reproduced in isolation before shipping.
 
 ## 2. `[string]` params silently flatten arrays
 
@@ -67,6 +79,23 @@ Scripts communicate failure by `exit 1` with human-readable, one-violation-
 per-line output on stdout; hooks and CI only read the exit code and the
 captured output. Keep the two channels consistent — assert exit code AND
 message text in self-tests.
+
+## 6. Sync/mirror scripts must converge — deletions included
+
+A sync that only overwrites files present in the source cannot complete a
+legitimate source-side removal or rename: stale local files trip the
+set-equality check forever, and the error message tells users to re-run the
+very mode that dead-ends.
+
+- **Rule**: a sync converges first (write the source set, delete stale
+  locals within its managed scope), THEN asserts set equality as a
+  postcondition, THEN regenerates derived files. Never assert before the
+  state is converged, and never leave derived output stale after a failed
+  run.
+- Evidence: Bugbot finding "Sync cannot drop removed fixtures" on
+  `scripts/sync-protocol-fixtures.ps1` (PR #10) — a pin bump removing a
+  fixture could never finish. Fixed: stale fixtures are deleted before the
+  postcondition assert; `PROVENANCE.md` is regenerated last.
 
 ## Testing tooling
 

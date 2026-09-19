@@ -89,6 +89,10 @@ function Get-UpstreamFileNames {
         throw "Upstream directory ${upstreamRepo}:$upstreamDir is empty at commit $PinnedCommit."
     }
     [System.Array]::Sort($names, $ordinal)
+    # Bare return by convention: every call site wraps in @() so single-
+    # element results cannot unroll to a scalar (StrictMode .Count throw).
+    # Never also comma-prefix a return consumed via @() — that NESTS the
+    # array (object[1] whose element is the whole list).
     return $names
 }
 
@@ -152,7 +156,7 @@ function Assert-ExpectedFixtures {
     }
 }
 
-$upstreamNames = Get-UpstreamFileNames
+$upstreamNames = @(Get-UpstreamFileNames)
 
 if ($Sync) {
     New-Item -ItemType Directory -Force -Path $goldenDir | Out-Null
@@ -163,7 +167,16 @@ if ($Sync) {
         $text = [System.Text.Encoding]::UTF8.GetString($bytes)
         $lineCounts[$name] = $text.TrimEnd("`n").Split("`n").Count
     }
-    $localNames = Get-LocalFixtureNames
+    # Converge to the pin: a reviewed bump may remove or rename fixtures,
+    # so drop local samples the pin no longer publishes. Sync must be able
+    # to complete a removal, or verify-mode's "run with -Sync" guidance
+    # would dead-end.
+    $staleNames = @(@(Get-LocalFixtureNames) | Where-Object { $upstreamNames -notcontains $_ })
+    foreach ($name in $staleNames) {
+        Remove-Item -LiteralPath (Join-Path $goldenDir $name)
+        Write-Host "Removed stale fixture no longer at the pin: $name"
+    }
+    $localNames = @(Get-LocalFixtureNames)
     Assert-ExpectedFixtures -ExpectedNames $upstreamNames -ActualNames $localNames -ProblemContext 'after sync'
 
     $syncedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
@@ -205,7 +218,7 @@ upstream; never hand-vendor replacements.
 if (-not (Test-Path -LiteralPath $goldenDir)) {
     throw "tests/Golden/ does not exist. Run with -Sync to vendor the fixtures first."
 }
-$localNames = Get-LocalFixtureNames
+$localNames = @(Get-LocalFixtureNames)
 Assert-ExpectedFixtures -ExpectedNames $upstreamNames -ActualNames $localNames -ProblemContext 'vendored corpus'
 
 $mismatched = @()

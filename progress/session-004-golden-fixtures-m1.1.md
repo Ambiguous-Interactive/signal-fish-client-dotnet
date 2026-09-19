@@ -110,3 +110,34 @@ PROVENANCE; here-string backtick doubling correct; no injection path.
 - Found+fixed during re-verification: PowerShell array unrolling on
   `return` broke byte[] typing (comma-prefixed returns); expression
   arguments need parens when passed to functions.
+
+## PR feedback round (Cursor Bugbot, commit 93187ff)
+
+Fetched via `gh pr view` + `gh api .../pulls/10/comments`; each claim
+verified against the code before acting (per the address-pr-feedback loop):
+
+| Finding | Severity | Verified? | Disposition |
+| --- | --- | --- | --- |
+| "Array unroll breaks single-file corpus" — name lists returned bare, call sites un-`@()`-wrapped; 1-element return unrolls to `String`, `.Count` throws under StrictMode | Low | Yes — repro'd: unroll real, `.Count` throw real; the "foreach walks characters" claim is false (PS7 iterates once) | Fixed: bare name-list returns + `@()` at every call site (repo convention, per powershell-tooling rule 1). First attempt combined comma-prefix + `@()` which NESTS the array (repro'd: `object[1]`, space-joined rendering, `[string]` binding failure) — caught by the stale-file E2E test before shipping |
+| "Sync cannot drop removed fixtures" — `-Sync` overwrites but never deletes; a pin bump removing/renaming a fixture can never converge, and verify-mode guidance dead-ends | Medium | Yes — code reading + E2E (planted stale fixture threw "Fixture set drift (after sync)") | Fixed: `-Sync` now deletes stale managed-scope `*.jsonl` before the postcondition set assert; `PROVENANCE.md` regenerated last |
+
+Sweep for the class across `scripts/`, `scripts/tests/`, `.githooks/`:
+- Scalar-unroll class: only this script had un-`@()`-wrapped function-result
+  collections (`.githooks/pre-commit.ps1` already follows rule 1 both
+  sides; `generate-skills-index.ps1` uses `List[object]` + typed locals).
+- Convergence class: this is the repo's only sync/mirror script.
+- Bugbot's byte-array comma returns were already correct and untouched.
+
+Verification: parse OK; E2E — planted `zzz-removed-upstream.jsonl` deleted
+by `-Sync` (exit 0, previously exit 1), verify green, corpus byte-identical;
+`dotnet build -warnaserror` + `dotnet test` (12/12 both TFMs);
+`scripts/tests/run-all.ps1` 6/6; linters green; skills index regenerated.
+
+Knowledge capture (reflect-improve): `powershell-tooling` rule 1 extended
+(both evidence instances + the comma+`@()` nesting trap); new rule 6
+(sync/mirror scripts must converge — deletions included, converge-then-
+assert-then-derive ordering); improvement-log entry added. Root cause of
+the leak: new tooling wasn't rules-checked against `powershell-tooling` at
+write time — now stated in the skill's intro. Self-test for the
+network-bound sync script deferred (harness is local-only; acceptable while
+the script is manual-run, revisit if it joins CI).
