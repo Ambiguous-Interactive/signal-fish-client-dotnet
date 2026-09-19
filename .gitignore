@@ -62,3 +62,4 @@ nunit-*.xml
 GOAL.md
 PLAN.md
 .env*
+!.env.example

@@ -1,0 +1,92 @@
+# Dev Container Build Validation
+#
+# Builds the container image from .devcontainer/ so devcontainer-only
+# breakage cannot reach main. No other workflow builds this image.
+# Dev container features (ghcr.io/devcontainers/features/*) only run during
+# an image build, so a broken feature install or a broken lifecycle script is
+# invisible to every other check. This workflow is that check.
+#
+# Runs on:
+#   - Pull requests to main (only for devcontainer file changes)
+#   - Monthly schedule: catches upstream drift (a devcontainers/features
+#     release or an mcr.microsoft.com/devcontainers base image update) even
+#     without any local change
+#   - Manual dispatch
+#
+# The runCmd exercises the real thing end to end: CLI installs, MCP config
+# sync for every harness (claude, codex, copilot, opencode, nanocoder,
+# gemini, cursor, VS Code workspace), and the deterministic self-test suite
+# (including a real MCP initialize + tools/list handshake with the Z.AI
+# vision server).
+
+name: Dev Container Build
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.devcontainer/**'
+      - '.vscode/mcp.json'
+      - '.env.example'
+      - '.github/workflows/devcontainer-build.yml'
+  schedule:
+    # Monthly on the 1st at 05:00 UTC - upstream image/feature drift detection.
+    - cron: '0 5 1 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build devcontainer image + self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build dev container image and run the self-test inside it
+        uses: devcontainers/ci@v0.3
+        with:
+          # Build the feature-augmented image, then exercise the real launch
+          # path (MCP config sync + self-test) as the non-root remote user.
+          imageName: signal-fish-devcontainer-ci
+          push: never
+          # Layer cache via the GitHub Actions cache backend: repeated PR
+          # builds reuse unchanged base-image/sdk/node/uv layers instead of
+          # re-resolving them. mode=max caches intermediate stages too.
+          cacheFrom: type=gha
+          cacheTo: type=gha,mode=max
+          runCmd: |
+            bash .devcontainer/scripts/post-start.sh
+            bash .devcontainer/scripts/self-test.sh
+
+      - name: Smoke-check installed tools at runtime
+        run: |
+          set -euo pipefail
+          image="signal-fish-devcontainer-ci:latest"
+
+          # Every agentic CLI + the globally installed MCP stdio server must
+          # resolve on PATH in a login shell as the container user.
+          for tool in codex opencode nanocoder claude copilot gemini zai-mcp-server uvx node npm; do
+            version=$(docker run --rm "$image" bash -lc "command -v $tool >/dev/null && $tool --version >/dev/null 2>&1 && echo ok || echo MISSING")
+            if [ "$version" != "ok" ]; then
+              echo "ERROR: tool '$tool' is missing or broken in the image." >&2
+              exit 1
+            fi
+            echo "$tool: ok"
+          done
+
+          # The user-owned npm global prefix must exist in the image and be
+          # the configured prefix, so `npm install -g` never needs sudo.
+          prefix=$(docker run --rm "$image" bash -lc 'npm config get prefix')
+          if [ "$prefix" != "/home/vscode/.npm-global" ]; then
+            echo "ERROR: npm prefix is '$prefix', expected /home/vscode/.npm-global" >&2
+            exit 1
+          fi
+          echo "npm prefix: $prefix (user-owned, sudo-free)"

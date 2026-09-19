@@ -1,0 +1,105 @@
+// SignalFish .NET dev container
+// Design notes: .devcontainer/README.md
+{
+  "name": "SignalFish .NET",
+
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+
+  "features": {
+    // .NET SDKs are installed in the Dockerfile (image root, both majors);
+    // Node.js too (official image stages). See Dockerfile for rationale.
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "remoteUser": "vscode",
+
+  "mounts": [
+    // npm: global tools + cache persist across (full) rebuilds.
+    "source=${localWorkspaceFolderBasename}-npm-global,target=/home/vscode/.npm-global,type=volume",
+    "source=${localWorkspaceFolderBasename}-npm-cache,target=/home/vscode/.npm,type=volume",
+    // Agent harness state (auth, sessions) persists across rebuilds.
+    "source=${localWorkspaceFolderBasename}-claude-home,target=/home/vscode/.claude,type=volume",
+    "source=${localWorkspaceFolderBasename}-claude-zai-home,target=/home/vscode/.claude-zai,type=volume",
+    "source=${localWorkspaceFolderBasename}-claude-openrouter-home,target=/home/vscode/.claude-openrouter,type=volume",
+    "source=${localWorkspaceFolderBasename}-codex-home,target=/home/vscode/.codex,type=volume",
+    "source=${localWorkspaceFolderBasename}-copilot-home,target=/home/vscode/.copilot,type=volume",
+    "source=${localWorkspaceFolderBasename}-opencode-data,target=/home/vscode/.local/share/opencode,type=volume",
+    "source=${localWorkspaceFolderBasename}-gh-config,target=/home/vscode/.config/gh,type=volume",
+    // uv cache: python envs/tool deps for the git MCP server resolve once.
+    "source=${localWorkspaceFolderBasename}-uv-cache,target=/home/vscode/.cache/uv,type=volume",
+    // dotnet: package cache + HTTPS dev certs persist across rebuilds.
+    "source=${localWorkspaceFolderBasename}-nuget-packages,target=/home/vscode/.nuget/packages,type=volume",
+    "source=${localWorkspaceFolderBasename}-dotnet-home,target=/home/vscode/.dotnet,type=volume"
+  ],
+
+  // Heavy work (install/update the agent CLIs) once per container build.
+  "onCreateCommand": "bash .devcontainer/scripts/post-create.sh",
+  // Fast work (env + MCP config sync + throttled background refresh) on every start.
+  "postStartCommand": "bash .devcontainer/scripts/post-start.sh",
+
+  "forwardPorts": [3536],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csharp",
+        "EditorConfig.EditorConfig",
+        "DavidAnson.vscode-markdownlint",
+        "ms-vscode.PowerShell",
+        "GitHub.vscode-pull-request-github",
+        // Agent front-ends (same CLIs the terminal gets).
+        "anthropic.claude-code",
+        "openai.chatgpt",
+        // Git-heavy workflow support.
+        "eamodio.gitlens",
+        "github.vscode-github-actions",
+        // Diagnostics and code quality at a glance.
+        "usernamehw.errorlens",
+        "streetsidesoftware.code-spell-checker",
+        "timonwong.shellcheck",
+        "redhat.vscode-yaml",
+        // Theming.
+        "PKief.material-icon-theme"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        // Theme: dark modern base with a SignalFish teal accent.
+        "workbench.colorTheme": "Default Dark Modern",
+        "workbench.iconTheme": "material-icon-theme",
+        "workbench.tree.indent": 16,
+        "workbench.colorCustomizations": {
+          "activityBar.activeBorder": "#2DD4BF",
+          "focusBorder": "#38BDF8",
+          "statusBar.background": "#102A43",
+          "statusBar.foreground": "#F8FAFC"
+        },
+        "editor.fontLigatures": true,
+        "editor.minimap.enabled": false,
+        "editor.renderWhitespace": "selection",
+        "editor.stickyScroll.enabled": true,
+        "editor.unicodeHighlight.ambiguousCharacters": true,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "files.exclude": {
+          "**/bin": true,
+          "**/obj": true
+        },
+        "files.watcherExclude": {
+          "**/.git/objects/**": true,
+          "**/bin/**": true,
+          "**/obj/**": true
+        },
+        "search.exclude": {
+          "**/bin": true,
+          "**/obj": true
+        },
+        "git.autofetch": true,
+        "git.confirmSync": false,
+        "telemetry.telemetryLevel": "off",
+        "dotnetAcquisitionExtension.enableTelemetry": false
+      }
+    }
+  }
+}
