@@ -23,12 +23,20 @@ namespace SignalFish.Client
         /// <summary>WebSocket path for optional negotiated v3 capabilities.</summary>
         public const string V3WebSocketPath = "/v3/ws";
 
-        /// <summary>Builds the default v2 endpoint, e.g. <c>ws://localhost:3536/v2/ws</c>.</summary>
+        /// <summary>
+        /// Builds the default v2 endpoint, e.g. <c>ws://localhost:3536/v2/ws</c>.
+        /// IPv6 hosts are bracketed (<c>::1</c> becomes <c>ws://[::1]:3536/v2/ws</c>).
+        /// </summary>
         public static Uri DefaultServerUri(string host = "localhost")
         {
             if (string.IsNullOrWhiteSpace(host))
             {
                 throw new ArgumentException("Host must not be null or empty.", nameof(host));
+            }
+
+            if (host.Contains(':') && host[0] != '[')
+            {
+                host = $"[{host}]";
             }
 
             return new Uri($"ws://{host}:{DefaultPort}{V2WebSocketPath}");

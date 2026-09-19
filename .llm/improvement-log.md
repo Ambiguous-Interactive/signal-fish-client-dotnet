@@ -9,6 +9,31 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-18 - PR feedback round 1 (Bugbot): tooling robustness
+
+- Trigger: PR #1 review (Cursor Bugbot, 3 findings) + instruction to mine
+  sibling repo `unity-helpers` for PR-feedback workflow guidance.
+- Evidence: (1) `Write-Error` under EAP=Stop inside lint loops aborted at
+  the first violation — repro showed the two-file case reported one garbled
+  line; (2) `DefaultServerUri("::1")` threw `UriFormatException` (3 RED
+  test cases); (3) `[string]$Content` in `Write-TestFile` space-joined
+  arrays — fixture became `line one  line three` on ONE line. Also found
+  during green: `pwsh -File` sends surplus tokens after a named param to
+  positional params (three invocation variants failed before `-Command`).
+- Findings: all three findings were instances of classes already latent
+  elsewhere; the sweep eliminated the classes repo-wide (no other in-loop
+  `Write-Error`, one URI site, one coercible content param). unity-helpers
+  has review/ship workflow skills but no fetch-feedback procedure; the
+  missing procedure is what GOAL sessions need.
+- Applied: report-all-then-fail in both linters (tests assert multiple
+  violations all reported); IPv6 host bracketing (data-driven test cases);
+  `Write-TestFile` takes `[object]`; `Invoke-PwshCommand` helper; new
+  skills `address-pr-feedback` (gh fetch -> verify -> class sweep ->
+  red-green -> reply map) and `powershell-tooling` (the 5 PS rules above);
+  index regenerated; all linters + 6 self-test files + 10 C# tests green
+  on both TFMs.
+- Open: none.
+
 ## 2026-09-18 - M0 governance sync (skills x locked decisions)
 
 - Trigger: PLAN M0.1 — `.llm` guidance had to match the locked decisions

@@ -150,7 +150,25 @@ try {
         '- Open: none.'
     ) | Out-Null
 
-    # 13. Everything green again.
+    # 13. Multiple violations are ALL reported (report-all-then-fail).
+    Remove-Item -LiteralPath (Join-Path $repo 'GEMINI.md') -Force
+    Write-TestFile -Path (Join-Path $repo 'CLAUDE.md') -Content "# Claude Configuration`n`nNo delegation here.`n" | Out-Null
+    $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo)
+    Assert-True ($run.ExitCode -ne 0) 'multi-violation fixture fails'
+    Assert-OutputContains -Run $run -Pattern 'Gemini CLI entrypoint missing' 'multi-violation: missing pointer file reported'
+    Assert-OutputContains -Run $run -Pattern 'must delegate' 'multi-violation: delegation failure reported'
+    Write-TestFile -Path (Join-Path $repo 'GEMINI.md') -Content @(
+        '# Gemini Configuration'
+        ''
+        'See the [AI Agent Guidelines](./.llm/context.md) for all AI agent guidelines.'
+    ) | Out-Null
+    Write-TestFile -Path (Join-Path $repo 'CLAUDE.md') -Content @(
+        '# Claude Configuration'
+        ''
+        'See the [AI Agent Guidelines](./.llm/context.md) for all AI agent guidelines.'
+    ) | Out-Null
+
+    # 14. Everything green again.
     $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo)
     Assert-Equal 0 $run.ExitCode 'fixture green after all repairs'
 }

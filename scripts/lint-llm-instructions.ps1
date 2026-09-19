@@ -250,9 +250,9 @@ else {
 
 if ($script:errors.Count -gt 0) {
     foreach ($lintError in $script:errors) {
-        Write-Error "lint-llm-instructions: $lintError"
+        Write-Host "lint-llm-instructions: $lintError"
     }
-    Write-Error "lint-llm-instructions FAILED with $($script:errors.Count) error(s)."
+    Write-Host "lint-llm-instructions FAILED with $($script:errors.Count) error(s)."
     exit 1
 }
 

@@ -40,13 +40,13 @@ function Remove-TestRepo {
 }
 
 function Write-TestFile {
-    param([string]$Path, [string]$Content)
+    param([string]$Path, [object]$Content)
     $parent = Split-Path -Parent $Path
     if (-not (Test-Path -LiteralPath $parent)) {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
     }
-    $normalized = $Content -replace "`r`n", "`n"
-    [System.IO.File]::WriteAllText($Path, $normalized, [System.Text.UTF8Encoding]::new($false))
+    $text = (@($Content) -join "`n") -replace "`r`n", "`n"
+    [System.IO.File]::WriteAllText($Path, $text, [System.Text.UTF8Encoding]::new($false))
 }
 
 function New-TestSkill {
@@ -82,6 +82,15 @@ function Assert-OutputContains {
 function Invoke-Pwsh {
     param([string]$ScriptPath, [string[]]$Arguments = @())
     $output = & pwsh -NoProfile -File $ScriptPath @Arguments 2>&1
+    return [pscustomobject]@{
+        ExitCode = $LASTEXITCODE
+        Output   = @($output | ForEach-Object { $_.ToString() })
+    }
+}
+
+function Invoke-PwshCommand {
+    param([string]$Command)
+    $output = & pwsh -NoProfile -Command $Command 2>&1
     return [pscustomobject]@{
         ExitCode = $LASTEXITCODE
         Output   = @($output | ForEach-Object { $_.ToString() })

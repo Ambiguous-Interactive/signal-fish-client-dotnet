@@ -46,7 +46,17 @@ try {
     $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo)
     Assert-Equal 0 $run.ExitCode 'default scope passes when all files are within limits'
 
-    # 7. Missing target errors.
+    # 7. Every violation is reported, not just the first (report-all-then-fail).
+    $big1 = (Join-Path $repo '.llm') + '/big1.md'
+    $big2 = (Join-Path $repo '.llm') + '/big2.md'
+    Write-TestFile -Path $big1 -Content ((1..301 | ForEach-Object { "line $_" }) -join "`n")
+    Write-TestFile -Path $big2 -Content ((1..310 | ForEach-Object { "line $_" }) -join "`n")
+    $run = Invoke-PwshCommand -Command "& '$linter' -RepoRoot '$repo' -Paths @('.llm/big1.md', '.llm/big2.md')"
+    Assert-True ($run.ExitCode -ne 0) 'two oversized files fail'
+    Assert-OutputContains -Run $run -Pattern 'big1\.md' 'first violation reported'
+    Assert-OutputContains -Run $run -Pattern 'big2\.md' 'second violation reported'
+
+    # 8. Missing target errors.
     $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo, '-Paths', '.llm/does-not-exist.md')
     Assert-True ($run.ExitCode -ne 0) 'missing path fails'
 }

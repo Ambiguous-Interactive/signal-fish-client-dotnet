@@ -25,6 +25,26 @@ namespace SignalFish.Client.Tests
             Assert.That(uri.Host, Is.EqualTo("games.example.com"));
         }
 
+        [TestCase("::1", "[::1]")]
+        [TestCase("2001:db8::1", "[2001:db8::1]")]
+        [TestCase("::ffff:127.0.0.1", "[::ffff:127.0.0.1]")]
+        public void DefaultServerUri_Ipv6Host_BracketsHostForValidUri(string host, string expectedHost)
+        {
+            var uri = SignalFishClientInfo.DefaultServerUri(host);
+
+            Assert.That(uri.Host, Is.EqualTo(expectedHost));
+            Assert.That(uri.Port, Is.EqualTo(SignalFishClientInfo.DefaultPort));
+            Assert.That(uri.AbsolutePath, Is.EqualTo("/v2/ws"));
+        }
+
+        [Test]
+        public void DefaultServerUri_AlreadyBracketedIpv6Host_IsNotDoubleBracketed()
+        {
+            var uri = SignalFishClientInfo.DefaultServerUri("[::1]");
+
+            Assert.That(uri.Host, Is.EqualTo("[::1]"));
+        }
+
         [TestCase(null)]
         [TestCase("")]
         [TestCase("   ")]

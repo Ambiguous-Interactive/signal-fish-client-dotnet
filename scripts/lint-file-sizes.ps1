@@ -82,13 +82,14 @@ else {
 }
 [System.Array]::Sort($targets, [System.StringComparer]::Ordinal)
 
+$violations = New-Object 'System.Collections.Generic.List[string]'
 $errorCount = 0
 $warningCount = 0
 $checkedCount = 0
 
 foreach ($target in $targets) {
     if (-not (Test-Path -LiteralPath $target)) {
-        Write-Error "lint-file-sizes: path not found: $target"
+        $violations.Add("path not found: $target")
         $errorCount++
         continue
     }
@@ -98,7 +99,7 @@ foreach ($target in $targets) {
     $lineCount = @([System.IO.File]::ReadAllLines($target)).Count
     $checkedCount++
     if ($lineCount -gt $MaxLines) {
-        Write-Error "$relative : $lineCount lines (hard limit: $MaxLines) - MUST split into smaller files."
+        $violations.Add("$relative : $lineCount lines (hard limit: $MaxLines) - MUST split into smaller files.")
         $errorCount++
     }
     elseif ($lineCount -ge $WarnLines) {
@@ -112,7 +113,10 @@ foreach ($target in $targets) {
 
 $summary = "checked $checkedCount file(s), $errorCount error(s), $warningCount warning(s)."
 if ($errorCount -gt 0) {
-    Write-Error "lint-file-sizes FAILED: $summary"
+    foreach ($violation in $violations) {
+        Write-Host "lint-file-sizes: $violation"
+    }
+    Write-Host "lint-file-sizes FAILED: $summary"
     exit 1
 }
 if ($VerboseOutput) {
