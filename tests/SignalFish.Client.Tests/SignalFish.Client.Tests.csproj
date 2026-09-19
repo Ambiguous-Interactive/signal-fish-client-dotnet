@@ -25,4 +25,10 @@
     <ProjectReference Include="..\..\src\SignalFish.Client\SignalFish.Client.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Golden protocol fixtures (tests/Golden, vendored by
+         scripts/sync-protocol-fixtures.ps1) travel with the test output. -->
+    <Content Include="..\Golden\**\*.jsonl" CopyToOutputDirectory="PreserveNewest" LinkBase="Golden\" />
+  </ItemGroup>
+
 </Project>
