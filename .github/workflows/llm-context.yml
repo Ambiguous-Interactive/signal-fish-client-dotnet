@@ -1,0 +1,53 @@
+name: LLM Context
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.llm/**'
+      - '.githooks/**'
+      - '.github/copilot-instructions.md'
+      - '.github/workflows/llm-context.yml'
+      - 'scripts/**'
+      - 'CLAUDE.md'
+      - 'AGENTS.md'
+      - 'GEMINI.md'
+      - 'llms.txt'
+      - '.cursor/**'
+  pull_request:
+    paths:
+      - '.llm/**'
+      - '.githooks/**'
+      - '.github/copilot-instructions.md'
+      - '.github/workflows/llm-context.yml'
+      - 'scripts/**'
+      - 'CLAUDE.md'
+      - 'AGENTS.md'
+      - 'GEMINI.md'
+      - 'llms.txt'
+      - '.cursor/**'
+
+jobs:
+  lint:
+    name: Lint (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run automation self-tests
+        run: pwsh -NoProfile -File scripts/tests/run-all.ps1
+
+      - name: Lint file sizes (300-line hard limit)
+        run: pwsh -NoProfile -File scripts/lint-file-sizes.ps1 -VerboseOutput
+
+      - name: Lint LLM instructions
+        run: pwsh -NoProfile -File scripts/lint-llm-instructions.ps1
+
+      - name: Verify skills index freshness
+        run: |
+          pwsh -NoProfile -File scripts/generate-skills-index.ps1
+          git diff --exit-code -- .llm/skills/index.md

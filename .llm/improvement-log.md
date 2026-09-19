@@ -1,0 +1,73 @@
+# Improvement Log
+
+Episodic staging log for the mandatory
+[reflect-improve](./skills/reflect-improve/SKILL.md) loop. Newest first.
+Each entry is an H2 header starting with the date (`## YYYY-MM-DD - scope`)
+followed by Trigger / Evidence / Findings / Applied / Open bullets.
+
+Prune an entry once its knowledge has graduated into durable artifacts and
+its `Open` items are resolved — this file is staging, not storage (target
+under ~150 lines; the 300-line lint ceiling is the hard bound).
+
+## 2026-09-18 - PR feedback round 1 (Bugbot): tooling robustness
+
+- Trigger: PR #1 review (Cursor Bugbot, 3 findings) + instruction to mine
+  sibling repo `unity-helpers` for PR-feedback workflow guidance.
+- Evidence: (1) `Write-Error` under EAP=Stop inside lint loops aborted at
+  the first violation — repro showed the two-file case reported one garbled
+  line; (2) `DefaultServerUri("::1")` threw `UriFormatException` (3 RED
+  test cases); (3) `[string]$Content` in `Write-TestFile` space-joined
+  arrays — fixture became `line one  line three` on ONE line. Also found
+  during green: `pwsh -File` sends surplus tokens after a named param to
+  positional params (three invocation variants failed before `-Command`).
+- Findings: all three findings were instances of classes already latent
+  elsewhere; the sweep eliminated the classes repo-wide (no other in-loop
+  `Write-Error`, one URI site, one coercible content param). unity-helpers
+  has review/ship workflow skills but no fetch-feedback procedure; the
+  missing procedure is what GOAL sessions need.
+- Applied: report-all-then-fail in both linters (tests assert multiple
+  violations all reported); IPv6 host bracketing (data-driven test cases);
+  `Write-TestFile` takes `[object]`; `Invoke-PwshCommand` helper; new
+  skills `address-pr-feedback` (gh fetch -> verify -> class sweep ->
+  red-green -> reply map) and `powershell-tooling` (the 5 PS rules above);
+  index regenerated; all linters + 6 self-test files + 10 C# tests green
+  on both TFMs.
+- Open: none.
+
+## 2026-09-18 - M0 governance sync (skills x locked decisions)
+
+- Trigger: PLAN M0.1 — `.llm` guidance had to match the locked decisions
+  (hand-rolled UTF-8 codec, zero-dep, `IBoundedQueue`, struct-event drain).
+- Evidence: pre-fix sweep found STJ/`[JsonPropertyName]`/`record` guidance in
+  `json-serialization`, `protocol-messages`; `System.Threading.Channels`
+  guidance in `unity-compatibility`, `async-threading`,
+  `websocket-transport`; `ISystemClock`, `UnknownMessageReceived`,
+  `SignalFishConfig`/`HeartbeatOptions`, and "backoff with jitter" drifted
+  from PLAN (which locks `ISignalFishClock`, `UnknownMessage`, no-jitter).
+- Findings: skill drift is per-file, so single-file rewrites leave stale
+  guidance in sibling skills — sweeps must be repo-wide term greps, not
+  file-list checks.
+- Applied: 7 skills rewritten/amended to locked decisions; naming and
+  event-type examples aligned; `net8.0;net10.0` runner TFM noted where
+  relevant; index regenerated; all linters + self-tests green.
+- Open: none for this scope; M0.3 repo linters tracked as a GitHub issue.
+
+## 2026-09-18 - reflect-improve loop introduced
+
+- Trigger: repository needed a systematic post-work self-improvement loop;
+  this first entry applies the loop to its own creation (dogfooding).
+- Evidence: lint baseline failed (`GEMINI.md` staged then deleted from the
+  worktree; expected by scripts/lint-llm-instructions.ps1:61); `run-all.ps1`
+  passed 4/4 before and after; research: Reflexion (arXiv:2303.11366),
+  Voyager (arXiv:2305.16291), Anthropic agent-skills and context-engineering
+  engineering posts.
+- Findings: (1) no mechanism existed to convert session lessons into durable
+  knowledge - gaps repeated across sessions; (2) pointer-file inventory is
+  lint-enforced yet drifted from the worktree - deletion was invisible until
+  the next lint run.
+- Applied: new core skill `reflect-improve` (evidence, blameless root cause,
+  triage table, red-green promotion gate, log discipline); lint check 7 with
+  three new self-tests (log presence, single H1, dated entries); `GEMINI.md`
+  restored; context.md rule 15 and structure updated; skills index
+  regenerated.
+- Open: none.

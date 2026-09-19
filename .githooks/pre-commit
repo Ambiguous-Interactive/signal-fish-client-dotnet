@@ -1,0 +1,11 @@
+#!/bin/sh
+# Delegates the pre-commit hook to pre-commit.ps1 (requires pwsh 7+).
+set -e
+
+if ! command -v pwsh >/dev/null 2>&1; then
+    echo "pre-commit: pwsh (PowerShell 7+) is required but was not found on PATH." >&2
+    echo "Install it from https://aka.ms/powershell or bypass with: git commit --no-verify" >&2
+    exit 1
+fi
+
+exec pwsh -NoProfile -File "$(dirname "$0")/pre-commit.ps1" "$@"
