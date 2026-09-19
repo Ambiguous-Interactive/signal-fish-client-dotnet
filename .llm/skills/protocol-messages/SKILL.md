@@ -54,13 +54,13 @@ Optional v2: `AuthorityRequest`/`AuthorityResponse`, `JoinAsSpectator`,
 
 1. Route **only** on the `type` discriminator; never on payload contents or
    prose.
-2. One C# record per message shape under `Protocol/`; map `snake_case` via
-   `[JsonPropertyName]` (see
+2. One `readonly struct` per message shape under `Protocol/`; decode/encode
+   through the hand-rolled codec with static `snake_case` field tokens (see
    [json-serialization](../json-serialization/SKILL.md)).
-3. Unknown inbound `type` → emit an `UnknownMessageReceived` event (carrying
+3. Unknown inbound `type` → emit an `UnknownMessage` event (carrying
    the raw JSON) and continue. Never throw.
 4. Never construct wire JSON by string concatenation; always through the
-   serializer.
+   codec's span-based writers.
 5. Client outbound message size must respect the server's inbound limit
    (`max_message_size`, default 64 KiB) — check
    [websocket-transport](../websocket-transport/SKILL.md).

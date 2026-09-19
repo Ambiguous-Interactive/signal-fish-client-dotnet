@@ -41,7 +41,7 @@ metadata:
 
 ## Backoff policy
 
-- Exponential backoff with jitter on consecutive failures; reset on any
+- Deterministic exponential backoff (no jitter) on consecutive failures; reset on any
   successful server response (`Authenticated` / `Reconnected`).
 - Treat close codes 4002 (slow consumer) and 1009 (message too big) as
   congestion: back off **before** reconnecting — see

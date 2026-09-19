@@ -1,72 +1,93 @@
 ---
 name: json-serialization
-description: Serialize and deserialize Signal Fish envelopes with System.Text.Json on netstandard2.1 (type/data envelope decoding, snake_case mapping, forward compatibility, optional MessagePack game data). Use when adding message types, touching the JSON layer, or debugging deserialization failures.
+description: Implement Signal Fish JSON (de)serialization with the hand-rolled zero-dependency UTF-8 codec (two-pass envelope decode, static snake_case field tokens, span-based escape-aware writer, fuzz-safe totality). Use when adding message types, touching the JSON layer, or debugging decode failures.
 metadata:
   category: protocol
 ---
 
 # JSON Serialization
 
-## Envelope decoding strategy
+The JSON layer is a **hand-rolled UTF-8 codec**: zero NuGet dependencies,
+zero reflection. This supersedes all System.Text.Json guidance —
+netstandard2.1 has no STJ and Unity lacks it (see
+[unity-compatibility](../unity-compatibility/SKILL.md)). Do not add a JSON
+package.
+
+## Why hand-rolled
+
+- netstandard2.1 + Unity 2021.2+ compatibility without shipping a JSON
+  library (see [unity-compatibility](../unity-compatibility/SKILL.md)).
+- Zero dependencies is a locked project decision; zero reflection keeps
+  IL2CPP stripping a non-issue.
+- Allocation discipline: no per-call strings, options, or intermediate
+  document allocations on hot paths (idle-cost rules in
+  [api-design](../api-design/SKILL.md)).
+
+## Envelope decoding (two passes)
 
 The envelope is adjacently tagged: `{ "type": "...", "data": {...} }`.
-Decode in two passes:
 
-1. Parse the frame into a small shim: `record Envelope(string Type, JsonElement Data);`
-2. Switch on `Type` (a `switch` expression over known PascalCase constants)
-   and deserialize `Data` into the concrete record.
+1. **Pass 1 — scan**: validate the frame's UTF-8/JSON structure; locate the
+   envelope braces, the `type` token, and the `data` token; record field
+   offsets. No values are decoded yet.
+2. **Pass 2 — decode**: switch on `type` (PascalCase constants) and decode
+   `data` into the concrete `readonly struct` for that message using the
+   recorded offsets.
 
-Never deserialize the entire envelope into one giant type; never use
-inheritance-based polymorphic serializers for this — they fight the
-additive protocol and IL2CPP.
+Never decode the entire envelope into one giant type; never use
+inheritance-based polymorphic deserialization — it fights the additive
+protocol and IL2CPP.
 
-## Casing rules
+## Field tokens
 
+- Payload fields use **static `snake_case` token constants** (precomputed
+  UTF-8 byte spans) compared directly during scans — no per-call string
+  allocations, no naming-policy magic.
 - Discriminator `type` values are **PascalCase** strings exactly as the
   server sends them (`"JoinRoom"`).
-- Payload fields are **`snake_case`**. Map with `[JsonPropertyName("game_name")]`
-  per property. Do **not** rely on `PropertyNamingPolicy = SnakeCaseLower`
-  (unavailable on netstandard2.1's System.Text.Json versions and easy to
-  get subtly wrong); attributes are explicit and greppable.
-
-## Options discipline
-
-- One static, preallocated `JsonSerializerOptions` per context (inbound,
-  outbound). Never allocate options per call (it nukes caching).
-- `PropertyNameCaseInsensitive = false` — the attribute map is the contract.
 - Numbers: server sends counters as JSON numbers (`seq`, `key`); keep them
   unsigned-capable (`ulong` for `epoch`) where the spec says so.
 
+## Writing frames
+
+- The writer is span-based: an escape-aware UTF-8 writer over byte spans
+  (`ReadOnlySpan<byte>` in, `Span<byte>` out); it never emits invalid UTF-8.
+- Each outbound message gets a **static per-message field writer**; no
+  intermediate DOM, no allocations on hot paths.
+- Outbound frames must be byte-identical to the golden fixtures — asserted
+  by tests (see [create-test](../create-test/SKILL.md)).
+
 ## Forward compatibility (mandatory)
 
-- Unknown `type` → `UnknownMessageReceived` event, never an exception.
-- Unknown fields inside a known message → ignored (default System.Text.Json
-  behavior; do NOT add `JsonUnmappedMemberHandling.Disallow`).
-- Optional server fields are nullable/omittable in our records.
+- Unknown `type` → `UnknownMessage` event, never an exception.
+- Unknown fields inside a known message → skipped by the scanner.
+- Optional server fields are nullable/omittable in our structs.
 
-## MessagePack (optional, negotiated)
+## Fuzz discipline (totality)
 
-Game data payloads may use MessagePack when the client negotiated
-`game_data_formats: ["message_pack"]`. Treat it as a payload codec only —
-the control-plane envelope stays JSON. Any MessagePack dependency is
-optional and must pass the [unity-compatibility](../unity-compatibility/SKILL.md)
-bar (IL2CPP-safe, netstandard2.1).
+- The reader is **total**: malformed input yields a bounded error event
+  (`DecodeFailed`-style), never an unbounded throw. Enforce depth/size
+  bounds; treat truncation and over-deep nesting as decode errors.
+- The writer never emits invalid UTF-8 for any struct input.
+- These two invariants are SharpFuzz targets and FsCheck properties — see
+  [create-test](../create-test/SKILL.md).
 
-## IL2CPP notes
+## MessagePack (payload only, negotiated)
 
-- Reflection-based serialization works under IL2CPP only when types are not
-  stripped: document `link.xml` preservation for `SignalFish.Client.Protocol.*`.
-- No source generators (`JsonSerializerContext`) as a hard dependency —
-  Unity compilation support is not guaranteed across versions.
+Game data payloads may negotiate `game_data_formats: ["message_pack"]`.
+The control-plane envelope stays JSON. The MessagePack payload codec is out
+of scope for 0.1.0; if added later it must pass the zero-dependency and
+[unity-compatibility](../unity-compatibility/SKILL.md) bar.
 
-## Debugging deserialization
+## Debugging decode failures
 
-1. Capture the raw frame text first; diagnose from bytes, not assumptions.
+1. Capture the raw frame bytes first; diagnose from bytes, not assumptions.
 2. Check casing: PascalCase `type`, snake_case fields.
-3. Check nullability: `data` may be absent for payload-less messages.
+3. Check bounds: truncated frames and over-deep nesting surface as a
+   bounded decode error, not a crash.
 
 ## Related Skills
 
 - [protocol-messages](../protocol-messages/SKILL.md) - the message catalog and floor
 - [unity-compatibility](../unity-compatibility/SKILL.md) - IL2CPP/stripping constraints
-- [create-test](../create-test/SKILL.md) - golden wire sample tests
+- [create-test](../create-test/SKILL.md) - golden wire fixture tests

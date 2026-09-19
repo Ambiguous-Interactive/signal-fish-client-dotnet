@@ -15,13 +15,14 @@ Mono, IL2CPP, and WebGL. Unity is a first-class consumer, not an afterthought.
 1. Only `netstandard2.1` APIs. If an API is missing from
    `System.Net.WebSockets`, `System.IO`, or `System.Threading` on
    netstandard2.1, it does not exist here.
-2. **No `System.Threading.Channels` hard dependency without evaluation** —
-   it ships as a NuGet package consumable from netstandard2.1, but verify
-   IL2CPP behavior before relying on it. If in doubt, wrap it behind a
-   small internal abstraction so it can be swapped.
-3. No `System.Text.Json` source-generation (`JsonSerializerContext`)
-   assumptions — see [json-serialization](../json-serialization/SKILL.md)
-   for the Unity-safe strategy.
+2. **No `System.Threading.Channels`.** Bounded queuing is served by the
+   internal, channel-free `IBoundedQueue` abstraction — part of how the
+   zero-dependency goal is met (see
+   [async-threading](../async-threading/SKILL.md)).
+3. **No `System.Text.Json`** — it is absent from netstandard2.1 and from
+   Unity. Zero-dependency JSON is achieved by the hand-rolled UTF-8 codec
+   (see [json-serialization](../json-serialization/SKILL.md)); never add a
+   JSON serialization package or serializer source generators.
 4. No DI containers, no reflection-heavy magic, no `dynamic`, no
    `System.Linq.Expressions` on hot paths (IL2CPP interpreter and stripping
    make them slow or fragile).
@@ -46,17 +47,18 @@ by the consuming project or a companion package.
 
 ## IL2CPP / stripping
 
-- Reflection-based serializers survive only if types are preserved. Document
-  `link.xml` usage in the README when the default serializer relies on
-  reflection over protocol types.
+- The hand-rolled codec uses **zero reflection**, so protocol types survive
+  IL2CPP stripping without `link.xml` preservation (the UPM package still
+  ships a `link.xml` for safety).
 - Avoid `Type.GetType(string)`, `Activator.CreateInstance` on hot paths, and
   assembly scanning entirely.
 
 ## Dependencies policy
 
-- Zero mandatory dependencies is the goal. Every candidate dependency must
-  (a) target netstandard2.1, (b) work under IL2CPP, and (c) have a
-  documented escape hatch.
+- **Zero dependencies is achieved policy**: the hand-rolled UTF-8 codec and
+  the channel-free `IBoundedQueue` keep the library NuGet-free. Keep it that
+  way. Every candidate dependency must (a) target netstandard2.1, (b) work
+  under IL2CPP, and (c) have a documented escape hatch.
 - When adding one, note the Unity verification status in the PR description.
 
 ## Verification checklist for platform-sensitive changes
@@ -74,5 +76,5 @@ by the consuming project or a companion package.
 ## Related Skills
 
 - [websocket-transport](../websocket-transport/SKILL.md) - the WebGL/ClientWebSocket split
-- [json-serialization](../json-serialization/SKILL.md) - Unity-safe JSON strategy
+- [json-serialization](../json-serialization/SKILL.md) - the hand-rolled, zero-dep JSON codec
 - [async-threading](../async-threading/SKILL.md) - frame-loop-friendly consumption

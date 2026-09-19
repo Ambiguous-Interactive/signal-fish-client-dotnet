@@ -31,7 +31,7 @@ scripts/tests/           Self-tests for the automation scripts
 .githooks/               Git hooks (pre-commit: linters + index freshness)
 .github/                 CI workflows + Copilot instructions
 src/SignalFish.Client/   The library (netstandard2.1)
-tests/                   Test projects (NUnit, net8.0 runner)
+tests/                   Test projects (NUnit, net8.0;net10.0 runner)
 CLAUDE.md, AGENTS.md,    Thin pointer files that delegate to this file
 GEMINI.md, llms.txt
 ```
@@ -140,7 +140,7 @@ guidance.
 | --- | --- | --- |
 | Types, methods, properties | PascalCase | `SignalFishClient` |
 | Interfaces | `I` prefix | `ITransport` |
-| Private fields | `_camelCase` | `_eventChannel` |
+| Private fields | `_camelCase` | `_eventQueue` |
 | Locals / parameters | camelCase | `roomCode` |
 | Constants | PascalCase | `DefaultPort` |
 | Files | one public type per file, name = type | `ITransport.cs` |

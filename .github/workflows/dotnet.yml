@@ -7,17 +7,24 @@ on:
       - 'src/**'
       - 'tests/**'
       - '**.sln'
+      - '**.slnx'
       - '.github/workflows/dotnet.yml'
   pull_request:
     paths:
       - 'src/**'
       - 'tests/**'
       - '**.sln'
+      - '**.slnx'
       - '.github/workflows/dotnet.yml'
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        framework: [net8.0, net10.0]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +39,26 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --no-restore -c Release
+        run: dotnet build --no-restore -c Release -warnaserror
 
       - name: Test
-        run: dotnet test --no-build -c Release
+        run: >
+          dotnet test --no-build -c Release -f ${{ matrix.framework }}
+          --logger trx --results-directory TestResults
+          --collect:"XPlat Code Coverage"
+
+      - name: Generate coverage report
+        if: runner.os == 'Linux'
+        run: |
+          dotnet tool install -g dotnet-reportgenerator-globaltool --version 5.4.1
+          reportgenerator -reports:TestResults/**/coverage.cobertura.xml -targetdir:coverage-report -reporttypes:HtmlInline_AzurePipelines\;Cobertura
+
+      - name: Upload test results and coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-${{ matrix.framework }}
+          path: |
+            TestResults/**/*
+            coverage-report/**/*
+          if-no-files-found: error

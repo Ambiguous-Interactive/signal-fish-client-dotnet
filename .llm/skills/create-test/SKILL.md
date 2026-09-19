@@ -1,6 +1,6 @@
 ---
 name: create-test
-description: Write, run, and organize tests for the SignalFish.Client library (NUnit, fake transports, golden wire samples, deterministic time). Use when adding tests, fixing a flaky test, setting up test fixtures, or verifying protocol conformance.
+description: Write, run, and organize tests for the SignalFish.Client library (NUnit, fake transports, golden wire fixtures, virtual clock, SharpFuzz and FsCheck lanes). Use when adding tests, fixing a flaky test, setting up fixtures, fuzzing the codec, or verifying protocol conformance.
 metadata:
   category: testing
 ---
@@ -11,8 +11,10 @@ metadata:
 
 - **NUnit** — chosen because the Unity Test Framework is NUnit-based, so
   test knowledge and some fixtures transfer to Unity projects.
-- Runner: `tests/SignalFish.Client.Tests/` targeting `net8.0`; CI runs
-  `dotnet test` (see `.github/workflows/dotnet.yml`).
+- Runner: `tests/SignalFish.Client.Tests/` multi-targeting `net8.0;net10.0` (the library
+  itself stays `netstandard2.1` — see
+  [api-design](../api-design/SKILL.md)); CI runs `dotnet test` (see
+  `.github/workflows/dotnet.yml`).
 - One file per type under test: `SignalFishClientTests.cs`,
   `EnvelopeDecoderTests.cs`.
 
@@ -43,28 +45,46 @@ Assert.That(transport.SentFrames.Single(), Does.Contain("\"type\":\"JoinRoom\"")
 
 ## Determinism rules
 
-1. **No real time**: inject `ISystemClock`; virtual time for heartbeats and
-   backoff. A test that sleeps to pass is a bug.
+1. **No real time**: inject `ISignalFishClock`; virtual time for heartbeats
+   and backoff. A test that sleeps to pass is a bug.
 2. **No network, no filesystem, no environment dependence.**
 3. No `Thread.Sleep` synchronization — use tasks/events the code exposes.
 4. Seeded randomness only.
 
-## Wire conformance (golden samples)
+## Golden wire fixtures (red-green source of truth)
 
-When message shapes change or a new message type is added:
+Codec tests are driven by golden wire fixtures under `tests/Golden/`,
+vendored from the server repo with a provenance header (source commit) and
+a resync script — never hand-edited. They are the RED step for every codec
+change:
 
-1. Add/refresh a JSON sample of the exact server wire format in the test
-   project (copy from the server repo's docs/spec, cited in
-   [protocol-quick-reference](../../references/protocol-quick-reference.md)).
-2. Assert deserialization into our typed record AND reserialization
-   matches field-for-field (order-insensitive).
-3. Cover at least: one happy path, one unknown-field (forward compat), one
-   payload-less message per area — see
-   [json-serialization](../json-serialization/SKILL.md) and
+1. Add/refresh the fixture from the server repo at a pinned commit
+   (`scripts/sync-protocol-fixtures.ps1`), cited in
+   [protocol-quick-reference](../../references/protocol-quick-reference.md).
+2. Write the failing test first: inbound — the fixture decodes to the typed
+   struct event; outbound — our writer emits byte-identical frames.
+3. Implement the minimum codec change to go GREEN (see
+   [json-serialization](../json-serialization/SKILL.md)).
+4. Cover at least: one happy path, one unknown-field (forward compat), one
+   unknown `type`, one malformed/truncated frame (bounded decode error),
+   and one payload-less message per area — see
    [protocol-messages](../protocol-messages/SKILL.md).
 
-Never edit a golden sample to make a test pass — samples mirror the
-server; the client adapts.
+Never edit a golden fixture to make a test pass — fixtures mirror the
+server; the client adapts. Resync only from the pinned server commit.
+
+## Fuzz and property lanes
+
+- **SharpFuzz** entries (`tests/SignalFish.Client.FuzzTests/`) target the
+  codec invariants: the reader is total (arbitrary bytes yield a bounded
+  error event, never an unbounded throw) and the writer never emits
+  invalid UTF-8.
+- **FsCheck** properties cover roundtrip stability (decode(encode(x)) == x
+  for representative structs) and malformed-input totality.
+- When a fuzz/property run finds a real bug, graduate it into a golden
+  fixture + regression test before fixing.
+- Long fuzz runs belong to scheduled CI, not the unit test suite — keep
+  local runs bounded.
 
 ## Running
 
@@ -80,6 +100,7 @@ dotnet test --filter "FullyQualifiedName~Reconnect"  # one area
 
 ## Related Skills
 
+- [json-serialization](../json-serialization/SKILL.md) - codec totality and fuzz invariants
 - [async-threading](../async-threading/SKILL.md) - virtual time, event ordering
 - [error-handling](../error-handling/SKILL.md) - error path test matrix
 - [manage-skills](../manage-skills/SKILL.md) - documenting test procedures as skills

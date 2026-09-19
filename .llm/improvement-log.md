@@ -9,6 +9,24 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-18 - M0 governance sync (skills x locked decisions)
+
+- Trigger: PLAN M0.1 — `.llm` guidance had to match the locked decisions
+  (hand-rolled UTF-8 codec, zero-dep, `IBoundedQueue`, struct-event drain).
+- Evidence: pre-fix sweep found STJ/`[JsonPropertyName]`/`record` guidance in
+  `json-serialization`, `protocol-messages`; `System.Threading.Channels`
+  guidance in `unity-compatibility`, `async-threading`,
+  `websocket-transport`; `ISystemClock`, `UnknownMessageReceived`,
+  `SignalFishConfig`/`HeartbeatOptions`, and "backoff with jitter" drifted
+  from PLAN (which locks `ISignalFishClock`, `UnknownMessage`, no-jitter).
+- Findings: skill drift is per-file, so single-file rewrites leave stale
+  guidance in sibling skills — sweeps must be repo-wide term greps, not
+  file-list checks.
+- Applied: 7 skills rewritten/amended to locked decisions; naming and
+  event-type examples aligned; `net8.0;net10.0` runner TFM noted where
+  relevant; index regenerated; all linters + self-tests green.
+- Open: none for this scope; M0.3 repo linters tracked as a GitHub issue.
+
 ## 2026-09-18 - reflect-improve loop introduced
 
 - Trigger: repository needed a systematic post-work self-improvement loop;

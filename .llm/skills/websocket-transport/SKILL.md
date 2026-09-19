@@ -56,9 +56,10 @@ and future platforms (console, native plugins) bring their own sockets. See
 | 4007 | kicked | Do not auto-rejoin; surface to user |
 | 1009 | message too big | Reduce outbound frame size; never retry as-is |
 
-3. Receive loop owns a single read at a time; frames are dispatched to an
-   inbound channel. Send path must be safe for concurrent callers (lock or
-   single-writer channel).
+3. Receive loop owns a single read at a time; frames are dispatched to the
+   internal bounded event queue (`IBoundedQueue`; channel-free, see
+   [async-threading](../async-threading/SKILL.md)). Send path is
+   semaphore-guarded single-writer — never a channel.
 4. A read failure or close is surfaced as a terminal event exactly once;
    after that the transport is dead and `DisposeAsync` is idempotent.
 

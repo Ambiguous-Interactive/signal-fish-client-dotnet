@@ -1,6 +1,6 @@
 ---
 name: api-design
-description: Design the public C# API surface of the SignalFish.Client library. Use when adding or changing public types, methods, events, async signatures, disposal semantics, or anything visible to consumers of the NuGet package.
+description: Design the public C# API surface of the SignalFish.Client library. Use when adding or changing public types, methods, struct events, drain patterns, async signatures, disposal semantics, or anything visible to consumers of the NuGet package.
 metadata:
   category: core
 ---
@@ -35,9 +35,17 @@ loops, cheap when idle, and honest about asynchrony.
 
 ## Events
 
-- Events are **immutable records**: `record PlayerJoined(string PlayerId, string PlayerName);`
-- Delivered through a bounded channel (`Channel<T>`-style) with a documented
-  backpressure policy — see [async-threading](../async-threading/SKILL.md).
+- Events are **readonly structs**: no event classes, no delegates per
+  event. `readonly struct PlayerJoinedEvent { ... }`
+- Delivered through the internal bounded queue (`IBoundedQueue`,
+  channel-free) with a documented backpressure policy — see
+  [async-threading](../async-threading/SKILL.md).
+- Consumers drain via the **`DrainEvents` pattern**:
+  `while (client.DrainEvents(ref enumerator)) { ... }` — a ref-struct
+  enumerator over a ring buffer; zero allocations when idle.
+- The polling client is **frame-driven** for Unity `Update()` loops: no
+  awaits, budgets per poll, events surfaced only through the drain
+  pattern above.
 - The event stream is a single ordered sequence; consumers drain it
   continuously. Document per-event timing guarantees
   ([event timing is part of the contract](../protocol-messages/SKILL.md)).
@@ -52,8 +60,8 @@ loops, cheap when idle, and honest about asynchrony.
 
 ## Options and configuration
 
-- One options record per concern (`SignalFishConfig`, `ReconnectPolicy`,
-  `HeartbeatOptions`), not a god-object.
+- One options type per concern (`SignalFishClientOptions`,
+  `PollingClientOptions`, `ReconnectPolicy`), not a god-object.
 - Config records are immutable with `with`-style builders or factory
   methods; validate in the factory and throw `ArgumentException` with the
   offending parameter name.
@@ -66,6 +74,9 @@ loops, cheap when idle, and honest about asynchrony.
 - Keep the Unity frame-loop consumer in mind: nothing on the hot path may
   allocate per frame when idle; provide the polling client shape from
   [async-threading](../async-threading/SKILL.md).
+- The library stays `netstandard2.1`; test/bench tooling may target
+  `net8.0` (e.g. allocation-gate tests, BenchmarkDotNet). Keep
+  tooling-only APIs and TFMs out of the library.
 
 ## When NOT to Use
 
@@ -75,6 +86,6 @@ loops, cheap when idle, and honest about asynchrony.
 
 ## Related Skills
 
-- [async-threading](../async-threading/SKILL.md) - threading, channels, Unity main thread
+- [async-threading](../async-threading/SKILL.md) - threading, event queue, Unity main thread
 - [error-handling](../error-handling/SKILL.md) - exception hierarchy and codes
 - [unity-compatibility](../unity-compatibility/SKILL.md) - platform constraints that shape the API
