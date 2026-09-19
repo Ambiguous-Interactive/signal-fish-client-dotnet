@@ -23,7 +23,7 @@ function Get-StagedFiles {
     return @($raw -split "`0" | Where-Object { $_ -ne '' })
 }
 
-$staged = Get-StagedFiles
+$staged = @(Get-StagedFiles)
 if ($staged.Count -eq 0) {
     exit 0
 }

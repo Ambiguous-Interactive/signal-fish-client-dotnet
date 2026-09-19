@@ -44,9 +44,17 @@ both linters), and committed the carried work as two commits:
 - `scripts/lint-file-sizes.ps1` + `scripts/lint-llm-instructions.ps1`: pass.
 - Skills index regenerated (linter-verified byte-identical).
 
+## CI
+
+PR #1 (scaffold-governance-m0 -> main): all checks green —
+`Lint (ubuntu|windows)` pass, `build-and-test` 4/4 matrix cells pass
+(ubuntu 47-48s, windows ~1m40s). Cursor Bugbot skipped (external optional
+reviewer).
+
 ## Leftovers / follow-ups
 
-- M0.3 repo linters (see issue), then the M0 gate: "all workflows green on a
-  no-op PR".
-- M1.1 golden fixtures is the next implementation surface.
-- `plan/` file note: PLAN.md status line updated to reflect M0.1+M0.2 done.
+- Issue #2: M0.3 repo linters (markdownlint/typos/lychee + docs.yml
+  skeleton), then the M0 gate: "all workflows green on a no-op PR".
+- Issue #3: M1.1 golden protocol fixtures + sync script (next
+  implementation surface).
+- PLAN.md status line updated to reflect M0.1+M0.2 done.
