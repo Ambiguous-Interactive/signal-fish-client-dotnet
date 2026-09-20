@@ -65,6 +65,23 @@ per-message payload structs and their decode half.
 3. `Memory.Slice(Range)` is absent on netstandard2.1 — decode uses explicit
    `GetOffsetAndLength` slicing.
 
+## CI failure RCA: allocation gate vs JIT/OSR jitter
+
+The PR's first CI run failed all four build legs on exactly one test:
+`Write_SteadyStateFullCorpus_AllocatesNothing` measured a 24 B delta —
+only in CI and only under `--collect:"XPlat Code Coverage"` (coverlet
+instrumentation changes JIT tiering/OSR decisions; the on-stack-replacement
+of the measured loop attributed one-time bookkeeping to the thread).
+Bisecting per fixture showed 0 B per write; adding a counter call inside
+the loop made the failure vanish — confirming measurement jitter, not a
+library allocation. Fix: the gate now takes the **minimum delta across 4
+passes** — real regressions allocate every pass and stay red; one-time
+JIT bookkeeping inflates only the first pass. Verified red-free under
+coverage and plain runs, Release and Debug.
+
+Lesson: exact-zero allocation gates must be steady-state (min-of-N), never
+single-shot — JIT tier transitions allocate a few bytes nondeterministically.
+
 ## Adversarial review round (findings → fixes)
 
 A dedicated adversarial reviewer audited the change against the upstream

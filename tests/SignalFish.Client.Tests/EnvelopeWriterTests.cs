@@ -570,15 +570,24 @@ namespace SignalFish.Client.Tests
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            foreach (FixtureMessage fixture in fixtures)
+            // Minimum delta across passes: a real regression allocates on
+            // every pass, while one-time JIT/OSR bookkeeping (a few bytes,
+            // observed under code-coverage instrumentation) inflates only
+            // the first measured pass.
+            long minDelta = long.MaxValue;
+            for (int pass = 0; pass < 4; pass++)
             {
-                fixture.Write(buffer);
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                foreach (FixtureMessage fixture in fixtures)
+                {
+                    fixture.Write(buffer);
+                }
+
+                long after = GC.GetAllocatedBytesForCurrentThread();
+                minDelta = Math.Min(minDelta, after - before);
             }
 
-            long after = GC.GetAllocatedBytesForCurrentThread();
-
-            Assert.That(after - before, Is.EqualTo(0),
+            Assert.That(minDelta, Is.EqualTo(0),
                 "Steady-state encoding of the whole outbound corpus must not allocate.");
         }
 
