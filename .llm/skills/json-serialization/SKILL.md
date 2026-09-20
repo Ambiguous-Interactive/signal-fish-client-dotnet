@@ -56,6 +56,18 @@ protocol and IL2CPP.
   intermediate DOM, no allocations on hot paths.
 - Outbound frames must be byte-identical to the golden fixtures — asserted
   by tests (see [create-test](../create-test/SKILL.md)).
+- The writer is a `ref struct` with mutable position state (`_span`/`_pos`).
+  **Always pass it `ref`** into helper methods that write through it —
+  by-value passing compiles clean, mutates only the copy, and silently
+  clobbers flushed buffer regions when the caller keeps writing (found the
+  hard way in M1.3; only frames with helper writes after a flush boundary
+  failed).
+- **Never `stackalloc` inside a write loop** — frame memory accumulates
+  per iteration and the resulting StackOverflowException is uncatchable.
+  Hoist one scratch span above the loop and reuse it.
+- `Try*` readers that assign `out` params eagerly must not be composed with
+  `||` when the failure-path value is observable — branch explicitly
+  instead.
 
 ## Forward compatibility (mandatory)
 

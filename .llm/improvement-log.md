@@ -213,3 +213,33 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 - Open: confirm VS Code resolves the three `shellCommand` inputs on a first
   real session. (The devcontainer-build CI workflow passed on its first real
   run, 2026-09-20; the untracked devcontainer files shipped in PR #11.)
+
+## 2026-09-20 - envelope writer (M1.3): ref-struct copy hazard caught by red-green
+
+- Trigger: M1.3 milestone work (EnvelopeWriter + payload structs + decode).
+- Evidence: with `JsonWriter` (ref struct) passed by value, helpers mutated
+  their copy; the caller's stale `_span`/`_pos` then clobbered
+  already-flushed buffer regions — the byte-identical fixture test caught it
+  only for messages whose helper wrote AFTER a flush boundary (RoomOperation
+  moderation payloads), while 20 of 21 fixture cases stayed green.
+  `TryReadString` assigns its `out` param before failing, so
+  `TryReadString(..) || TryReadNull(..)` turned JSON `null` into `""` and
+  broke SetRoomAccess reopen roundtripping.
+- Findings: (1) repo rule — a `ref struct` with mutable position state must
+  be `ref`-passed into every helper that writes through it; by-value
+  passing compiles clean and corrupts silently. Caught here by tests; worth
+  a json-serialization skill note. (2) `Try*` methods that assign `out`
+  params eagerly must not be composed with `||` when the failure-path value
+  is observable. (3) Mutation-checking paid off: all three planted bugs
+  (wire drift, missing validation, dropped decode advance) were detected by
+  the suite. (4) Adversarial review round: `stackalloc` inside a loop
+  accumulates per iteration (frame memory is reclaimed only at method
+  return) — reproduced a fatal, uncatchable StackOverflowException at
+  ~800k non-ASCII chars; "the slots are reused" is a myth. Hoist one
+  scratch span above the loop. Also fixed: struct ctor must normalize
+  ignored fields or `Equals` contradicts the wire; verbatim-payload
+  "valid JSON" docs must match enforcement (full allocation-free rescan
+  added).
+- Actions: applied in this change set (ref-passing helpers, explicit
+  branching in `TryDecodePassword`); follow-up: fold rules (1)+(2) into the
+  json-serialization skill when it is next edited (300-line cap applies).
