@@ -109,6 +109,11 @@ the outcome in [improvement-log.md](./improvement-log.md) (see rule 15).
     outcome in `.llm/improvement-log.md` — the log must exist, use dated
     `## YYYY-MM-DD` entry headers, and stay compact (enforced by
     `scripts/lint-llm-instructions.ps1`).
+16. **User-facing copy is short, simple, and to the point** (STE style):
+    PR titles/descriptions, commit subjects, issue text, release notes, and
+    docs. Lead with *why*, then *how*; no filler. `CHANGELOG.md` follows
+    [keep-a-changelog](https://keepachangelog.com/en/1.1.0/) + semver and
+    lists **only user-visible changes** — never CI, test, or tooling churn.
 
 ## Protocol Essentials
 
