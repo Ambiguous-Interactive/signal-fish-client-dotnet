@@ -8,6 +8,9 @@ on:
       - 'tests/**'
       - 'scripts/**'
       - '.config/**'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - '.editorconfig'
       - '**.sln'
       - '**.slnx'
       - '.github/workflows/dotnet.yml'
@@ -17,6 +20,9 @@ on:
       - 'tests/**'
       - 'scripts/**'
       - '.config/**'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - '.editorconfig'
       - '**.sln'
       - '**.slnx'
       - '.github/workflows/dotnet.yml'
@@ -35,15 +41,17 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         framework: [net8.0, net10.0]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
+      # Per-cell SDK scope: the cell installs exactly the SDK its framework
+      # needs (the runner muxer may still offer a newer one — this step
+      # guarantees the required one is present).
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            10.0.x
-            8.0.x
+          dotnet-version: ${{ matrix.framework == 'net8.0' && '8.0.x' || '10.0.x' }}
 
       # Restore dominates the per-cell wall clock; cache the global packages
       # folder (safe: restore is incremental and verifies content hashes).
@@ -54,11 +62,14 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '.config/dotnet-tools.json') }}
           restore-keys: nuget-${{ runner.os }}-
 
+      # OS-independent lints and formatting run once, on the coverage cell.
       - name: Enforce zero dependencies on the client library
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/lint-zero-dependencies.ps1
 
       - name: Enforce the LINQ ban on the client library
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/lint-no-linq.ps1
 
@@ -68,11 +79,31 @@ jobs:
           dotnet tool restore
           dotnet tool run csharpier -- check .
 
+      # Explicit project restores: bare `dotnet restore` on the slnx needs a
+      # newer SDK than some cells install. The Tests restore covers the
+      # library; the coverage cell also restores the tooling projects.
       - name: Restore
-        run: dotnet restore
+        run: dotnet restore tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj
 
-      - name: Build
-        run: dotnet build --no-restore -c Release -warnaserror
+      - name: Restore tooling projects
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        run: |
+          dotnet restore tests/SignalFish.Client.PerfTests/SignalFish.Client.PerfTests.csproj
+          dotnet restore tests/SignalFish.Client.FuzzTests/SignalFish.Client.FuzzTests.csproj
+
+      # Each cell builds only its framework (the netstandard2.1 library
+      # rides along via the project reference); the coverage cell also
+      # compiles the tooling projects as their PR-time build gate.
+      - name: Build test suite
+        run: >
+          dotnet build tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj
+          --no-restore -c Release -warnaserror -f ${{ matrix.framework }}
+
+      - name: Build tooling projects
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        run: |
+          dotnet build tests/SignalFish.Client.PerfTests/SignalFish.Client.PerfTests.csproj --no-restore -c Release -warnaserror
+          dotnet build tests/SignalFish.Client.FuzzTests/SignalFish.Client.FuzzTests.csproj --no-restore -c Release -warnaserror
 
       # Every cell runs the full suite; coverage is collected (and reported)
       # on one representative Linux cell only — the library is netstandard2.1
@@ -81,14 +112,16 @@ jobs:
       - name: Test (with coverage)
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         run: >
-          dotnet test --no-build -c Release -f ${{ matrix.framework }}
+          dotnet test tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj
+          --no-build -c Release -f ${{ matrix.framework }}
           --logger trx --results-directory TestResults
           --collect:"XPlat Code Coverage"
 
       - name: Test
         if: matrix.os != 'ubuntu-latest' || matrix.framework != 'net8.0'
         run: >
-          dotnet test --no-build -c Release -f ${{ matrix.framework }}
+          dotnet test tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj
+          --no-build -c Release -f ${{ matrix.framework }}
           --logger trx --results-directory TestResults
 
       - name: Generate coverage report
