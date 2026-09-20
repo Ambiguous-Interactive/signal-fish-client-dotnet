@@ -50,6 +50,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      # The default docker driver cannot export caches (`--cache-to
+      # type=gha`); a docker-container driver builder supports it.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build dev container image and run the self-test inside it
         uses: devcontainers/ci@v0.3
         with:

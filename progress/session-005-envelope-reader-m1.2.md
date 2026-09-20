@@ -50,7 +50,7 @@ also implemented.
   tarball; recorded in `.llm/improvement-log.md` (see also: root-owned
   `~/.nuget` healed with the repo's own chown guidance).
 - **Reader root-loop control flow**: `break` inside the member `switch`
-  didn't exit the root loop (every clean frame mis-decoded as
+  didn't exit the root loop (every clean frame decoded incorrectly as
   Truncated/InvalidToken) — caught immediately by the fixture tests,
   restructured with an explicit `rootClosed` flag.
 - **Trailing-comma acceptance**: the first loop draft accepted `{"a":1,}`;
