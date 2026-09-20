@@ -15,6 +15,13 @@
         "reportgenerator"
       ],
       "rollForward": false
+    },
+    "sharpfuzz.commandline": {
+      "version": "2.3.0",
+      "commands": [
+        "sharpfuzz"
+      ],
+      "rollForward": false
     }
   }
 }

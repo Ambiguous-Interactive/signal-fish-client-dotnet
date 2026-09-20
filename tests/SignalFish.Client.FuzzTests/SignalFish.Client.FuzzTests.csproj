@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <IsPackable>false</IsPackable>
+        <!-- Fuzz targets are run explicitly by scripts/fuzz-codec.ps1 and the
+             scheduled fuzz workflow; they are never part of `dotnet test`.
+             The library itself stays zero-dependency; SharpFuzz lives only
+             in this tooling project. CA1031: a fuzz harness must catch all
+             exceptions - any escape is a crash finding to report/dump. -->
+        <NoWarn>$(NoWarn);CA1515;CA1031</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="SharpFuzz" Version="2.3.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\SignalFish.Client\SignalFish.Client.csproj" />
+    </ItemGroup>
+</Project>
