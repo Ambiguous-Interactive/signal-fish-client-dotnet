@@ -63,3 +63,5 @@ GOAL.md
 PLAN.md
 .env*
 !.env.example
+# BenchmarkDotNet output
+BenchmarkDotNet.Artifacts/
