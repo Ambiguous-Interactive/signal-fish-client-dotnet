@@ -1,6 +1,6 @@
 ---
 name: powershell-tooling
-description: PowerShell failure classes proven by real bugs in this repo - strict-mode scalar unroll, comma-plus-@() array nesting, array-to-string coercion, Write-Error under Stop inside loops, pwsh -File array binding, sync scripts that cannot converge, and the report-all-then-fail contract.
+description: PowerShell failure classes proven by real bugs in this repo - strict-mode scalar unroll, comma-plus-@() array nesting, array-to-string coercion, Write-Error under Stop inside loops, pwsh -File array binding, CWD-dependent tool invocations in scripts, sync scripts that cannot converge, and the report-all-then-fail contract.
 metadata:
   category: core
 ---
@@ -96,6 +96,36 @@ very mode that dead-ends.
   `scripts/sync-protocol-fixtures.ps1` (PR #10) — a pin bump removing a
   fixture could never finish. Fixed: stale fixtures are deleted before the
   postcondition assert; `PROVENANCE.md` is regenerated last.
+
+## 7. Scripts must not depend on the caller's current directory
+
+Repo scripts are launched three ways: `pwsh -NoProfile -File scripts/x.ps1`
+from the root (CI), by absolute path from anywhere (agents, hooks), and via
+`git hooks` (CWD = repo root, but only by luck). Any command that resolves
+against the current directory breaks the second launch shape — and breaks
+it silently only when someone launches from elsewhere, i.e. exactly when
+it is hardest to debug. Two sub-cases seen in this repo:
+
+- **Tool manifests**: `dotnet tool restore/run` find
+  `.config/dotnet-tools.json` by walking UP from the current directory.
+  Running the command outside the repo tree fails even when the script
+  derived `$RepoRoot` correctly.
+- **Git**: bare `git config`/`git add` act on whatever repo the CWD lands
+  in — or none. The failure message ("are you inside the repository?")
+  blames the caller for the script's own assumption.
+
+- **Rule**: derive `$RepoRoot` from `$PSScriptRoot` (never `$PWD`), build
+  all paths from it, and wrap CWD-resolving tool invocations in
+  `Push-Location $RepoRoot` / `try` / `finally { Pop-Location }` — or pass
+  explicit scope flags (`git -C`). Verify by launching the script by
+  absolute path from outside the repository; pin that launch shape in a
+  self-test.
+- Evidence: Bugbot finding "SharpFuzz ignores repository root" on
+  `scripts/fuzz-codec.ps1` (PR #18) — `dotnet tool restore` was anchored
+  but the later `dotnet tool run` was not; sibling found by sweep and
+  fixed in the same change: `scripts/install-hooks.ps1` bare
+  `git config`. Regression test:
+  `scripts/tests/test-install-hooks.ps1`.
 
 ## Testing tooling
 

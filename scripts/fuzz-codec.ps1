@@ -128,7 +128,19 @@ if (-not $targets)
 foreach ($assembly in $targets)
 {
     Write-Host "Instrumenting $($assembly.Name)"
-    dotnet tool run sharpfuzz -- $assembly.FullName
+    Push-Location $RepoRoot
+    try
+    {
+        # Tool commands resolve the manifest from the current directory, so
+        # the tool must run from the repo root even when the script itself
+        # was launched from elsewhere.
+        dotnet tool run sharpfuzz -- $assembly.FullName
+    }
+    finally
+    {
+        Pop-Location
+    }
+
     if ($LASTEXITCODE -ne 0)
     {
         Write-Error "Failed to instrument $($assembly.FullName)."
