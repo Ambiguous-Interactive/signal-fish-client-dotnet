@@ -1,7 +1,7 @@
-using System;
-
 namespace SignalFish.Client.Protocol
 {
+    using System;
+
     /// <summary>
     /// Wire-name table for <see cref="MessageKind"/>. Single source for both
     /// byte-level routing (decode) and human-readable names (diagnostics),
@@ -56,7 +56,7 @@ namespace SignalFish.Client.Protocol
         /// </summary>
         public static string? ToWireName(MessageKind kind)
         {
-            var index = (int)kind - 1;
+            int index = (int)kind - 1;
             return (uint)index < (uint)Names.Length ? Names[index] : null;
         }
 
@@ -67,7 +67,7 @@ namespace SignalFish.Client.Protocol
         /// </summary>
         internal static bool TryRoute(ReadOnlySpan<byte> utf8TypeName, out MessageKind kind)
         {
-            for (var i = 0; i < NameBytes.Length; i++)
+            for (int i = 0; i < NameBytes.Length; i++)
             {
                 if (utf8TypeName.SequenceEqual(NameBytes[i]))
                 {
@@ -82,8 +82,8 @@ namespace SignalFish.Client.Protocol
 
         private static byte[][] BuildNameBytes()
         {
-            var bytes = new byte[Names.Length][];
-            for (var i = 0; i < Names.Length; i++)
+            byte[][] bytes = new byte[Names.Length][];
+            for (int i = 0; i < Names.Length; i++)
             {
                 bytes[i] = System.Text.Encoding.ASCII.GetBytes(Names[i]);
             }

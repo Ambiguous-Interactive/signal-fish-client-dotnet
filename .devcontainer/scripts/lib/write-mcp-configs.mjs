@@ -306,7 +306,16 @@ for (const t of targets()) {
     upsert(existing, t.section, "zai-vision", t.builder.vision(zaiKey));
     written.push("zai-vision");
     for (const [name, url] of zaiRemotes) {
-      upsert(existing, t.section, name, t.builder.remote(url));
+      const entry = t.builder.remote(url, zaiKey);
+      // Key-embedding builders interpolate the key into an Authorization
+      // header; a call forgetting the argument would persist "Bearer
+      // undefined" and fail auth even with a valid key. Ref-embedding
+      // builders ({env:...}/${VAR}) omit the header field instead.
+      const auth = entry.headers && entry.headers.Authorization;
+      if (auth !== undefined && !auth.includes(zaiKey) && !auth.includes("{") && !auth.includes("$")) {
+        throw new Error(`${t.harness}: ${name} Authorization does not carry the Z.AI key or an env ref: ${JSON.stringify(auth)}`);
+      }
+      upsert(existing, t.section, name, entry);
       written.push(name);
     }
   }

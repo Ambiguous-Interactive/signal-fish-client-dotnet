@@ -1,13 +1,13 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
-using System.Text.Json;
-using NUnit.Framework;
-using SignalFish.Client.Protocol;
-
 namespace SignalFish.Client.Tests
 {
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Text;
+    using System.Text.Json;
+    using NUnit.Framework;
+    using SignalFish.Client.Protocol;
+
     /// <summary>
     /// Shared access to the vendored golden protocol fixtures
     /// (tests/Golden, synced by scripts/sync-protocol-fixtures.ps1).
@@ -26,7 +26,7 @@ namespace SignalFish.Client.Tests
 
         internal static string ReadLine(string fileName, int lineNumber)
         {
-            var lines = File.ReadAllLines(Path.Combine(GoldenDirectory, fileName));
+            string[] lines = File.ReadAllLines(Path.Combine(GoldenDirectory, fileName));
             Assert.That(lineNumber, Is.InRange(1, lines.Length), $"Bad fixture line reference: {fileName}:{lineNumber}.");
             return lines[lineNumber - 1];
         }
@@ -34,12 +34,12 @@ namespace SignalFish.Client.Tests
         /// <summary>Every (file, line number, wire type) triple in the pinned corpus.</summary>
         internal static IEnumerable<TestCaseData> AllEnvelopeLines()
         {
-            foreach (var fileName in PinnedFixtureFiles)
+            foreach (string fileName in PinnedFixtureFiles)
             {
-                var lines = File.ReadAllLines(Path.Combine(GoldenDirectory, fileName));
-                for (var i = 0; i < lines.Length; i++)
+                string[] lines = File.ReadAllLines(Path.Combine(GoldenDirectory, fileName));
+                for (int i = 0; i < lines.Length; i++)
                 {
-                    var type = JsonDocument.Parse(lines[i]).RootElement.GetProperty("type").GetString()!;
+                    string type = JsonDocument.Parse(lines[i]).RootElement.GetProperty("type").GetString()!;
                     yield return new TestCaseData(fileName, i + 1, type)
                         .SetArgDisplayNames($"{fileName}:{i + 1}", type);
                 }
@@ -61,9 +61,9 @@ namespace SignalFish.Client.Tests
         [Test, TestCaseSource(typeof(GoldenFixtures), nameof(GoldenFixtures.AllEnvelopeLines))]
         public void Decode_FixtureLine_RoutesToTypedMessageEvent(string fileName, int lineNumber, string expectedType)
         {
-            var bytes = Encoding.UTF8.GetBytes(GoldenFixtures.ReadLine(fileName, lineNumber));
+            byte[] bytes = Encoding.UTF8.GetBytes(GoldenFixtures.ReadLine(fileName, lineNumber));
 
-            var ev = EnvelopeReader.Decode(bytes);
+            EnvelopeEvent ev = EnvelopeReader.Decode(bytes);
 
             // Enum member names are exactly the wire type names, so this
             // asserts the routed kind directly — the ToWireName round-trip
@@ -83,24 +83,24 @@ namespace SignalFish.Client.Tests
         [Test, TestCaseSource(typeof(GoldenFixtures), nameof(GoldenFixtures.PinnedFixtureFiles))]
         public void Decode_Fixtures_DataSlice_CoversPayloadObjectExactly(string fileName)
         {
-            var lines = File.ReadAllLines(Path.Combine(GoldenFixtures.GoldenDirectory, fileName));
-            foreach (var line in lines)
+            string[] lines = File.ReadAllLines(Path.Combine(GoldenFixtures.GoldenDirectory, fileName));
+            foreach (string line in lines)
             {
-                var bytes = Encoding.UTF8.GetBytes(line);
-                var ev = EnvelopeReader.Decode(bytes);
+                byte[] bytes = Encoding.UTF8.GetBytes(line);
+                EnvelopeEvent ev = EnvelopeReader.Decode(bytes);
 
-                using var doc = JsonDocument.Parse(line);
-                var hasData = doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object;
+                using JsonDocument doc = JsonDocument.Parse(line);
+                bool hasData = doc.RootElement.TryGetProperty("data", out JsonElement data) && data.ValueKind == JsonValueKind.Object;
                 if (!hasData)
                 {
                     Assert.That(ev.Data.Length, Is.EqualTo(0), $"{fileName}: payloadless frame must have empty Data.");
                     continue;
                 }
 
-                var rawJson = doc.RootElement.GetRawText();
-                var dataStart = line.AsSpan().IndexOf(data.GetRawText().AsSpan(), StringComparison.Ordinal);
+                string rawJson = doc.RootElement.GetRawText();
+                int dataStart = line.AsSpan().IndexOf(data.GetRawText().AsSpan(), StringComparison.Ordinal);
                 Assert.That(dataStart, Is.GreaterThanOrEqualTo(0));
-                var expected = Encoding.UTF8.GetBytes(line.Substring(dataStart, data.GetRawText().Length));
+                byte[] expected = Encoding.UTF8.GetBytes(line.Substring(dataStart, data.GetRawText().Length));
 
                 Assert.That(ev.Data.Span.SequenceEqual(expected), Is.True,
                     $"{fileName}: Data must be the exact \"data\" object bytes for: {line}.");
@@ -114,7 +114,7 @@ namespace SignalFish.Client.Tests
         [TestCase("{\"type\":\"Fu\\u0074ure\"}", "Future")]
         public void Decode_UnknownType_EmitsUnknownMessageWithoutThrowing(string wire, string expectedType)
         {
-            var ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
+            EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
 
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.UnknownMessage));
             Assert.That(ev.TypeText, Is.EqualTo(expectedType));
@@ -127,7 +127,7 @@ namespace SignalFish.Client.Tests
             // Byte-exact routing policy: an escaped (but semantically equal)
             // type value degrades to UnknownMessage with the decoded text,
             // never to a known kind.
-            var ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes("{\"type\":\"P\\u0069ng\"}"));
+            EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes("{\"type\":\"P\\u0069ng\"}"));
 
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.UnknownMessage));
             Assert.That(ev.TypeText, Is.EqualTo("Ping"));
@@ -136,7 +136,7 @@ namespace SignalFish.Client.Tests
         [Test]
         public void Decode_EscapedMemberKey_RoutesLikePlainKey()
         {
-            var ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes("{\"\\u0074ype\":\"Ping\"}"));
+            EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes("{\"\\u0074ype\":\"Ping\"}"));
 
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.Message));
             Assert.That(ev.Message, Is.EqualTo(MessageKind.Ping));
@@ -149,7 +149,7 @@ namespace SignalFish.Client.Tests
         [TestCase("{\"type\":\"Pong\",\"data\":null}")] // null data tolerated as absent
         public void Decode_AdditiveWireShapes_AreTolerated(string wire)
         {
-            var ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
+            EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
 
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.Message), wire);
         }
@@ -157,7 +157,7 @@ namespace SignalFish.Client.Tests
         [Test]
         public void Decode_DuplicateTypeMember_FirstOccurrenceWins()
         {
-            var ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes("{\"type\":\"Ping\",\"type\":\"Pong\"}"));
+            EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes("{\"type\":\"Ping\",\"type\":\"Pong\"}"));
 
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.Message));
             Assert.That(ev.Message, Is.EqualTo(MessageKind.Ping));
@@ -170,9 +170,9 @@ namespace SignalFish.Client.Tests
         {
             // Root(1) + data(2) + array levels: level k is scanned at depth
             // 2+k, so the bound accepts 62 array levels and rejects 63.
-            var wire = "{\"type\":\"Ping\",\"data\":{\"x\":" + new string('[', arrayDepth) + new string(']', arrayDepth) + "}}";
+            string wire = "{\"type\":\"Ping\",\"data\":{\"x\":" + new string('[', arrayDepth) + new string(']', arrayDepth) + "}}";
 
-            var ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
+            EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
 
             Assert.That(ev.Kind, Is.EqualTo(expectedKind), wire);
             if (expectedKind == EnvelopeEventKind.DecodeFailed)
@@ -188,9 +188,9 @@ namespace SignalFish.Client.Tests
         {
             // Root(1) + direct array levels: level k is scanned at depth
             // 1+k, so the bound accepts 63 array levels and rejects 64.
-            var wire = "{\"type\":\"Ping\",\"x\":" + new string('[', arrayDepth) + new string(']', arrayDepth) + "}";
+            string wire = "{\"type\":\"Ping\",\"x\":" + new string('[', arrayDepth) + new string(']', arrayDepth) + "}";
 
-            var ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
+            EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
 
             Assert.That(ev.Kind, Is.EqualTo(expectedKind), wire);
             if (expectedKind == EnvelopeEventKind.DecodeFailed)
@@ -204,7 +204,7 @@ namespace SignalFish.Client.Tests
         [Test]
         public void Decode_EmptyType_FailsAtTheTypeStringOffset()
         {
-            var ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes("{\"type\":\"\"}"));
+            EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes("{\"type\":\"\"}"));
 
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.DecodeFailed));
             Assert.That(ev.Error, Is.EqualTo(DecodeError.EmptyType));
@@ -231,40 +231,40 @@ namespace SignalFish.Client.Tests
                     .SetArgDisplayNames(name, "wire", error.ToString());
             }
 
-            foreach (var c in Case("empty input", "", DecodeError.Truncated)) yield return c;
-            foreach (var c in Case("utf8 BOM prefix", "\uFEFF{\"type\":\"Ping\"}", DecodeError.NotAnObject)) yield return c;
-            foreach (var c in Case("truncated object", "{\"type\":\"Pi", DecodeError.Truncated)) yield return c;
-            foreach (var c in Case("root is array", "[]", DecodeError.NotAnObject)) yield return c;
-            foreach (var c in Case("root is string", "\"Ping\"", DecodeError.NotAnObject)) yield return c;
-            foreach (var c in Case("root is number", "42", DecodeError.NotAnObject)) yield return c;
-            foreach (var c in Case("missing type", "{\"data\":{}}", DecodeError.MissingType)) yield return c;
-            foreach (var c in Case("type not a string", "{\"type\":7}", DecodeError.TypeNotString)) yield return c;
-            foreach (var c in Case("type is null", "{\"type\":null}", DecodeError.TypeNotString)) yield return c;
-            foreach (var c in Case("empty type", "{\"type\":\"\"}", DecodeError.EmptyType)) yield return c;
-            foreach (var c in Case("data not an object", "{\"type\":\"Ping\",\"data\":7}", DecodeError.DataNotObject)) yield return c;
-            foreach (var c in Case("data is array", "{\"type\":\"Ping\",\"data\":[]}", DecodeError.DataNotObject)) yield return c;
-            foreach (var c in Case("trailing content", "{\"type\":\"Ping\"} {}", DecodeError.TrailingContent)) yield return c;
-            foreach (var c in Case("trailing garbage", "{\"type\":\"Ping\"}x", DecodeError.TrailingContent)) yield return c;
-            foreach (var c in Case("unquoted key", "{type:\"Ping\"}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("single-quoted key", "{'type':'Ping'}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("missing colon", "{\"type\" \"Ping\"}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("missing value", "{\"type\":}", DecodeError.TypeNotString)) yield return c;
-            foreach (var c in Case("bare word value", "{\"type\":\"Ping\",\"x\":bare}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("nan literal", "{\"type\":\"Ping\",\"x\":NaN}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("leading zero number", "{\"type\":\"Ping\",\"x\":01}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("dangling decimal", "{\"type\":\"Ping\",\"x\":1.}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("plus-sign number", "{\"type\":\"Ping\",\"x\":+1}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("dangling exponent", "{\"type\":\"Ping\",\"x\":1e}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("bad literal", "{\"type\":\"Ping\",\"x\":tru}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("unterminated object", "{\"type\":\"Ping\"", DecodeError.Truncated)) yield return c;
-            foreach (var c in Case("unterminated data", "{\"type\":\"Ping\",\"data\":{\"a\":1}", DecodeError.Truncated)) yield return c;
-            foreach (var c in Case("stray close brace", "{\"type\":\"Ping\"}}", DecodeError.TrailingContent)) yield return c;
-            foreach (var c in Case("bad escape", "{\"type\":\"Pi\\xng\"}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("bad unicode escape", "{\"type\":\"Pi\\uZZZZ\"}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("truncated unicode escape", "{\"type\":\"Pi\\u00\"}", DecodeError.InvalidToken)) yield return c;
-            foreach (var c in Case("unescaped control char", "{\"type\":\"Pi\ng\"}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("empty input", "", DecodeError.Truncated)) yield return c;
+            foreach (TestCaseData c in Case("utf8 BOM prefix", "\uFEFF{\"type\":\"Ping\"}", DecodeError.NotAnObject)) yield return c;
+            foreach (TestCaseData c in Case("truncated object", "{\"type\":\"Pi", DecodeError.Truncated)) yield return c;
+            foreach (TestCaseData c in Case("root is array", "[]", DecodeError.NotAnObject)) yield return c;
+            foreach (TestCaseData c in Case("root is string", "\"Ping\"", DecodeError.NotAnObject)) yield return c;
+            foreach (TestCaseData c in Case("root is number", "42", DecodeError.NotAnObject)) yield return c;
+            foreach (TestCaseData c in Case("missing type", "{\"data\":{}}", DecodeError.MissingType)) yield return c;
+            foreach (TestCaseData c in Case("type not a string", "{\"type\":7}", DecodeError.TypeNotString)) yield return c;
+            foreach (TestCaseData c in Case("type is null", "{\"type\":null}", DecodeError.TypeNotString)) yield return c;
+            foreach (TestCaseData c in Case("empty type", "{\"type\":\"\"}", DecodeError.EmptyType)) yield return c;
+            foreach (TestCaseData c in Case("data not an object", "{\"type\":\"Ping\",\"data\":7}", DecodeError.DataNotObject)) yield return c;
+            foreach (TestCaseData c in Case("data is array", "{\"type\":\"Ping\",\"data\":[]}", DecodeError.DataNotObject)) yield return c;
+            foreach (TestCaseData c in Case("trailing content", "{\"type\":\"Ping\"} {}", DecodeError.TrailingContent)) yield return c;
+            foreach (TestCaseData c in Case("trailing garbage", "{\"type\":\"Ping\"}x", DecodeError.TrailingContent)) yield return c;
+            foreach (TestCaseData c in Case("unquoted key", "{type:\"Ping\"}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("single-quoted key", "{'type':'Ping'}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("missing colon", "{\"type\" \"Ping\"}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("missing value", "{\"type\":}", DecodeError.TypeNotString)) yield return c;
+            foreach (TestCaseData c in Case("bare word value", "{\"type\":\"Ping\",\"x\":bare}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("nan literal", "{\"type\":\"Ping\",\"x\":NaN}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("leading zero number", "{\"type\":\"Ping\",\"x\":01}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("dangling decimal", "{\"type\":\"Ping\",\"x\":1.}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("plus-sign number", "{\"type\":\"Ping\",\"x\":+1}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("dangling exponent", "{\"type\":\"Ping\",\"x\":1e}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("bad literal", "{\"type\":\"Ping\",\"x\":tru}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("unterminated object", "{\"type\":\"Ping\"", DecodeError.Truncated)) yield return c;
+            foreach (TestCaseData c in Case("unterminated data", "{\"type\":\"Ping\",\"data\":{\"a\":1}", DecodeError.Truncated)) yield return c;
+            foreach (TestCaseData c in Case("stray close brace", "{\"type\":\"Ping\"}}", DecodeError.TrailingContent)) yield return c;
+            foreach (TestCaseData c in Case("bad escape", "{\"type\":\"Pi\\xng\"}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("bad unicode escape", "{\"type\":\"Pi\\uZZZZ\"}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("truncated unicode escape", "{\"type\":\"Pi\\u00\"}", DecodeError.InvalidToken)) yield return c;
+            foreach (TestCaseData c in Case("unescaped control char", "{\"type\":\"Pi\ng\"}", DecodeError.InvalidToken)) yield return c;
 
-            var invalidUtf8 = Encoding.UTF8.GetBytes("{\"type\":\"Ping\"}");
+            byte[] invalidUtf8 = Encoding.UTF8.GetBytes("{\"type\":\"Ping\"}");
             invalidUtf8[9] = 0xFF; // lone continuation byte inside a string value
             yield return new TestCaseData("invalid utf8 in string", invalidUtf8, DecodeError.InvalidToken)
                 .SetArgDisplayNames("invalid utf8 in string", "wire", DecodeError.InvalidToken.ToString());
@@ -272,9 +272,9 @@ namespace SignalFish.Client.Tests
             // Every malformed UTF-8 class, injected as a string value.
             byte[] WithBytes(params byte[] injected)
             {
-                var prefix = Encoding.UTF8.GetBytes("{\"type\":\"Ping\",\"x\":\"");
-                var suffix = Encoding.UTF8.GetBytes("\"}");
-                var wire = new byte[prefix.Length + injected.Length + suffix.Length];
+                byte[] prefix = Encoding.UTF8.GetBytes("{\"type\":\"Ping\",\"x\":\"");
+                byte[] suffix = Encoding.UTF8.GetBytes("\"}");
+                byte[] wire = new byte[prefix.Length + injected.Length + suffix.Length];
                 prefix.CopyTo(wire, 0);
                 injected.CopyTo(wire, prefix.Length);
                 suffix.CopyTo(wire, prefix.Length + injected.Length);
@@ -297,8 +297,8 @@ namespace SignalFish.Client.Tests
                 .SetArgDisplayNames("utf8 FF lead", "wire", DecodeError.InvalidToken.ToString());
             // Sequence truncated by end of frame: rejected at the lead byte
             // (strictness decision: any malformed UTF-8 is InvalidToken).
-            var truncatedAtEof = Encoding.UTF8.GetBytes("{\"type\":\"Ping\",\"x\":\"");
-            var withTruncatedSeq = new byte[truncatedAtEof.Length + 2];
+            byte[] truncatedAtEof = Encoding.UTF8.GetBytes("{\"type\":\"Ping\",\"x\":\"");
+            byte[] withTruncatedSeq = new byte[truncatedAtEof.Length + 2];
             truncatedAtEof.CopyTo(withTruncatedSeq, 0);
             withTruncatedSeq[truncatedAtEof.Length] = 0xE4;
             withTruncatedSeq[truncatedAtEof.Length + 1] = 0xB8;

@@ -105,6 +105,21 @@ just the tool the volume was added for.
   smokes do not exercise state-writing paths. Assert directory writability
   (or run a state-creating command) instead.
 
+## MCP config writers: auth-header discipline (Bugbot-found class, 2026-09-20)
+
+- The per-harness builders in `write-mcp-configs.mjs` split into two shapes:
+  **key-embedding** (claude/copilot/gemini/cursor: interpolate the key into
+  `Authorization: Bearer <key>`) and **ref-embedding** (opencode `{env:...}`,
+  nanocoder `${VAR}`; codex TOML uses `bearer_token_env_var`). Every builder
+  takes the key parameter — call sites MUST pass it, or key-embedding
+  harnesses silently persist `Bearer undefined` (auth fails even with a
+  valid key). Guard: the zai-remote write loop throws when an Authorization
+  carries neither the key nor an env-ref marker.
+- Self-test must assert the **Authorization header value** of every remote
+  entry (claude/copilot/gemini/cursor: `Bearer <injected key>`;
+  opencode/nanocoder: the env-ref text) — URL-only assertions let a
+  `Bearer undefined` regression pass 121/121.
+
 ## AI backend launch patterns (verified against vendors)
 
 - Claude Code on Z.ai: `ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic`,

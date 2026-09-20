@@ -170,9 +170,9 @@ json_assert "claude: github http server with PAT" "$HOME/.claude.json" \
 json_assert "claude: zai-vision stdio via global bin" "$HOME/.claude.json" \
   'obj.mcpServers["zai-vision"].command === "zai-mcp-server" && obj.mcpServers["zai-vision"].env.Z_AI_API_KEY === "self-test-zai-key" && obj.mcpServers["zai-vision"].env.Z_AI_MODE === "ZAI"'
 json_assert "claude: z.ai web-search remote" "$HOME/.claude.json" \
-  'obj.mcpServers["zai-web-search"].url === "https://api.z.ai/api/mcp/web_search_prime/mcp"'
+  'obj.mcpServers["zai-web-search"].url === "https://api.z.ai/api/mcp/web_search_prime/mcp" && obj.mcpServers["zai-web-search"].headers.Authorization === "Bearer self-test-zai-key"'
 json_assert "claude: zread remote" "$HOME/.claude.json" \
-  'obj.mcpServers["zai-zread"].url === "https://api.z.ai/api/mcp/zread/mcp"'
+  'obj.mcpServers["zai-zread"].url === "https://api.z.ai/api/mcp/zread/mcp" && obj.mcpServers["zai-zread"].headers.Authorization === "Bearer self-test-zai-key"'
 json_assert "claude: microsoft-docs keyless remote" "$HOME/.claude.json" \
   'obj.mcpServers["microsoft-docs"].url === "https://learn.microsoft.com/api/mcp"'
 json_assert "claude: context7 remote (keyless without CONTEXT7_API_KEY)" "$HOME/.claude.json" \
@@ -182,25 +182,29 @@ json_assert "claude: git stdio via uvx" "$HOME/.claude.json" \
 json_assert "copilot: github-mcp-server replaces builtin" "$HOME/.copilot/mcp-config.json" \
   'obj.mcpServers["github-mcp-server"].url === "https://api.githubcopilot.com/mcp/"'
 json_assert "copilot: web-reader remote" "$HOME/.copilot/mcp-config.json" \
-  'obj.mcpServers["zai-web-reader"].url === "https://api.z.ai/api/mcp/web_reader/mcp"'
+  'obj.mcpServers["zai-web-reader"].url === "https://api.z.ai/api/mcp/web_reader/mcp" && obj.mcpServers["zai-web-reader"].headers.Authorization === "Bearer self-test-zai-key"'
 json_assert "opencode: github remote with oauth disabled" "$HOME/.config/opencode/opencode.json" \
   'obj.mcp.github.type === "remote" && obj.mcp.github.oauth === false && obj.mcp.github.headers.Authorization.includes("{env:GITHUB_PERSONAL_ACCESS_TOKEN}")'
 json_assert "opencode: zai-vision local via global bin" "$HOME/.config/opencode/opencode.json" \
   'obj.mcp["zai-vision"].command[0] === "zai-mcp-server"'
+json_assert "opencode: zai remote auth via env ref (never a literal)" "$HOME/.config/opencode/opencode.json" \
+  'obj.mcp["zai-web-search"].headers.Authorization.includes("{env:Z_AI_API_KEY}")'
 json_assert "nanocoder: github http transport" "$HOME/.config/nanocoder/.mcp.json" \
   'obj.mcpServers.github.transport === "http" && obj.mcpServers.github.headers.Authorization.includes("${GITHUB_PERSONAL_ACCESS_TOKEN}")'
 json_assert "nanocoder: web-search http" "$HOME/.config/nanocoder/.mcp.json" \
-  'obj.mcpServers["zai-web-search"].url === "https://api.z.ai/api/mcp/web_search_prime/mcp"'
+  'obj.mcpServers["zai-web-search"].url === "https://api.z.ai/api/mcp/web_search_prime/mcp" && obj.mcpServers["zai-web-search"].headers.Authorization.includes("${Z_AI_API_KEY}")'
 json_assert "gemini: github httpUrl" "$HOME/.gemini/settings.json" \
   'obj.mcpServers.github.httpUrl === "https://api.githubcopilot.com/mcp/"'
 json_assert "gemini: zai-vision stdio via global bin" "$HOME/.gemini/settings.json" \
   'obj.mcpServers["zai-vision"].command === "zai-mcp-server"'
 json_assert "gemini: web-search httpUrl" "$HOME/.gemini/settings.json" \
-  'obj.mcpServers["zai-web-search"].httpUrl === "https://api.z.ai/api/mcp/web_search_prime/mcp"'
+  'obj.mcpServers["zai-web-search"].httpUrl === "https://api.z.ai/api/mcp/web_search_prime/mcp" && obj.mcpServers["zai-web-search"].headers.Authorization === "Bearer self-test-zai-key"'
 json_assert "cursor: github remote" "$HOME/.cursor/mcp.json" \
   'obj.mcpServers.github.url === "https://api.githubcopilot.com/mcp/"'
 json_assert "cursor: zai-vision via portable npx" "$HOME/.cursor/mcp.json" \
   'obj.mcpServers["zai-vision"].command === "npx" && obj.mcpServers["zai-vision"].args[1] === "@z_ai/mcp-server"'
+json_assert "cursor: zai-zread remote carries the key" "$HOME/.cursor/mcp.json" \
+  'obj.mcpServers["zai-zread"].headers.Authorization === "Bearer self-test-zai-key"'
 
 # The vision server validates its API key at startup, so with throwaway test
 # credentials a full handshake is impossible by design. Exit 0 = full MCP

@@ -1,8 +1,8 @@
-using System;
-using System.Text;
-
 namespace SignalFish.Client.Protocol
 {
+    using System;
+    using System.Text;
+
     /// <summary>
     /// Decodes protocol envelope frames: <c>{ "type": PascalCase, "data": {
     /// snake_case } }</c> JSON over UTF-8 bytes. Two passes per frame —
@@ -44,8 +44,8 @@ namespace SignalFish.Client.Protocol
         /// <returns>The decoded envelope event; slices of <paramref name="frame"/>.</returns>
         public static EnvelopeEvent Decode(ReadOnlyMemory<byte> frame)
         {
-            var span = frame.Span;
-            var scanner = new JsonScanner(span);
+            ReadOnlySpan<byte> span = frame.Span;
+            JsonScanner scanner = new JsonScanner(span);
 
             // ---- Pass 1: structural validation + span recording ------------
             scanner.SkipWhitespace();
@@ -59,16 +59,16 @@ namespace SignalFish.Client.Protocol
                 return Fail(frame, DecodeError.NotAnObject, scanner.Position);
             }
 
-            var typeRaw = default(Range);
-            var dataRaw = default(Range);
-            var typeHasEscapes = false;
-            var typeSeen = false;
-            var dataSeen = false;
-            var dataIsNull = false;
+            Range typeRaw = default(Range);
+            Range dataRaw = default(Range);
+            bool typeHasEscapes = false;
+            bool typeSeen = false;
+            bool dataSeen = false;
+            bool dataIsNull = false;
 
-            var err = scanner.Expect((byte)'{');
-            var firstMember = true;
-            var rootClosed = false;
+            DecodeError err = scanner.Expect((byte)'{');
+            bool firstMember = true;
+            bool rootClosed = false;
             while (err == DecodeError.None && !rootClosed)
             {
                 scanner.SkipWhitespace();
@@ -79,7 +79,7 @@ namespace SignalFish.Client.Protocol
                     break;
                 }
 
-                err = scanner.ScanStringRaw(out var keyRaw, out var keyHasEscapes);
+                err = scanner.ScanStringRaw(out Range keyRaw, out bool keyHasEscapes);
                 if (err != DecodeError.None)
                 {
                     break;
@@ -93,9 +93,9 @@ namespace SignalFish.Client.Protocol
                 }
 
                 scanner.SkipWhitespace();
-                var keyInner = KeyInner(span, keyRaw);
-                var isType = !typeSeen && KeyEquals(keyInner, keyHasEscapes, TypeKeyBytes);
-                var isData = !isType && !dataSeen && KeyEquals(keyInner, keyHasEscapes, DataKeyBytes);
+                ReadOnlySpan<byte> keyInner = KeyInner(span, keyRaw);
+                bool isType = !typeSeen && KeyEquals(keyInner, keyHasEscapes, TypeKeyBytes);
+                bool isData = !isType && !dataSeen && KeyEquals(keyInner, keyHasEscapes, DataKeyBytes);
 
                 if (isType)
                 {
@@ -196,15 +196,15 @@ namespace SignalFish.Client.Protocol
             }
 
             // ---- Pass 2: routing + extraction --------------------------------
-            var typeInner = KeyInner(span, typeRaw);
+            ReadOnlySpan<byte> typeInner = KeyInner(span, typeRaw);
             if (typeInner.Length == 0)
             {
                 return Fail(frame, DecodeError.EmptyType, typeRaw.GetOffsetAndLength(span.Length).Offset);
             }
 
-            var data = dataSeen && !dataIsNull ? Slice(frame, dataRaw) : default;
+            ReadOnlyMemory<byte> data = dataSeen && !dataIsNull ? Slice(frame, dataRaw) : default;
 
-            if (!typeHasEscapes && MessageKindNames.TryRoute(typeInner, out var kind))
+            if (!typeHasEscapes && MessageKindNames.TryRoute(typeInner, out MessageKind kind))
             {
                 return new EnvelopeEvent(
                     EnvelopeEventKind.Message, kind, frame, data, typeText: null,
@@ -226,13 +226,13 @@ namespace SignalFish.Client.Protocol
         /// <summary>Slices a raw range (netstandard2.1 has no Range-based Slice).</summary>
         private static ReadOnlyMemory<byte> Slice(ReadOnlyMemory<byte> frame, Range range)
         {
-            var s = range.GetOffsetAndLength(frame.Length);
+            (int Offset, int Length) s = range.GetOffsetAndLength(frame.Length);
             return frame.Slice(s.Offset, s.Length);
         }
 
         private static ReadOnlySpan<byte> KeyInner(ReadOnlySpan<byte> span, Range keyRaw)
         {
-            var s = keyRaw.GetOffsetAndLength(span.Length);
+            (int Offset, int Length) s = keyRaw.GetOffsetAndLength(span.Length);
             return span.Slice(s.Offset, s.Length).Slice(1, s.Length - 2);
         }
 
@@ -254,8 +254,8 @@ namespace SignalFish.Client.Protocol
             }
 
             Span<byte> decoded = stackalloc byte[64];
-            var written = 0;
-            var i = 0;
+            int written = 0;
+            int i = 0;
             while (i < keyInner.Length)
             {
                 if (written >= asciiName.Length)
@@ -270,7 +270,7 @@ namespace SignalFish.Client.Protocol
                     continue;
                 }
 
-                var ch = DecodeSimpleEscape(keyInner, ref i);
+                int ch = DecodeSimpleEscape(keyInner, ref i);
                 if (ch < 0)
                 {
                     return false;
@@ -295,7 +295,7 @@ namespace SignalFish.Client.Protocol
                 return -1;
             }
 
-            var e = keyInner[index + 1];
+            byte e = keyInner[index + 1];
             index += 2;
             switch (e)
             {
@@ -313,7 +313,7 @@ namespace SignalFish.Client.Protocol
                         return -1;
                     }
 
-                    var cp = ParseHex4(keyInner.Slice(index, 4));
+                    int cp = ParseHex4(keyInner.Slice(index, 4));
                     index += 4;
                     return cp is >= 0x20 and < 0x7F ? cp : -1;
                 default:
@@ -323,11 +323,11 @@ namespace SignalFish.Client.Protocol
 
         private static int ParseHex4(ReadOnlySpan<byte> hex)
         {
-            var value = 0;
-            for (var i = 0; i < 4; i++)
+            int value = 0;
+            for (int i = 0; i < 4; i++)
             {
-                var b = hex[i];
-                var digit = b switch
+                byte b = hex[i];
+                int digit = b switch
                 {
                     >= (byte)'0' and <= (byte)'9' => b - (byte)'0',
                     >= (byte)'a' and <= (byte)'f' => b - (byte)'a' + 10,
@@ -358,9 +358,9 @@ namespace SignalFish.Client.Protocol
 
             // UTF-16 chars never exceed raw byte count (4-byte UTF-8 → 2 chars).
             Span<char> chars = typeInner.Length <= 512 ? stackalloc char[512] : new char[typeInner.Length];
-            var written = 0;
-            var segmentStart = 0;
-            var i = 0;
+            int written = 0;
+            int segmentStart = 0;
+            int i = 0;
             while (i < typeInner.Length)
             {
                 if (typeInner[i] != (byte)'\\')
@@ -370,7 +370,7 @@ namespace SignalFish.Client.Protocol
                 }
 
                 written += AppendUtf8Segment(typeInner.Slice(segmentStart, i - segmentStart), chars.Slice(written));
-                var scalar = DecodeEscapeScalar(typeInner, ref i);
+                int scalar = DecodeEscapeScalar(typeInner, ref i);
                 chars[written++] = scalar >= 0 ? (char)scalar : '?';
                 segmentStart = i;
             }
@@ -402,7 +402,7 @@ namespace SignalFish.Client.Protocol
                 return -1;
             }
 
-            var e = inner[index + 1];
+            byte e = inner[index + 1];
             index += 2;
             switch (e)
             {
@@ -420,7 +420,7 @@ namespace SignalFish.Client.Protocol
                         return -1;
                     }
 
-                    var cp = ParseHex4(inner.Slice(index, 4));
+                    int cp = ParseHex4(inner.Slice(index, 4));
                     index += 4;
                     return cp;
                 default:

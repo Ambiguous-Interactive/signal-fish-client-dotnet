@@ -1,7 +1,7 @@
-using System;
-
 namespace SignalFish.Client.Protocol
 {
+    using System;
+
     /// <summary>
     /// Strict, allocation-free UTF-8 JSON scanning primitives: the
     /// structural validation pass of the hand-rolled codec (see the
@@ -32,7 +32,7 @@ namespace SignalFish.Client.Protocol
         {
             while (_pos < _buf.Length)
             {
-                var b = _buf[_pos];
+                byte b = _buf[_pos];
                 if (b != 0x20 && b != 0x09 && b != 0x0A && b != 0x0D)
                 {
                     break;
@@ -76,13 +76,13 @@ namespace SignalFish.Client.Protocol
             raw = default;
             hasEscapes = false;
 
-            var err = Expect((byte)'"');
+            DecodeError err = Expect((byte)'"');
             if (err != DecodeError.None)
             {
                 return err;
             }
 
-            var start = _pos - 1;
+            int start = _pos - 1;
             while (true)
             {
                 if (_pos >= _buf.Length)
@@ -90,7 +90,7 @@ namespace SignalFish.Client.Protocol
                     return DecodeError.Truncated;
                 }
 
-                var b = _buf[_pos];
+                byte b = _buf[_pos];
                 switch (b)
                 {
                     case (byte)'"':
@@ -112,7 +112,7 @@ namespace SignalFish.Client.Protocol
                             return DecodeError.InvalidToken;
                         }
 
-                        var width = Utf8SequenceWidth(b, _buf, _pos);
+                        int width = Utf8SequenceWidth(b, _buf, _pos);
                         if (width <= 0)
                         {
                             return DecodeError.InvalidToken;
@@ -169,8 +169,8 @@ namespace SignalFish.Client.Protocol
         internal DecodeError ScanObject(int depth, int maxDepth, out Range raw)
         {
             raw = default;
-            var start = _pos;
-            var err = Expect((byte)'{');
+            int start = _pos;
+            DecodeError err = Expect((byte)'{');
             if (err != DecodeError.None)
             {
                 return err;
@@ -231,7 +231,7 @@ namespace SignalFish.Client.Protocol
 
         private DecodeError ScanArray(int depth, int maxDepth)
         {
-            var err = Expect((byte)'[');
+            DecodeError err = Expect((byte)'[');
             if (err != DecodeError.None)
             {
                 return err;
@@ -285,7 +285,7 @@ namespace SignalFish.Client.Protocol
             }
 
             _pos++;
-            var e = _buf[_pos];
+            byte e = _buf[_pos];
             _pos++;
             switch (e)
             {
@@ -299,7 +299,7 @@ namespace SignalFish.Client.Protocol
                 case (byte)'t':
                     return DecodeError.None;
                 case (byte)'u':
-                    for (var i = 0; i < 4; i++)
+                    for (int i = 0; i < 4; i++)
                     {
                         if (_pos >= _buf.Length)
                         {
@@ -323,7 +323,7 @@ namespace SignalFish.Client.Protocol
         internal DecodeError ScanLiteral(string word)
         {
             // Byte-exact compare; all JSON literals are ASCII.
-            for (var i = 0; i < word.Length; i++)
+            for (int i = 0; i < word.Length; i++)
             {
                 if (_pos >= _buf.Length)
                 {
@@ -355,7 +355,7 @@ namespace SignalFish.Client.Protocol
                 return DecodeError.Truncated;
             }
 
-            var b = _buf[_pos];
+            byte b = _buf[_pos];
             if (b == (byte)'0')
             {
                 _pos++;
@@ -473,15 +473,15 @@ namespace SignalFish.Client.Protocol
                 return 0;
             }
 
-            var b1 = buf[offset + 1];
+            byte b1 = buf[offset + 1];
             if (b1 < lo || b1 > hi)
             {
                 return 0;
             }
 
-            for (var i = 2; i <= required; i++)
+            for (int i = 2; i <= required; i++)
             {
-                var cont = buf[offset + i];
+                byte cont = buf[offset + i];
                 if (cont < 0x80 || cont > 0xBF)
                 {
                     return 0;

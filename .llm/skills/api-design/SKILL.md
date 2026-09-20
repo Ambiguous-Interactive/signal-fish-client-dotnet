@@ -78,6 +78,22 @@ loops, cheap when idle, and honest about asynchrony.
   `net8.0` (e.g. allocation-gate tests, BenchmarkDotNet). Keep
   tooling-only APIs and TFMs out of the library.
 
+## C# style rules (enforced, not optional)
+
+These are enforced by `.editorconfig` + `EnforceCodeStyleInBuild` (they fail
+`dotnet build` repo-wide) — do not fight them, and keep new rules in this
+pattern when the team adopts one:
+
+- **No `var`** (IDE0008): every local declares its type explicitly, including
+  `foreach` control variables and `out var` arguments.
+- **`using` directives go inside the namespace** (IDE0065).
+- **Enum value 0 is always a sentinel named `None` (or `Unknown`), never a
+  real value.** `default(SomeEnum)` must not be mistakable for valid data.
+  Mark the sentinel `[Obsolete]` when constructing it explicitly is a bug
+  (e.g. `EnvelopeEventKind.None`); leave it usable without the attribute
+  when comparing against it is the sanctioned way to detect "absence"
+  (e.g. `MessageKind.None`, `DecodeError.None`).
+
 ## When NOT to Use
 
 - Internal refactors with no public surface change.

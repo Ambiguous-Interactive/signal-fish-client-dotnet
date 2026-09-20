@@ -1,14 +1,14 @@
-using System;
-
 namespace SignalFish.Client.Protocol
 {
+    using System;
+
     /// <summary>
     /// The outcome of decoding one envelope frame. A readonly struct carrying
     /// zero-copy slices of the input frame — the decode hot path allocates
     /// nothing (except the rare <see cref="TypeText"/> of an
     /// <see cref="EnvelopeEventKind.UnknownMessage"/>). Note:
     /// <c>default(EnvelopeEvent)</c> is a degenerate value (<see cref="Kind"/>
-    /// = <see cref="EnvelopeEventKind.Message"/> with
+    /// = the <see cref="EnvelopeEventKind"/> <c>None</c> sentinel with
     /// <see cref="Message"/> = <see cref="MessageKind.None"/>);
     /// <see cref="EnvelopeReader.Decode"/> never returns it.
     /// </summary>

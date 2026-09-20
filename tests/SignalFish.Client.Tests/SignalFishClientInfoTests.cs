@@ -1,16 +1,16 @@
-using System;
-using NUnit.Framework;
-using SignalFish.Client;
-
 namespace SignalFish.Client.Tests
 {
+    using System;
+    using NUnit.Framework;
+    using SignalFish.Client;
+
     [TestFixture]
     public class SignalFishClientInfoTests
     {
         [Test]
         public void DefaultServerUri_DefaultHost_MatchesProtocolDefaults()
         {
-            var uri = SignalFishClientInfo.DefaultServerUri();
+            Uri uri = SignalFishClientInfo.DefaultServerUri();
 
             Assert.That(uri.Port, Is.EqualTo(3536));
             Assert.That(uri.AbsolutePath, Is.EqualTo("/v2/ws"));
@@ -20,7 +20,7 @@ namespace SignalFish.Client.Tests
         [Test]
         public void DefaultServerUri_CustomHost_PreservesHost()
         {
-            var uri = SignalFishClientInfo.DefaultServerUri("games.example.com");
+            Uri uri = SignalFishClientInfo.DefaultServerUri("games.example.com");
 
             Assert.That(uri.Host, Is.EqualTo("games.example.com"));
         }
@@ -30,7 +30,7 @@ namespace SignalFish.Client.Tests
         [TestCase("::ffff:127.0.0.1", "[::ffff:127.0.0.1]")]
         public void DefaultServerUri_Ipv6Host_BracketsHostForValidUri(string host, string expectedHost)
         {
-            var uri = SignalFishClientInfo.DefaultServerUri(host);
+            Uri uri = SignalFishClientInfo.DefaultServerUri(host);
 
             Assert.That(uri.Host, Is.EqualTo(expectedHost));
             Assert.That(uri.Port, Is.EqualTo(SignalFishClientInfo.DefaultPort));
@@ -40,7 +40,7 @@ namespace SignalFish.Client.Tests
         [Test]
         public void DefaultServerUri_AlreadyBracketedIpv6Host_IsNotDoubleBracketed()
         {
-            var uri = SignalFishClientInfo.DefaultServerUri("[::1]");
+            Uri uri = SignalFishClientInfo.DefaultServerUri("[::1]");
 
             Assert.That(uri.Host, Is.EqualTo("[::1]"));
         }

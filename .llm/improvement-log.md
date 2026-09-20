@@ -9,6 +9,38 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-20 - PR #11 feedback round: MCP auth-header class + style rules
+
+- Trigger: Bugbot (1 High, 1 dup-of-fixed) + 3 human repo-wide style asks on
+  PR #11.
+- Evidence: Bugbot High verified — `write-mcp-configs.mjs` called
+  `builder.remote(url)` while the claude/copilot/gemini/cursor builders take
+  `(url, key)` and interpolate `Bearer ${key}` → those harnesses persisted
+  `Bearer undefined` for all three Z.AI remotes (opencode/nanocoder
+  unaffected: env refs). RED: added 5 auth-header self-test assertions, ran
+  self-test → exactly those 5 failed (118 pass). Class sweep: codex TOML
+  writer already correct (`bearer_token_env_var`), `.vscode/mcp.json` uses
+  `${input:}`, `ai-backends.sh` clean — one bad site total. GREEN after the
+  one-line fix + an inline guard that throws when an Authorization carries
+  neither the key nor an env-ref marker: 123/123.
+- Findings: (1) URL-only assertions on remote MCP entries are a coverage
+  blind spot — auth headers need value assertions with injected throwaway
+  creds. (2) Optional-parameter builder functions that interpolate into
+  output are an arity footgun: a forgotten argument becomes a literal
+  "undefined" in output; fail at write time, not at auth time. (3) The human
+  asks (no-var, usings-inside-namespace, enum-0-sentinel) were mechanized:
+  `.editorconfig` IDE0008/IDE0065 severity=error + EnforceCodeStyleInBuild,
+  `dotnet format` applied the bulk, ~59 non-inferable sites hand-fixed;
+  enforcement red-checked with a planted violation.
+- Applied: fix + guard + 8 self-test assertions; `EnvelopeEventKind` gained
+  an `[Obsolete] None = 0` sentinel (real values shifted; `MessageKind`/
+  `DecodeError` already had sanctioned `None` sentinels — no Obsolete there,
+  comparisons are legitimate); all repo `.cs` files moved usings inside
+  namespaces and dropped `var`; rules captured in
+  [api-design](./skills/api-design/SKILL.md) and MCP-writer facts in
+  [devcontainer-tooling](./references/devcontainer-tooling.md).
+- Open: none for this round; toolchain-smoke follow-up filed as an issue.
+
 ## 2026-09-19 - session 005: M1.2 envelope codec + devcontainer carry-forward
 
 - Trigger: PLAN M1.2 red-green (EnvelopeReader) + committing session 004's
