@@ -1,0 +1,22 @@
+# Weekly dependency updates, grouped so one PR bumps a whole group at once.
+# Dependabot runs on its own schedule; PR CI time is unaffected.
+
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      nuget-dependencies:
+        patterns:
+          - '*'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-dependencies:
+        patterns:
+          - '*'

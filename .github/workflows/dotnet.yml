@@ -76,11 +76,15 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/lint-no-linq.ps1
 
+      # One restore covers both tool invocations below (CSharpier check and
+      # the coverage report).
+      - name: Restore pinned tools
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        run: dotnet tool restore
+
       - name: Check C# formatting (CSharpier)
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
-        run: |
-          dotnet tool restore
-          dotnet tool run csharpier -- check .
+        run: dotnet tool run csharpier -- check .
 
       # Explicit project restores: bare `dotnet restore` on the slnx needs a
       # newer SDK than some runner images preinstall. The Tests restore
@@ -130,9 +134,11 @@ jobs:
 
       - name: Generate coverage report
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
-        run: |
-          dotnet tool restore
-          dotnet tool run reportgenerator -reports:TestResults/**/coverage.cobertura.xml -targetdir:coverage-report -reporttypes:HtmlInline_AzurePipelines\;Cobertura
+        run: >
+          dotnet tool run reportgenerator
+          -reports:TestResults/**/coverage.cobertura.xml
+          -targetdir:coverage-report
+          -reporttypes:HtmlInline_AzurePipelines\;Cobertura
 
       - name: Upload test results and coverage
         if: always()
