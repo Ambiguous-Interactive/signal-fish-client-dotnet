@@ -47,6 +47,8 @@ $sizeTargets = @($staged | Where-Object {
         $_ -like '.llm/*' -or $pointerFiles -contains $_
     })
 
+$srcProjects = @($staged | Where-Object { $_ -like 'src/*.csproj' -or $_ -like 'src/**/*.csproj' })
+
 function Invoke-LintStep {
     param([string]$ScriptPath, [hashtable]$Params = @{})
 
@@ -106,6 +108,18 @@ if ($sizeTargets.Count -gt 0) {
         foreach ($line in $result.Output) { Write-Host "    | $line" }
         Write-Host 'pre-commit: file size limit (300 lines) violated. Run:' -ForegroundColor Red
         Write-Host '  pwsh -NoProfile -File scripts/lint-file-sizes.ps1 -Paths <file>' -ForegroundColor Red
+        $failed = $true
+    }
+}
+
+if ($srcProjects.Count -gt 0) {
+    Write-Host 'pre-commit: enforcing zero dependencies on src/ projects...'
+    $depLinter = Join-Path $repoRoot 'scripts/lint-zero-dependencies.ps1'
+    $result = Invoke-LintStep -ScriptPath $depLinter -Params @{ RepoRoot = $repoRoot; Paths = $srcProjects }
+    if ($result.ExitCode -ne 0) {
+        foreach ($line in $result.Output) { Write-Host "    | $line" }
+        Write-Host 'pre-commit: zero-dependency lint failed. Run:' -ForegroundColor Red
+        Write-Host '  pwsh -NoProfile -File scripts/lint-zero-dependencies.ps1' -ForegroundColor Red
         $failed = $true
     }
 }

@@ -1,7 +1,7 @@
-using System;
-
 namespace SignalFish.Client
 {
+    using System;
+
     /// <summary>
     /// Protocol and SDK constants shared across the client.
     /// Placeholder scaffold: the public API surface is under active development.

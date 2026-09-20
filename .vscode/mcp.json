@@ -1,0 +1,90 @@
+{
+  // MCP servers for VS Code + GitHub Copilot Chat (and Agent Host sessions).
+  // "github" authenticates with your signed-in VS Code GitHub account (OAuth,
+  // no token needed). "microsoft-docs" (Microsoft Learn) is keyless. "git"
+  // runs the official git MCP server via uvx (installed in the dev container
+  // image). The Z.AI servers read their settings from the gitignored
+  // .env.local via the shared env loader: the API key, Z_AI_MODE, and the
+  // platform base URL that follows from it (ZAI -> api.z.ai, ZHIPU ->
+  // open.bigmodel.cn). Mirrors .devcontainer/scripts.
+  "inputs": [
+    {
+      "id": "zai-api-key",
+      "type": "command",
+      "command": "shellCommand",
+      "args": {
+        "command": "bash -c 'source .devcontainer/scripts/lib/env.sh; printf %s \"$Z_AI_API_KEY\"'",
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "id": "zai-mode",
+      "type": "command",
+      "command": "shellCommand",
+      "args": {
+        "command": "bash -c 'source .devcontainer/scripts/lib/env.sh; printf %s \"$Z_AI_MODE\"'",
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "id": "zai-base",
+      "type": "command",
+      "command": "shellCommand",
+      "args": {
+        "command": "bash -c 'source .devcontainer/scripts/lib/env.sh; if [ \"$Z_AI_MODE\" = ZHIPU ]; then printf %s https://open.bigmodel.cn/api/mcp; else printf %s https://api.z.ai/api/mcp; fi'",
+        "cwd": "${workspaceFolder}"
+      }
+    }
+  ],
+  "servers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    },
+    "microsoft-docs": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp"
+    },
+    "git": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "exec uvx mcp-server-git"
+      ]
+    },
+    "zai-web-search": {
+      "type": "http",
+      "url": "${input:zai-base}/web_search_prime/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:zai-api-key}"
+      }
+    },
+    "zai-web-reader": {
+      "type": "http",
+      "url": "${input:zai-base}/web_reader/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:zai-api-key}"
+      }
+    },
+    "zai-zread": {
+      "type": "http",
+      "url": "${input:zai-base}/zread/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:zai-api-key}"
+      }
+    },
+    "zai-vision": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "exec npx -y @z_ai/mcp-server"
+      ],
+      "env": {
+        "Z_AI_API_KEY": "${input:zai-api-key}",
+        "Z_AI_MODE": "${input:zai-mode}"
+      }
+    }
+  }
+}

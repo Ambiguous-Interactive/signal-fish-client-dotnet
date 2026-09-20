@@ -43,3 +43,7 @@ Pn = "Pn"
 # and Extended Regular Expression. Not misspellings of "BE"/"BRIE"/"ERR".
 BRE = "BRE"
 ERE = "ERE"
+# `tru` is a deliberate malformed-JSON literal in the envelope decoder's
+# malformed-corpus test (a truncated `true`) — fixing the "spelling"
+# would change what the test verifies.
+tru = "tru"
