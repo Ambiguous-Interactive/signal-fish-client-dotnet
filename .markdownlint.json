@@ -42,7 +42,7 @@
   },
 
   "comment-19": "MD029: Ordered list style — disabled; context.md numbers its",
-  "comment-20": "critical rules 1-15 continuously across section headings and that",
+  "comment-20": "critical rules continuously across section headings and that",
   "comment-21": "numbering is load-bearing (cross-referenced as \"rule N\" from skills",
   "comment-22": "and the improvement log). Renderers normalize numbering anyway.",
   "MD029": false,

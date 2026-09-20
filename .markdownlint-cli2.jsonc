@@ -12,6 +12,7 @@
     "**/bin/**",
     "**/obj/**",
     "**/TestResults/**",
+    "**/BenchmarkDotNet.Artifacts/**",
     "site/**",
     ".git/**",
     ".venv/**",

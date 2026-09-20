@@ -7,6 +7,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'scripts/**'
+      - '.config/**'
       - '**.sln'
       - '**.slnx'
       - '.github/workflows/dotnet.yml'
@@ -15,9 +16,16 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'scripts/**'
+      - '.config/**'
       - '**.sln'
       - '**.slnx'
       - '.github/workflows/dotnet.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  # Never cancel main pushes: a rapid second merge would leave the first
+  # SHA without a completed green run on main.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-and-test:
@@ -36,6 +44,15 @@ jobs:
           dotnet-version: |
             10.0.x
             8.0.x
+
+      # Restore dominates the per-cell wall clock; cache the global packages
+      # folder (safe: restore is incremental and verifies content hashes).
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '.config/dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: Enforce zero dependencies on the client library
         shell: pwsh
@@ -57,27 +74,28 @@ jobs:
       - name: Build
         run: dotnet build --no-restore -c Release -warnaserror
 
-      # Coverage is collected (and reported) only on the Linux cells: the
-      # report generator runs on Linux only, so collecting on every cell
-      # paid instrumentation cost three extra times for data nobody read.
+      # Every cell runs the full suite; coverage is collected (and reported)
+      # on one representative Linux cell only — the library is netstandard2.1
+      # regardless of runner TFM, so extra instrumentation paid cost for
+      # identical data.
       - name: Test (with coverage)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         run: >
           dotnet test --no-build -c Release -f ${{ matrix.framework }}
           --logger trx --results-directory TestResults
           --collect:"XPlat Code Coverage"
 
       - name: Test
-        if: matrix.os == 'windows-latest'
+        if: matrix.os != 'ubuntu-latest' || matrix.framework != 'net8.0'
         run: >
           dotnet test --no-build -c Release -f ${{ matrix.framework }}
           --logger trx --results-directory TestResults
 
       - name: Generate coverage report
-        if: runner.os == 'Linux'
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         run: |
-          dotnet tool install -g dotnet-reportgenerator-globaltool --version 5.4.1
-          reportgenerator -reports:TestResults/**/coverage.cobertura.xml -targetdir:coverage-report -reporttypes:HtmlInline_AzurePipelines\;Cobertura
+          dotnet tool restore
+          dotnet tool run reportgenerator -reports:TestResults/**/coverage.cobertura.xml -targetdir:coverage-report -reporttypes:HtmlInline_AzurePipelines\;Cobertura
 
       - name: Upload test results and coverage
         if: always()
