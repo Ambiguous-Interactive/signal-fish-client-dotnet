@@ -264,3 +264,23 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   18) matches `uname -m`.
 - Actions: applied in this change set; CI nets a time *decrease* (coverage
   collection trimmed to the Linux cells that consume it).
+
+## 2026-09-20 - PR #14 feedback round: gate scope mismatch class (hook vs linter vs CI)
+
+- Trigger: Cursor Bugbot on PR #14 - the pre-commit hook forwarded only
+  staged `src/**/*.cs` to the LINQ linter, so a staged src `.csproj`
+  injecting `<Using Include="System.Linq" />` (an input the linter had
+  learned to reject) was blessed locally and failed in CI.
+- Findings: (1) the class generalizes - a gate is enforced in three scopes
+  (linter default-mode enforced set, hook staged-file selector, CI
+  trigger); the hook must be a superset of the enforced set's accepted
+  inputs. (2) Sibling sweep found a second instance: lint-file-sizes
+  enforces every `.cursor/rules/*.mdc` but the hook knew only one pointer
+  file. (3) Hook self-test cases share the git index - staged files
+  accumulate, so an earlier violating file makes later cases pass for the
+  wrong reason; each case must `git reset -q` first (this masked the
+  .csproj case on the first red run).
+- Actions: both selectors fixed and red-green tested (4 new assertions in
+  test-pre-commit.ps1); knowledge captured as a new skill
+  `.llm/skills/add-quality-gate/` plus a sweep-table row in
+  address-pr-feedback.

@@ -67,6 +67,36 @@ try {
     $joined = (@($run.Output) | ForEach-Object { $_.ToString() }) -join "`n"
     Assert-True ($run.ExitCode -ne 0) 'LINQ-using src file blocks the commit'
     Assert-True ($joined -match 'System\.Linq reference found') 'block message names the LINQ ban'
+
+    # Bugbot regression: a staged src/ PROJECT file injecting LINQ must
+    # reach the linter too (the hook used to forward only *.cs paths, so
+    # the commit was blessed locally and failed in CI). Each case resets
+    # the index so the staged set isolates the file under test.
+    & git -C $repo reset -q | Out-Null
+    Write-TestFile -Path (Join-Path $repo 'src/Injected.csproj') -Content '<Project><ItemGroup><Using Include="System.Linq" /></ItemGroup></Project>'
+    & git -C $repo add src/Injected.csproj
+    $run = Invoke-Hook
+    $joined = (@($run.Output) | ForEach-Object { $_.ToString() }) -join "`n"
+    Assert-True ($joined -match 'enforcing the LINQ ban') 'staged src .csproj triggers the LINQ lint'
+    Assert-True ($joined -match 'System\.Linq reference found') 'LINQ-injecting src .csproj is blocked'
+
+    # Sibling sweep: the size lint enforces every .cursor/rules/*.mdc, so
+    # the hook must trigger on them (it used to know only one pointer).
+    & git -C $repo reset -q | Out-Null
+    Write-TestFile -Path (Join-Path $repo '.cursor/rules/extra.mdc') -Content ((1..301 | ForEach-Object { "line $_" }) -join "`n")
+    & git -C $repo add .cursor/rules/extra.mdc
+    $run = Invoke-Hook
+    $joined = (@($run.Output) | ForEach-Object { $_.ToString() }) -join "`n"
+    Assert-True ($joined -match 'MUST split') 'oversized .cursor/rules/*.mdc is blocked by the hook'
+
+    # A clean src/ .csproj runs the gates without tripping either lint.
+    & git -C $repo reset -q | Out-Null
+    Write-TestFile -Path (Join-Path $repo 'src/Clean.csproj') -Content '<Project><PropertyGroup><Nullable>enable</Nullable></PropertyGroup></Project>'
+    & git -C $repo add src/Clean.csproj
+    $run = Invoke-Hook
+    $joined = (@($run.Output) | ForEach-Object { $_.ToString() }) -join "`n"
+    Assert-True ($joined -match 'enforcing the LINQ ban') 'staged clean src .csproj triggers the LINQ lint'
+    Assert-True ($joined -notmatch 'System\.Linq reference found') 'clean src .csproj is not blocked by the LINQ ban'
 }
 finally {
     Remove-TestRepo -Path $repo

@@ -82,6 +82,25 @@ scope.
 - `dotnet tool run csharpier -- check .` — clean.
 - `bash -n .devcontainer/scripts/self-test.sh` + live nested/ELF checks.
 
+## PR feedback round (post-push)
+
+Cursor Bugbot (medium): the pre-commit hook forwarded only staged
+`src/**/*.cs` to the LINQ linter, so a staged src `.csproj` injecting
+`<Using Include="System.Linq" />` was blessed locally and failed in CI.
+Verified, fixed red-green, and swept the class:
+
+- Sibling found and fixed: the size lint enforces every
+  `.cursor/rules/*.mdc` but the hook knew only the `signal-fish.mdc`
+  pointer.
+- All six gates audited against the three-scope contract (linter enforced
+  set / hook trigger / CI trigger); the other four were already aligned.
+- 4 new hook self-test assertions (with index resets between cases —
+  staged files accumulate and had masked the .csproj case on the first
+  red run); 15/15 pass.
+- Knowledge captured: new skill `.llm/skills/add-quality-gate/`
+  (three-scope contract, checklist, incidents) + sweep-table row in
+  `address-pr-feedback`; improvement-log entry added.
+
 ## Leftovers / next surfaces
 
 - #7 stays open: BenchmarkDotNet baselines + `docs/benchmarks.md` are M1.6;

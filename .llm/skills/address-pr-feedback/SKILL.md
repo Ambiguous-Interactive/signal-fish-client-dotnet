@@ -72,6 +72,7 @@ codebase for siblings:
 | Script aborts on first lint error | Other `Write-Error`/`throw` inside loops in tooling |
 | Bad URI for one host shape | Every string-interpolated URI/site that takes external input |
 | Helper mangles input type | Other narrowly-typed params fed arrays by callers |
+| Hook blesses a file CI rejects | Every gate's hook selector vs its linter's accepted inputs vs CI's trigger (see [add-quality-gate](../add-quality-gate/SKILL.md)) |
 
 Fix every sibling in the same change. One-off fixes guarantee the reviewer
 finds the sibling next round.
@@ -101,3 +102,4 @@ into a skill or rule via the
 - [create-test](../create-test/SKILL.md) - red-green regression tests
 - [manage-skills](../manage-skills/SKILL.md) - authoring/updating skills
 - [powershell-tooling](../powershell-tooling/SKILL.md) - recurring PS failure classes in this repo's tooling
+- [add-quality-gate](../add-quality-gate/SKILL.md) - scope contract for gate/hook/CI tooling
