@@ -171,30 +171,6 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   `.llm/skills/add-quality-gate/` plus a sweep-table row in
   address-pr-feedback.
 
-## 2026-09-20 - Session 008: property tests + perf baseline + changelog
-
-- Trigger: issue-debt round (#15 CHANGELOG, #9 upstream check, #7 benchmarks)
-  plus M1.4/M1.6.
-- Findings: (1) FsCheck 2.16's `Gen.Elements` over a char pool can emit lone
-  surrogates, but `JsonWriter.WriteString` replaces them with U+FFFD *by
-  design* - generators must exclude them or the property asserts an intended
-  behavior as a bug. (2) A `ref struct` writer passed **by value** through
-  recursive test helpers silently loses nested writes; pass it `ref`. (3) A
-  string roundtrip property that slices the inner text between the outer
-  quotes cannot detect missing quote escaping (the framing is re-cut by the
-  property itself); asserting the scanner consumes the rendered bytes
-  byte-exactly catches that whole class. (4) `Encoding.ASCII.GetBytes`
-  silently maps non-ASCII to `?` - wire strings must go through the UTF-8
-  writer, never ASCII helpers.
-- Actions: property suite landed red-green (both reader and writer planted
-  bugs caught); BenchmarkDotNet baselines recorded in `docs/benchmarks.md`
-  (both hot paths 0 B steady-state); CHANGELOG.md adopted (keep-a-changelog,
-  user-visible only); STE user-copy rule added to context.md (rule 16).
-- CI: coverage collection/report narrowed to one representative cell (same
-  tests on all cells), NuGet package cache added, `concurrency`
-  cancel-in-progress added, reportgenerator moved to the tool manifest -
-  net runner-time decrease with unchanged measured coverage.
-
 ## 2026-09-20 - Session 009: SharpFuzz lane (M1.5) + CI trim
 
 - Trigger: M1 completion gate ("fuzz lane clean for 30 min CI run") plus the
@@ -223,3 +199,27 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   coverage unchanged.
 - Open: scheduled-run corpus persistence via actions/cache and crash
   regression-corpus baseline land with M9.4.
+
+## 2026-09-20 - Session 008: property tests + perf baseline + changelog
+
+- Trigger: issue-debt round (#15 CHANGELOG, #9 upstream check, #7 benchmarks)
+  plus M1.4/M1.6.
+- Findings: (1) FsCheck 2.16's `Gen.Elements` over a char pool can emit lone
+  surrogates, but `JsonWriter.WriteString` replaces them with U+FFFD *by
+  design* - generators must exclude them or the property asserts an intended
+  behavior as a bug. (2) A `ref struct` writer passed **by value** through
+  recursive test helpers silently loses nested writes; pass it `ref`. (3) A
+  string roundtrip property that slices the inner text between the outer
+  quotes cannot detect missing quote escaping (the framing is re-cut by the
+  property itself); asserting the scanner consumes the rendered bytes
+  byte-exactly catches that whole class. (4) `Encoding.ASCII.GetBytes`
+  silently maps non-ASCII to `?` - wire strings must go through the UTF-8
+  writer, never ASCII helpers.
+- Actions: property suite landed red-green (both reader and writer planted
+  bugs caught); BenchmarkDotNet baselines recorded in `docs/benchmarks.md`
+  (both hot paths 0 B steady-state); CHANGELOG.md adopted (keep-a-changelog,
+  user-visible only); STE user-copy rule added to context.md (rule 16).
+- CI: coverage collection/report narrowed to one representative cell (same
+  tests on all cells), NuGet package cache added, `concurrency`
+  cancel-in-progress added, reportgenerator moved to the tool manifest -
+  net runner-time decrease with unchanged measured coverage.

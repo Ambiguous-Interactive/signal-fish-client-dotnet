@@ -203,9 +203,19 @@ namespace SignalFish.Client.FuzzTests
 
                 case 2:
                 {
-                    GameDataMessage message = BuildGameData(ref cursor);
+                    GameDataMessage message = BuildGameData(ref cursor, out bool seededPayload);
                     if (!TryEncode(buffer, () => EnvelopeWriter.WriteGameData(buffer, message)))
                     {
+                        if (seededPayload)
+                        {
+                            // Seed payloads are valid JSON by construction;
+                            // refusing one is a writer regression, not a
+                            // documented misuse.
+                            throw new InvalidOperationException(
+                                "Writer refused a valid JSON seed payload."
+                            );
+                        }
+
                         return;
                     }
 
@@ -263,7 +273,7 @@ namespace SignalFish.Client.FuzzTests
                 password: cursor.OptionalString()
             );
 
-        private static GameDataMessage BuildGameData(ref FuzzCursor cursor)
+        private static GameDataMessage BuildGameData(ref FuzzCursor cursor, out bool seededPayload)
         {
             // Half the inputs start from a valid JSON seed so the fuzzer can
             // explore the classified-delivery paths without first having to
@@ -272,10 +282,10 @@ namespace SignalFish.Client.FuzzTests
             // Whitespace is trimmed: the writer emits the payload verbatim
             // while the reader slices the bare value token (JSON whitespace
             // is insignificant), so padded payloads cannot roundtrip bytes.
-            ReadOnlyMemory<byte> payload =
-                (cursor.Byte() & 1) == 0
-                    ? cursor.JsonSeed()
-                    : TrimJsonWhitespace(cursor.RawSlice());
+            seededPayload = (cursor.Byte() & 1) == 0;
+            ReadOnlyMemory<byte> payload = seededPayload
+                ? cursor.JsonSeed()
+                : TrimJsonWhitespace(cursor.RawSlice());
 
             GameDataClass classification = (GameDataClass)(cursor.Byte() % 3u);
             uint key = cursor.OptionalUint() ?? 0u;

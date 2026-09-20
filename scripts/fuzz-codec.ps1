@@ -34,8 +34,9 @@ param(
     [ValidateSet('reader', 'writer', 'both')]
     [string]$Target = 'both',
 
-    # Wall-clock fuzzing budget per target, in seconds.
-    [ValidateRange(1, 3600)]
+    # Wall-clock fuzzing budget per target, in seconds. Capped so both
+    # targets stay inside the fuzz workflow's job timeout.
+    [ValidateRange(1, 1200)]
     [int]$SecondsPerTarget = 900,
 
     # Pre-provisioned libfuzzer-dotnet driver. When empty, the pinned
@@ -49,9 +50,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if ($PSVersionTable.PSVersion.Major -ge 6 -and -not $IsLinux)
+if (-not ($PSVersionTable.PSVersion.Major -ge 6 -and $IsLinux))
 {
-    Write-Error 'The codec fuzz lane requires Linux (libfuzzer-dotnet driver).'
+    Write-Error 'The codec fuzz lane requires pwsh 7+ on Linux (libfuzzer-dotnet driver).'
 }
 
 if ([string]::IsNullOrEmpty($RepoRoot))
@@ -145,20 +146,21 @@ if ([string]::IsNullOrEmpty($DriverPath))
         $download = "$DriverPath.download"
         Write-Host "Downloading libfuzzer-dotnet driver $driverRelease"
         Invoke-WebRequest -Uri $driverUrl -OutFile $download
-
-        # Native code executed in CI: refuse anything but the pinned bytes
-        # (also catches truncated/partial downloads).
-        $hash = (Get-FileHash -Algorithm SHA256 $download).Hash
-        if ($hash -ne $driverSha256)
-        {
-            Remove-Item -Force $download
-            Write-Error "Driver SHA256 mismatch: got $hash, expected $driverSha256."
-        }
-
         Move-Item -Force $download $DriverPath
-        chmod +x $DriverPath
+    }
+
+    # Native code executed in CI: refuse anything but the pinned bytes —
+    # on every run, not just fresh downloads (also catches truncated or
+    # partial downloads and a corrupted cache). An explicitly provided
+    # -DriverPath (e.g. a locally built arm64 driver) opts out.
+    $driverHash = (Get-FileHash -Algorithm SHA256 $DriverPath).Hash
+    if ($driverHash -ne $driverSha256)
+    {
+        Write-Error "Driver SHA256 mismatch: got $driverHash, expected $driverSha256."
     }
 }
+
+chmod +x $DriverPath
 
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 

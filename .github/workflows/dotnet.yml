@@ -80,10 +80,14 @@ jobs:
           dotnet tool run csharpier -- check .
 
       # Explicit project restores: bare `dotnet restore` on the slnx needs a
-      # newer SDK than some cells install. The Tests restore covers the
-      # library; the coverage cell also restores the tooling projects.
+      # newer SDK than some cells install, and a dual-TFM restore needs the
+      # net10 SDK — so each cell restores only its own framework. The Tests
+      # restore covers the library; the coverage cell also restores the
+      # tooling projects.
       - name: Restore
-        run: dotnet restore tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj
+        run: >
+          dotnet restore tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj
+          -p:TargetFramework=${{ matrix.framework }}
 
       - name: Restore tooling projects
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'

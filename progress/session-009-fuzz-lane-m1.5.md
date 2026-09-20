@@ -69,6 +69,17 @@ runner time with unchanged test coverage. Issue debt: both open issues
   wording; dead using removed.
 - Not done (deliberate): a `test-fuzz-codec.ps1` glob-only self-test —
   low value vs. bloat; the real lane runs prove the behavior weekly.
+- Second adversarial round (7 findings, SHIP verdict): fixed the non-trivial
+  ones — per-TFM restore (`-p:TargetFramework=`) so net8-only cells do not
+  depend on runner-image SDK drift; PS 5.1 fail-fast that actually fires;
+  the downloaded driver is hash-verified on every run (explicit
+  `-DriverPath` opts out for local arm64 builds); valid seed-payload
+  refusals now crash the writer target (a writer regression can no longer
+  masquerade as a documented misuse); fuzz.yml uploads crash artifacts on
+  cancel too and the per-target budget is capped (1200 s) to stay inside
+  the job timeout; session-009 log entry moved above session-008 (newest
+  first). Skipped: orphan-seed pruning in the persistent corpus (harmless
+  — libFuzzer treats them as plain inputs).
 
 ## Fuzz-lane finds (both harness-side, library verified correct)
 
