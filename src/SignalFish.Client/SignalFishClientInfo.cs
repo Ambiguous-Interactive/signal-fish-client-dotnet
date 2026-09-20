@@ -34,7 +34,7 @@ namespace SignalFish.Client
                 throw new ArgumentException("Host must not be null or empty.", nameof(host));
             }
 
-            if (host.Contains(':') && host[0] != '[')
+            if (host.Contains(':', StringComparison.Ordinal) && host[0] != '[')
             {
                 host = $"[{host}]";
             }

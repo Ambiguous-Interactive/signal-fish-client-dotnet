@@ -58,7 +58,8 @@ namespace SignalFish.Client.Protocol
             IReadOnlyList<string>? supportedTransports = null,
             IReadOnlyList<string>? supportedTopologies = null,
             IReadOnlyList<string>? requestedCapabilities = null,
-            string? connectToken = null)
+            string? connectToken = null
+        )
         {
             AppId = appId;
             SdkVersion = sdkVersion;
@@ -84,7 +85,8 @@ namespace SignalFish.Client.Protocol
             && NullableStringEquals(ConnectToken, other.ConnectToken);
 
         /// <inheritdoc />
-        public override bool Equals(object? obj) => obj is AuthenticateMessage other && Equals(other);
+        public override bool Equals(object? obj) =>
+            obj is AuthenticateMessage other && Equals(other);
 
         /// <inheritdoc />
         public override int GetHashCode()
@@ -103,10 +105,12 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public static bool operator ==(AuthenticateMessage left, AuthenticateMessage right) => left.Equals(right);
+        public static bool operator ==(AuthenticateMessage left, AuthenticateMessage right) =>
+            left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(AuthenticateMessage left, AuthenticateMessage right) => !left.Equals(right);
+        public static bool operator !=(AuthenticateMessage left, AuthenticateMessage right) =>
+            !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of an <c>Authenticate</c> envelope
@@ -121,9 +125,15 @@ namespace SignalFish.Client.Protocol
             JsonScanner scanner = new JsonScanner(data.Span);
             JsonMemberState state = scanner.BeginObject();
 
-            string? appId = null, sdkVersion = null, platform = null, gameDataFormat = null, connectToken = null;
+            string? appId = null,
+                sdkVersion = null,
+                platform = null,
+                gameDataFormat = null,
+                connectToken = null;
             uint? protocolVersion = null;
-            IReadOnlyList<string>? supportedTransports = null, supportedTopologies = null, requestedCapabilities = null;
+            IReadOnlyList<string>? supportedTransports = null,
+                supportedTopologies = null,
+                requestedCapabilities = null;
 
             while (state == JsonMemberState.Member)
             {
@@ -172,21 +182,21 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "supported_transports"))
                 {
-                    if (!scanner.TryReadStringArray(data, valueRaw, out supportedTransports))
+                    if (!JsonScanner.TryReadStringArray(data, valueRaw, out supportedTransports))
                     {
                         return false;
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "supported_topologies"))
                 {
-                    if (!scanner.TryReadStringArray(data, valueRaw, out supportedTopologies))
+                    if (!JsonScanner.TryReadStringArray(data, valueRaw, out supportedTopologies))
                     {
                         return false;
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "requested_capabilities"))
                 {
-                    if (!scanner.TryReadStringArray(data, valueRaw, out requestedCapabilities))
+                    if (!JsonScanner.TryReadStringArray(data, valueRaw, out requestedCapabilities))
                     {
                         return false;
                     }
@@ -208,15 +218,26 @@ namespace SignalFish.Client.Protocol
             }
 
             message = new AuthenticateMessage(
-                appId, sdkVersion, platform, gameDataFormat, protocolVersion,
-                supportedTransports, supportedTopologies, requestedCapabilities, connectToken);
+                appId,
+                sdkVersion,
+                platform,
+                gameDataFormat,
+                protocolVersion,
+                supportedTransports,
+                supportedTopologies,
+                requestedCapabilities,
+                connectToken
+            );
             return true;
         }
 
         internal static bool NullableStringEquals(string? left, string? right) =>
             left is null ? right is null : string.Equals(left, right, StringComparison.Ordinal);
 
-        internal static bool SequenceEquals(IReadOnlyList<string>? left, IReadOnlyList<string>? right)
+        internal static bool SequenceEquals(
+            IReadOnlyList<string>? left,
+            IReadOnlyList<string>? right
+        )
         {
             if (left is null || right is null)
             {
