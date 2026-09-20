@@ -39,7 +39,7 @@ per-message payload structs and their decode half.
 ## Verification
 
 - `dotnet build -warnaserror`: 0 warnings / 0 errors (solution-wide).
-- `dotnet test`: 224/224 on net8.0 + net10.0 (was 123; +101 new).
+- `dotnet test`: 228/228 on net8.0 + net10.0 (was 123; +105 new).
 - New tests: byte-identical vs all 21 client fixture lines, envelope-level
   roundtrip for the corpus, write→decode→struct-equality roundtrips for
   non-fixture combinations (creation-form join, passwords, SetRoomAccess
@@ -64,6 +64,32 @@ per-message payload structs and their decode half.
    `""`. Fixed with explicit branching in `TryDecodePassword`.
 3. `Memory.Slice(Range)` is absent on netstandard2.1 — decode uses explicit
    `GetOffsetAndLength` slicing.
+
+## Adversarial review round (findings → fixes)
+
+A dedicated adversarial reviewer audited the change against the upstream
+protocol doc and reproduced two real defects; all findings were fixed in
+this branch:
+
+1. **MAJOR — stackalloc in a loop** in `JsonWriter.WriteString(string)`
+   overflowed the (uncatchable) stack at ~800k non-ASCII chars; the
+   "stack slots are reused" assumption was wrong. Fixed by hoisting one
+   scratch span above the loop, with a 125k-char regression test.
+2. **MINOR — `GameDataMessage` ctor kept a key for non-latest classes**,
+   so `Equals` contradicted the wire (`decode(encode(m)) != m`). Fixed by
+   normalizing in the ctor; decode-side duplication removed.
+3. **MINOR — verbatim payloads were checked first-byte-only** while docs
+   promised valid JSON. Fixed: `RequireJsonValue` now rescans the full
+   value (allocation-free) and requires exactly one value; `{oops` and
+   `{} trailing` now throw at the call site.
+4. **MINOR — wire-order blind spots**: added byte-exact asserts for the
+   nested `RoomOperation` moderation/lifecycle shapes (no upstream
+   fixtures exist for them), `relay_transport`, and the spectator
+   password.
+5. **NITs**: null array elements now throw `ArgumentException` instead of
+   NRE; `WritePong` removed (protocol defines `Pong` as the reply to a
+   client `Ping`, so the client never sends one); the canonical-UUID
+   assumption on `Signal.to`/`generation` is documented.
 
 ## Notes / follow-ups
 

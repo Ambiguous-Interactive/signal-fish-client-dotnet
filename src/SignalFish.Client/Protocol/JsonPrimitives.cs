@@ -1134,6 +1134,11 @@ namespace SignalFish.Client.Protocol
         internal void WriteString(string value)
         {
             WriteByte((byte)'"');
+
+            // One scratch slot for the whole loop — stackalloc inside the
+            // loop would allocate a fresh frame region per iteration and
+            // overflow the stack on long non-ASCII strings.
+            Span<char> scratch = stackalloc char[2];
             int i = 0;
             while (i < value.Length)
             {
@@ -1166,16 +1171,17 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (char.IsSurrogatePair(value, i))
                 {
-                    Span<char> pair = stackalloc char[2] { value[i], value[i + 1] };
+                    scratch[0] = value[i];
+                    scratch[1] = value[i + 1];
                     Ensure(4);
-                    _pos += System.Text.Encoding.UTF8.GetBytes(pair, _span.Slice(_pos));
+                    _pos += System.Text.Encoding.UTF8.GetBytes(scratch, _span.Slice(_pos));
                     i += 2;
                 }
                 else
                 {
-                    Span<char> single = stackalloc char[1] { c };
+                    scratch[0] = c;
                     Ensure(3);
-                    _pos += System.Text.Encoding.UTF8.GetBytes(single, _span.Slice(_pos));
+                    _pos += System.Text.Encoding.UTF8.GetBytes(scratch.Slice(0, 1), _span.Slice(_pos));
                     i++;
                 }
             }
@@ -1217,7 +1223,7 @@ namespace SignalFish.Client.Protocol
                     WriteBytes(CommaSpace);
                 }
 
-                WriteString(values[i]);
+                WriteString(values[i] ?? throw new ArgumentException("Array elements must not be null."));
             }
 
             WriteByte((byte)']');

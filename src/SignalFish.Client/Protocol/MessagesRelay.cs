@@ -55,7 +55,10 @@ namespace SignalFish.Client.Protocol
         {
             _payload = payload;
             Class = classification;
-            Key = key;
+
+            // The key is only meaningful alongside `class: "latest"`, so
+            // illegal class/key pairings stay unrepresentable.
+            Key = classification == GameDataClass.Latest ? key : 0;
         }
 
         /// <summary>Gets the game-data JSON value, as UTF-8 bytes (relayed verbatim).</summary>
@@ -162,13 +165,6 @@ namespace SignalFish.Client.Protocol
             if (state != JsonMemberState.EndObject || !payloadSeen)
             {
                 return false;
-            }
-
-            // The key is only meaningful alongside `class: "latest"`; the
-            // struct keeps illegal class/key pairings unrepresentable.
-            if (classification != GameDataClass.Latest)
-            {
-                key = 0;
             }
 
             message = new GameDataMessage(payload, classification, key);

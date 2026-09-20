@@ -119,7 +119,6 @@ namespace SignalFish.Client.Tests
             foreach ((Action<IBufferWriter<byte>> write, string type) in new[]
             {
                 ((Action<IBufferWriter<byte>>)EnvelopeWriter.WritePing, "Ping"),
-                (EnvelopeWriter.WritePong, "Pong"),
                 (EnvelopeWriter.WritePlayerReady, "PlayerReady"),
                 (EnvelopeWriter.WriteStartGame, "StartGame"),
                 (EnvelopeWriter.WriteLeaveRoom, "LeaveRoom"),
@@ -192,6 +191,27 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
+        public void Write_JoinRoom_AllOptionalFields_ByteExact()
+        {
+            ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(128);
+            EnvelopeWriter.WriteJoinRoom(buffer, new JoinRoomMessage(
+                "my-game",
+                "Alice",
+                roomCode: "ABC123",
+                maxPlayers: 4,
+                supportsAuthority: false,
+                relayTransport: "tcp",
+                password: "pw"));
+
+            Assert.That(
+                Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()),
+                Is.EqualTo(
+                    "{\"type\": \"JoinRoom\", \"data\": {\"game_name\": \"my-game\", \"player_name\": \"Alice\","
+                    + " \"room_code\": \"ABC123\", \"max_players\": 4, \"supports_authority\": false,"
+                    + " \"relay_transport\": \"tcp\", \"password\": \"pw\"}}"));
+        }
+
+        [Test]
         public void Write_JoinRoom_WithPassword_RoundTrips()
         {
             JoinRoomMessage message = new JoinRoomMessage("my-game", "Alice", roomCode: "ABC123", password: "s3cret!");
@@ -205,6 +225,12 @@ namespace SignalFish.Client.Tests
             JoinAsSpectatorMessage message = new JoinAsSpectatorMessage("my-game", "ABC123", "Observer", password: "s3cret!");
 
             AssertRoundTrips(MessageKind.JoinAsSpectator, message, static (w, m) => EnvelopeWriter.WriteJoinAsSpectator(w, in m));
+
+            Assert.That(
+                Encoding.UTF8.GetString(Written(MessageKind.JoinAsSpectator, message)),
+                Is.EqualTo(
+                    "{\"type\": \"JoinAsSpectator\", \"data\": {\"game_name\": \"my-game\","
+                    + " \"room_code\": \"ABC123\", \"spectator_name\": \"Observer\", \"password\": \"s3cret!\"}}"));
         }
 
         [Test]
@@ -224,6 +250,44 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
+        public void Write_RoomOperation_ModerationCommands_ByteExact()
+        {
+            // The nested operation shapes have no golden fixtures upstream,
+            // so their canonical field order is pinned here byte-exactly.
+            foreach ((RoomOperationCommand command, string operationJson) in new[]
+            {
+                (RoomOperationCommand.KickPlayer("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                    "{\"type\": \"KickPlayer\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"),
+                (RoomOperationCommand.RegenerateRoomCode(), "{\"type\": \"RegenerateRoomCode\"}"),
+                (RoomOperationCommand.SetRoomAccess("pw"),
+                    "{\"type\": \"SetRoomAccess\", \"data\": {\"password\": \"pw\"}}"),
+                (RoomOperationCommand.SetRoomAccess(null),
+                    "{\"type\": \"SetRoomAccess\", \"data\": {\"password\": null}}"),
+                (RoomOperationCommand.BanPlayer("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                    "{\"type\": \"BanPlayer\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"),
+                (RoomOperationCommand.UnbanPlayer("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                    "{\"type\": \"UnbanPlayer\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"),
+                (RoomOperationCommand.TransferAuthority("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                    "{\"type\": \"TransferAuthority\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"),
+            })
+            {
+                RoomOperationMessage message = new RoomOperationMessage(
+                    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", command);
+                ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(256);
+                EnvelopeWriter.WriteRoomOperation(buffer, in message);
+
+                string expected =
+                    "{\"type\": \"RoomOperation\", \"data\": {\"operation_id\":"
+                    + " \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\", \"operation\": "
+                    + operationJson + "}}";
+                Assert.That(
+                    Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()),
+                    Is.EqualTo(expected),
+                    $"{command.Kind} nested operation must match the canonical shape.");
+            }
+        }
+
+        [Test]
         public void Write_RoomOperation_LegacyLifecycleCommands_RoundTrip()
         {
             RoomOperationMessage join = new RoomOperationMessage(
@@ -239,6 +303,14 @@ namespace SignalFish.Client.Tests
             AssertRoundTrips(MessageKind.RoomOperation, join, static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m));
             AssertRoundTrips(MessageKind.RoomOperation, reconnect, static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m));
             AssertRoundTrips(MessageKind.RoomOperation, spectator, static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m));
+
+            Assert.That(
+                Encoding.UTF8.GetString(Written(MessageKind.RoomOperation, join)),
+                Is.EqualTo(
+                    "{\"type\": \"RoomOperation\", \"data\": {\"operation_id\":"
+                    + " \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\", \"operation\": {\"type\": \"JoinRoom\","
+                    + " \"data\": {\"game_name\": \"my-game\", \"player_name\": \"Alice\", \"room_code\": \"ABC123\"}}}}"),
+                "The nested JoinRoom payload must keep the canonical field order.");
         }
 
         // --- String escaping ----------------------------------------------------
@@ -312,6 +384,31 @@ namespace SignalFish.Client.Tests
                 $"Chunked writes (chunk size {chunkSize}) must produce identical output.");
         }
 
+        [Test]
+        public void Write_LongNonAsciiString_DoesNotOverflowAndRoundTrips()
+        {
+            // Stackalloc-per-iteration in the writer would overflow the
+            // stack (uncatchable) on inputs of this scale.
+            string value = new string('é', 100_000) + new string('☃', 25_000);
+            ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(64);
+            EnvelopeWriter.WriteJoinRoom(buffer, new JoinRoomMessage(value, "p"));
+
+            EnvelopeEvent ev = EnvelopeReader.Decode(buffer.WrittenSpan.ToArray());
+            Assert.That(JoinRoomMessage.TryDecode(ev.Data, out JoinRoomMessage decoded), Is.True);
+            Assert.That(decoded.GameName, Is.EqualTo(value));
+        }
+
+        [Test]
+        public void GameData_NonLatestKey_IsNormalizedAway()
+        {
+            byte[] payloadBytes = Encoding.UTF8.GetBytes("{}");
+            GameDataMessage payload = new GameDataMessage(payloadBytes, GameDataClass.Volatile, key: 5);
+
+            Assert.That(payload.Key, Is.EqualTo(0));
+            Assert.That(payload, Is.EqualTo(new GameDataMessage(payload.Payload, GameDataClass.Volatile)),
+                "A key without class latest must not change equality.");
+        }
+
         // --- Encode misuse is a programmer error ---------------------------------
 
         [Test]
@@ -358,6 +455,17 @@ namespace SignalFish.Client.Tests
                     new ArrayBufferWriter<byte>(),
                     new SignalMessage("peer", "gen", Array.Empty<byte>())),
                 Throws.ArgumentException);
+            Assert.That(
+                () => EnvelopeWriter.WriteGameData(
+                    new ArrayBufferWriter<byte>(), new GameDataMessage(Encoding.UTF8.GetBytes("{oops"))),
+                Throws.ArgumentException,
+                "A malformed verbatim payload must fail at the call site, not corrupt the frame.");
+            Assert.That(
+                () => EnvelopeWriter.WriteProvideConnectionInfo(
+                    new ArrayBufferWriter<byte>(),
+                    new ProvideConnectionInfoMessage(Encoding.UTF8.GetBytes("{} trailing"))),
+                Throws.ArgumentException,
+                "Verbatim payloads must carry exactly one JSON value.");
         }
 
         [Test]

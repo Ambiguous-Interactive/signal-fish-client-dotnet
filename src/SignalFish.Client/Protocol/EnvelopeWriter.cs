@@ -36,7 +36,6 @@ namespace SignalFish.Client.Protocol
             internal static readonly byte[] LeaveSpectator = Encoding.ASCII.GetBytes("LeaveSpectator");
             internal static readonly byte[] Ping = Encoding.ASCII.GetBytes("Ping");
             internal static readonly byte[] PlayerReady = Encoding.ASCII.GetBytes("PlayerReady");
-            internal static readonly byte[] Pong = Encoding.ASCII.GetBytes("Pong");
             internal static readonly byte[] ProvideConnectionInfo = Encoding.ASCII.GetBytes("ProvideConnectionInfo");
             internal static readonly byte[] Reconnect = Encoding.ASCII.GetBytes("Reconnect");
             internal static readonly byte[] RoomOperation = Encoding.ASCII.GetBytes("RoomOperation");
@@ -385,12 +384,6 @@ namespace SignalFish.Client.Protocol
             WritePayloadless(destination, TypeNames.Ping);
         }
 
-        /// <summary>Writes a heartbeat <c>Pong</c> reply frame (no payload).</summary>
-        public static void WritePong(IBufferWriter<byte> destination)
-        {
-            WritePayloadless(destination, TypeNames.Pong);
-        }
-
         // --- Relay -------------------------------------------------------------
 
         /// <summary>
@@ -601,28 +594,43 @@ namespace SignalFish.Client.Protocol
             }
         }
 
+        /// <summary>
+        /// Validates a verbatim payload as one complete JSON value
+        /// (allocation-free rescan) so a malformed payload fails at the call
+        /// site instead of corrupting the whole frame.
+        /// </summary>
         private static void RequireJsonValue(ReadOnlySpan<byte> json, string wireField)
         {
-            if (json.IsEmpty || !IsJsonValueStart(json[0]))
+            if (json.IsEmpty)
+            {
+                throw new ArgumentException(
+                    $"The message must carry a non-empty UTF-8 JSON value for \"{wireField}\".", "message");
+            }
+
+            JsonScanner scanner = new JsonScanner(json);
+            if (scanner.ScanValueRaw(1, JsonScanner.MaxDepth, out _) != DecodeError.None)
             {
                 throw new ArgumentException(
                     $"The message must carry a valid UTF-8 JSON value for \"{wireField}\".", "message");
+            }
+
+            scanner.SkipWhitespace();
+            if (!scanner.IsEof)
+            {
+                throw new ArgumentException(
+                    $"The message \"{wireField}\" must carry exactly one JSON value.", "message");
             }
         }
 
         private static void RequireJsonObject(ReadOnlySpan<byte> json, string wireField)
         {
-            if (json.IsEmpty || json[0] != (byte)'{')
+            RequireJsonValue(json, wireField);
+            if (json[0] != (byte)'{')
             {
                 throw new ArgumentException(
-                    $"The message must carry a valid UTF-8 JSON object for \"{wireField}\".", "message");
+                    $"The message must carry a UTF-8 JSON object for \"{wireField}\".", "message");
             }
         }
-
-        private static bool IsJsonValueStart(byte b) =>
-            b == (byte)'{' || b == (byte)'[' || b == (byte)'"'
-            || (b >= (byte)'0' && b <= (byte)'9') || b == (byte)'-'
-            || b == (byte)'t' || b == (byte)'f' || b == (byte)'n';
 
         private static void ValidateCommand(in RoomOperationCommand command)
         {

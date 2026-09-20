@@ -62,6 +62,9 @@ protocol and IL2CPP.
   clobbers flushed buffer regions when the caller keeps writing (found the
   hard way in M1.3; only frames with helper writes after a flush boundary
   failed).
+- **Never `stackalloc` inside a write loop** — frame memory accumulates
+  per iteration and the resulting StackOverflowException is uncatchable.
+  Hoist one scratch span above the loop and reuse it.
 - `Try*` readers that assign `out` params eagerly must not be composed with
   `||` when the failure-path value is observable — branch explicitly
   instead.
