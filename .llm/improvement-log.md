@@ -9,6 +9,28 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-20 - PR #18 Bugbot round: CWD-dependent tooling class
+
+- Trigger: Cursor Bugbot inline finding on PR #18 ("SharpFuzz ignores
+  repository root"); no human feedback yet.
+- Evidence: launching `scripts/fuzz-codec.ps1` by absolute path from
+  outside the tree failed at instrumentation (RED reproduced); after the
+  fix the same launch shape ran the full lane clean (GREEN); new
+  `test-install-hooks.ps1` fails 2/2 against the old `install-hooks.ps1`
+  and passes against the fix.
+- Findings: (1) `dotnet tool restore` was anchored to `$RepoRoot` via
+  Push-Location but the later `dotnet tool run sharpfuzz` was not - tool
+  commands resolve `.config/dotnet-tools.json` by walking up from the CWD.
+  (2) Sweep for the class found one sibling: `install-hooks.ps1` ran bare
+  `git config` against whatever repo the caller's CWD landed in. All other
+  scripts were already CWD-safe ($PSScriptRoot-derived absolute paths).
+- Applied: tool-run wrapped in the same Push-Location scope;
+  `install-hooks.ps1` anchors via `$PSScriptRoot` + `git -C`;
+  `test-install-hooks.ps1` pins the launch-from-outside shape;
+  rule 7 added to the powershell-tooling skill (frontmatter updated, index
+  regenerated).
+- Open: none.
+
 ## 2026-09-20 - PR #11 feedback round: MCP auth-header class + style rules
 
 - Trigger: Bugbot (1 High, 1 dup-of-fixed) + 3 human repo-wide style asks on
@@ -170,6 +192,39 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   test-pre-commit.ps1); knowledge captured as a new skill
   `.llm/skills/add-quality-gate/` plus a sweep-table row in
   address-pr-feedback.
+
+## 2026-09-20 - Session 009: SharpFuzz lane (M1.5) + CI trim
+
+- Trigger: M1 completion gate ("fuzz lane clean for 30 min CI run") plus the
+  CI-time objective.
+- Evidence: planted reader bug (throw on empty input) and writer bug
+  (dropped `"` escape) both crash their targets; two harness-expectation
+  bugs found and fixed by fuzzing; full-corpus unit suite, script
+  self-tests, and 150 s/target driver runs green (883k/841k execs).
+- Findings: (1) The libfuzzer-dotnet parent exits on a dead child WITHOUT
+  writing a crash artifact - fuzz hosts must dump crashing inputs themselves
+  before rethrowing. (2) pwsh native-arg parsing can mangle libFuzzer's
+  `-flag=value` tokens; pass them via a splatted argument array. (3)
+  Roundtrip identity is a per-component contract: verbatim payloads
+  roundtrip byte-exactly only when callers pass clean value tokens (the
+  reader canonically excludes insignificant whitespace; the writer never
+  edits bytes). (4) An envelope with no `data` member decodes to an empty
+  `Data` slice - payload `TryDecode` contracts cover data objects only.
+  (5) SharpFuzz publishes `SharpFuzz.Common.dll` separately; instrumentor
+  exclusions must be wildcard-matched, and publish output must be wiped
+  between runs or stale instrumented dlls fail the re-run. (6) Restore
+  scoping is graph-global: `-p:TargetFramework=` on restore strips every
+  referenced project's other TFMs from its assets file (NETSDK1005), so a
+  multi-TFM test project forces dual SDK installs on all CI cells - "one
+  SDK per cell" is unachievable while `Tests` targets net8.0;net10.0.
+- Applied: FuzzTests project (reader/writer targets, crash self-dump,
+  frame-text diagnostics), `scripts/fuzz-codec.ps1` (pinned-by-hash driver,
+  manifest-pinned sharpfuzz, persistent `.fuzz/` corpus + crashes), weekly
+  `fuzz.yml` (PR CI untouched); `dotnet.yml` trimmed to one SDK + one TFM
+  build per cell with lints deduped to the coverage cell - measured
+  coverage unchanged.
+- Open: scheduled-run corpus persistence via actions/cache and crash
+  regression-corpus baseline land with M9.4.
 
 ## 2026-09-20 - Session 008: property tests + perf baseline + changelog
 

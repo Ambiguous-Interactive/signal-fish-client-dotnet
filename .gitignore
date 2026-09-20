@@ -65,3 +65,6 @@ PLAN.md
 !.env.example
 # BenchmarkDotNet output
 BenchmarkDotNet.Artifacts/
+
+# Fuzz-lane persistence (corpus + crash artifacts, scripts/fuzz-codec.ps1)
+.fuzz/

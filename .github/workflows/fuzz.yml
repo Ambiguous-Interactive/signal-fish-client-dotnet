@@ -1,0 +1,57 @@
+# Scheduled codec fuzz lane (PLAN M1.5).
+#
+# Never runs on pull requests: fuzzing is minutes-long by design, so PR CI
+# time stays flat. The M1 gate is a clean 30-minute run (reader + writer
+# targets, 15 min each); any crashing input fails the workflow and is
+# uploaded as an artifact for triage. Inputs are persisted by the fuzz host
+# itself (the libfuzzer-dotnet parent exits on a dead child without writing
+# artifacts).
+
+name: Fuzz
+
+on:
+  schedule:
+    # Weekly, Monday 04:00 UTC.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      seconds_per_target:
+        description: 'Fuzzing budget per target, in seconds'
+        required: false
+        default: '900'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: Codec fuzz (reader + writer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Env indirection keeps the dispatch input out of the command line.
+      SECONDS_PER_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.seconds_per_target || 900 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Run codec fuzz lane
+        run: >
+          pwsh -NoProfile -File scripts/fuzz-codec.ps1
+          -SecondsPerTarget "$SECONDS_PER_TARGET"
+
+      - name: Upload crash artifacts
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: .fuzz/crashes/
+          if-no-files-found: ignore
