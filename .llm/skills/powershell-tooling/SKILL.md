@@ -122,9 +122,10 @@ it is hardest to debug. Two sub-cases seen in this repo:
   self-test.
 - Evidence: Bugbot finding "SharpFuzz ignores repository root" on
   `scripts/fuzz-codec.ps1` (PR #18) — `dotnet tool restore` was anchored
-  but the later `dotnet tool run` was not; sibling found by sweep and
-  fixed in the same change: `scripts/install-hooks.ps1` bare
-  `git config`. Regression test:
+  but the later `dotnet tool run` was not; siblings found by sweep and
+  fixed in the same change: `scripts/install-hooks.ps1` bare `git config`
+  and `scripts/install-hooks.sh` (same class, different language — check
+  shell siblings too). Regression test:
   `scripts/tests/test-install-hooks.ps1`.
 
 ## Testing tooling
