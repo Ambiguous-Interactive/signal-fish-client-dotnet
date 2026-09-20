@@ -190,7 +190,11 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   `Data` slice - payload `TryDecode` contracts cover data objects only.
   (5) SharpFuzz publishes `SharpFuzz.Common.dll` separately; instrumentor
   exclusions must be wildcard-matched, and publish output must be wiped
-  between runs or stale instrumented dlls fail the re-run.
+  between runs or stale instrumented dlls fail the re-run. (6) Restore
+  scoping is graph-global: `-p:TargetFramework=` on restore strips every
+  referenced project's other TFMs from its assets file (NETSDK1005), so a
+  multi-TFM test project forces dual SDK installs on all CI cells - "one
+  SDK per cell" is unachievable while `Tests` targets net8.0;net10.0.
 - Applied: FuzzTests project (reader/writer targets, crash self-dump,
   frame-text diagnostics), `scripts/fuzz-codec.ps1` (pinned-by-hash driver,
   manifest-pinned sharpfuzz, persistent `.fuzz/` corpus + crashes), weekly

@@ -93,9 +93,13 @@ runner time with unchanged test coverage. Issue debt: both open issues
 ## CI-time accounting
 
 - Fuzz lane: scheduled only — PR and main-push runner time unchanged.
-- `dotnet.yml`: per-cell work strictly reduced (one SDK install, one TFM
-  build, no duplicated lints); matrix breadth (os × TFM) and the measured
-  coverage data are identical.
+- `dotnet.yml`: per-cell work strictly reduced (one TFM build, no duplicate
+  lints, no PerfTests outside the coverage cell); matrix breadth (os × TFM)
+  and the measured coverage data are identical.
+- Measured on the PR: dotnet critical path 2m10s → 1m30s (windows cells);
+  ubuntu cells 1m10s/55s → 58s/34s. (A "one SDK per cell" trim was attempted
+  and reverted with RCA: restore scoping is graph-global, so the dual-TFM
+  test project needs both SDKs everywhere — see improvement-log finding 6.)
 
 ## Left for later
 
