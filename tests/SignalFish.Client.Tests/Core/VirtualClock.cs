@@ -1,0 +1,23 @@
+namespace SignalFish.Client.Tests.Core
+{
+    using SignalFish.Client.Core;
+
+    /// <summary>
+    /// Virtual time for deterministic tests: no test ever waits on a real
+    /// timer; the code under test advances this clock explicitly.
+    /// </summary>
+    public sealed class VirtualClock : ISignalFishClock
+    {
+        private long elapsedMilliseconds;
+
+        public long ElapsedMilliseconds
+        {
+            get { return this.elapsedMilliseconds; }
+        }
+
+        public void Advance(long milliseconds)
+        {
+            this.elapsedMilliseconds += milliseconds;
+        }
+    }
+}
