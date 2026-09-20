@@ -32,9 +32,8 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 - Applied: `Protocol/` package (JsonPrimitives scanner, EnvelopeReader,
   EnvelopeEvent/DecodeError, MessageKind/Names); 123 tests both TFMs,
   warnaserror clean; M1.2 done in PLAN; devcontainer work committed.
-- Open: watch the first `Dev Container Build` CI run (fresh-image build +
-  self-test) on this PR; consider a self-test check that asserts the nested
-  pwsh binary is executable (would have caught the arch mismatch).
+- Open: consider a self-test check that asserts the nested pwsh binary is
+  executable (would have caught the arch mismatch).
 
 ## 2026-09-19 - devcontainer EACCES: root-owned volume mountpaths
 
@@ -179,7 +178,6 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   remains red. (10) transient npm registry failures during container create
   silently skipped late packages (resilience design) - bounded retries with
   backoff in install-clis.sh cover the common case.
-- Open: confirm CI workflow passes on the first real PR; confirm VS Code
-  resolves the three `shellCommand` inputs on a first real session; commit
-  the untracked `.devcontainer/`, `.vscode/`, `.env.example` so fresh clones
-  actually get this setup.
+- Open: confirm VS Code resolves the three `shellCommand` inputs on a first
+  real session. (The devcontainer-build CI workflow passed on its first real
+  run, 2026-09-20; the untracked devcontainer files shipped in PR #11.)
