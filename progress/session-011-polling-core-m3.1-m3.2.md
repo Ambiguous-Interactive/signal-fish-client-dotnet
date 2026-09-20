@@ -37,7 +37,19 @@ red-green, plus issue-debt reduction (#21, #22, #7). ~1 hour session shape.
 - Planted bug 2: `RoomLeft` clearing membership fields but keeping the role
   (violating the four-field atomic clear) → caught by 2 tests. Reverted →
   green.
-- 278 tests × net8.0 + net10.0 (13 new), all green.
+- 287 tests × net8.0 + net10.0 (22 new), all green.
+
+## Bugbot round (2 findings, both fixed and pinned)
+
+- **Mismatched leave cleared membership**: `RoomLeft`/`SpectatorLeft` wiped
+  membership before the type check, so a stray leave while fenced could
+  evict a live room — asymmetric with join handling. Fix: while fenced,
+  only the leave kind the fence awaits clears membership; mismatched leaves
+  are ignored (fail-closed). Unfenced leaves stay tolerant (server-initiated
+  removal). Pinned by `Fence_MismatchedLeave_IsIgnoredFailClosed` +
+  `Fence_UnfencedLeave_IsAcceptedAsServerRemoval`.
+- **`RoomCode` typed non-null but null on default**: annotation now `string?`
+  so the absent membership's contract is honest.
 
 ## Verification
 
@@ -60,5 +72,5 @@ LINQ-ban, and zero-dep lints green; all automation self-tests green.
 
 ## CI
 
-No workflow changes. Net-zero CI time; coverage strictly additive (265 → 278
+No workflow changes. Net-zero CI time; coverage strictly additive (265 → 287
 tests per TFM).

@@ -500,6 +500,38 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
+        public void Fence_MismatchedLeave_IsIgnoredFailClosed()
+        {
+            SignalFishStateMachine leaving = InRoom(RoomRole.Player);
+            leaving.Arm(PendingRoomOperation.LeavePlayer);
+            leaving.Apply(SessionEvent.From(SessionEventKind.SpectatorLeft));
+
+            Assert.That(leaving.PendingOperation, Is.EqualTo(PendingRoomOperation.LeavePlayer));
+            Assert.That(leaving.Membership, Is.EqualTo(Membership(RoomRole.Player)));
+            Assert.That(leaving.Phase, Is.EqualTo(ConnectionPhase.InRoom));
+
+            SignalFishStateMachine spectatorLeaving = InRoom(RoomRole.Spectator);
+            spectatorLeaving.Arm(PendingRoomOperation.LeaveSpectator);
+            spectatorLeaving.Apply(SessionEvent.From(SessionEventKind.RoomLeft));
+
+            Assert.That(
+                spectatorLeaving.PendingOperation,
+                Is.EqualTo(PendingRoomOperation.LeaveSpectator)
+            );
+            Assert.That(spectatorLeaving.Membership, Is.EqualTo(Membership(RoomRole.Spectator)));
+        }
+
+        [Test]
+        public void Fence_UnfencedLeave_IsAcceptedAsServerRemoval()
+        {
+            SignalFishStateMachine machine = InRoom(RoomRole.Player);
+            machine.Apply(SessionEvent.From(SessionEventKind.SpectatorLeft));
+
+            Assert.That(machine.Membership.IsPresent, Is.False);
+            Assert.That(machine.Phase, Is.EqualTo(ConnectionPhase.Authenticated));
+        }
+
+        [Test]
         public void Apply_JoinConfirmedWithoutAuthentication_IsIgnored()
         {
             SignalFishStateMachine fresh = Fresh();

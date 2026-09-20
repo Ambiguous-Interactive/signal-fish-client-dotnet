@@ -10,7 +10,7 @@ namespace SignalFish.Client.Core
     /// </summary>
     public readonly struct RoomMembership : IEquatable<RoomMembership>
     {
-        public RoomMembership(RoomRole role, Guid playerId, Guid roomId, string roomCode)
+        public RoomMembership(RoomRole role, Guid playerId, Guid roomId, string? roomCode)
         {
             this.Role = role;
             this.PlayerId = playerId;
@@ -28,7 +28,7 @@ namespace SignalFish.Client.Core
         public Guid RoomId { get; }
 
         /// <summary>Human-shareable room code; null in the absent membership.</summary>
-        public string RoomCode { get; }
+        public string? RoomCode { get; }
 
         /// <summary>True when a confirmed membership is present.</summary>
         public bool IsPresent

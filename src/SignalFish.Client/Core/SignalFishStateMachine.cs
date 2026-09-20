@@ -239,8 +239,20 @@ namespace SignalFish.Client.Core
                     break;
                 case SessionEventKind.RoomLeft:
                 case SessionEventKind.SpectatorLeft:
+                    // Fail-closed: while fenced, only the leave kind the fence
+                    // awaits may clear membership; a mismatched leave is a
+                    // protocol violation and is ignored. Unfenced, a leave is
+                    // accepted (tolerant server-initiated removal).
+                    if (
+                        this.pendingOperation != PendingRoomOperation.None
+                        && this.pendingOperation != LeaveRelease(sessionEvent.Kind)
+                    )
+                    {
+                        break;
+                    }
+
                     this.membership = default;
-                    this.ReleaseMatchingLeave(sessionEvent.Kind);
+                    this.ReleaseIfPending(LeaveRelease(sessionEvent.Kind));
                     break;
                 case SessionEventKind.JoinRoomFailed:
                     this.ReleaseIfPending(PendingRoomOperation.JoinPlayer);
@@ -292,13 +304,11 @@ namespace SignalFish.Client.Core
                 : AdmissionError.WrongRoomRole;
         }
 
-        private void ReleaseMatchingLeave(SessionEventKind kind)
+        private static PendingRoomOperation LeaveRelease(SessionEventKind kind)
         {
-            PendingRoomOperation leave =
-                kind == SessionEventKind.RoomLeft
-                    ? PendingRoomOperation.LeavePlayer
-                    : PendingRoomOperation.LeaveSpectator;
-            this.ReleaseIfPending(leave);
+            return kind == SessionEventKind.RoomLeft
+                ? PendingRoomOperation.LeavePlayer
+                : PendingRoomOperation.LeaveSpectator;
         }
 
         private void ReleaseIfPending(PendingRoomOperation operation)
