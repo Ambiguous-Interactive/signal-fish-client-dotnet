@@ -98,7 +98,7 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 - Findings: (1) conditional NoWarn must live in `Directory.Build.targets`
   (props cannot see csproj-body properties). (2) test-scoped analyzer
   suppressions (CA1707/CA1062/CA1515) plus perf-intentional CA1028/CA1815
-  suppressions with rationale. (3) the LINQ ban is a PowerShell linter - 
+  suppressions with rationale. (3) the LINQ ban is a PowerShell linter -
   BannedApiAnalyzers would violate the zero-PackageReference rule. (4)
   version smokes cannot catch arch-mismatched nested binaries; self-test
   runs the real nested `& pwsh` and asserts the ELF e_machine. (5) decode
