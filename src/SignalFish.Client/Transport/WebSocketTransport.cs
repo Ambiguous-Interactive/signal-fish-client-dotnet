@@ -93,6 +93,9 @@ namespace SignalFish.Client.Transport
             _socket = socket;
             try
             {
+                // Dispose may race the probe above; a socket created after
+                // it must never reach the wire. The catch below disposes it.
+                ThrowIfDisposed();
                 await socket.ConnectAsync(uri, ct).ConfigureAwait(false);
             }
             catch
@@ -241,12 +244,13 @@ namespace SignalFish.Client.Transport
             byte[] buffer = ArrayPool<byte>.Shared.Rent(
                 Math.Min(InitialReceiveBytes, _maxReceiveBytes)
             );
+            int capacity = Math.Min(buffer.Length, _maxReceiveBytes);
             int length = 0;
             try
             {
                 while (true)
                 {
-                    if (length == buffer.Length && !Grow(ref buffer, length))
+                    if (length == capacity && !Grow(ref buffer, ref capacity, length))
                     {
                         return EndWithClose(1009);
                     }
@@ -255,7 +259,7 @@ namespace SignalFish.Client.Transport
                     try
                     {
                         result = await socket
-                            .ReceiveAsync(buffer.AsMemory(length, buffer.Length - length), ct)
+                            .ReceiveAsync(buffer.AsMemory(length, capacity - length), ct)
                             .ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
@@ -294,18 +298,22 @@ namespace SignalFish.Client.Transport
             }
         }
 
-        private bool Grow(ref byte[] buffer, int length)
+        private bool Grow(ref byte[] buffer, ref int capacity, int length)
         {
-            int nextLength = Math.Min(buffer.Length * 2, _maxReceiveBytes);
-            if (nextLength <= length)
+            // Rent returns buckets that can exceed the request; the usable
+            // cap is the probed limit, never the rented array length.
+            int nextCapacity = Math.Min(capacity * 2, _maxReceiveBytes);
+            if (nextCapacity <= length)
             {
                 return false;
             }
 
-            byte[] grown = ArrayPool<byte>.Shared.Rent(nextLength);
+            byte[] grown = ArrayPool<byte>.Shared.Rent(nextCapacity);
+            int grownCapacity = Math.Min(grown.Length, _maxReceiveBytes);
             Buffer.BlockCopy(buffer, 0, grown, 0, length);
             ArrayPool<byte>.Shared.Return(buffer);
             buffer = grown;
+            capacity = grownCapacity;
             return true;
         }
 

@@ -170,6 +170,113 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
+        public async Task Receive_ProbedCap_AtTheBoundary_IsDelivered()
+        {
+            await using TestWsServer server = TestWsServer.Start(
+                "{\"max_outbound_message_size\":5000}"
+            );
+            WebSocketTransport transport = new WebSocketTransport();
+            await transport.ConnectAsync(ServerUri(server.Port), TestToken());
+
+            TestWsConnection connection = await server.WaitForConnectionAsync(TestToken());
+            await connection.SendBinaryAsync(new byte[5000]);
+
+            TransportFrame frame = await transport.ReceiveAsync(TestToken());
+
+            Assert.That(frame.IsClose, Is.False);
+            Assert.That(frame.Payload.Length, Is.EqualTo(5000));
+        }
+
+        [Test]
+        public async Task Receive_ProbedCap_ExceedingAcrossBufferBuckets_Closes1009()
+        {
+            await using TestWsServer server = TestWsServer.Start(
+                "{\"max_outbound_message_size\":5000}"
+            );
+            WebSocketTransport transport = new WebSocketTransport();
+            await transport.ConnectAsync(ServerUri(server.Port), TestToken());
+
+            // 5000 grows the receive buffer via a Rent call whose bucket
+            // (8192) exceeds the probed cap; 5001 must still be refused.
+            TestWsConnection connection = await server.WaitForConnectionAsync(TestToken());
+            await connection.SendBinaryAsync(new byte[5001]);
+
+            TransportFrame close = await transport.ReceiveAsync(TestToken());
+
+            Assert.That(close.IsClose, Is.True);
+            Assert.That(close.Close.Code, Is.EqualTo(1009));
+        }
+
+        [Test]
+        public async Task Dispose_DuringConnect_CleansUpAndThrows()
+        {
+            await using TestWsServer server = TestWsServer.Start(
+                "{\"max_outbound_message_size\":8388608}"
+            );
+            server.ClientConfigGate = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
+            WebSocketTransport transport = new WebSocketTransport();
+
+            Task connect = transport.ConnectAsync(ServerUri(server.Port), TestToken());
+            await WaitForProbeArrivalAsync(server);
+            await transport.DisposeAsync();
+            server.ClientConfigGate.TrySetResult(true);
+
+            Assert.That(async () => await connect, Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(async () => await transport.DisposeAsync(), Throws.Nothing);
+
+            // Either no socket reached the wire (expected) or the one that
+            // did was torn down promptly. A leaked socket would keep this
+            // connection open and the read would hang until its timeout.
+            TestWsConnection? connection = await WaitForConnectionOrNullAsync(server);
+            if (connection != null)
+            {
+                byte[] probe = new byte[16];
+                CancellationTokenSource closedCts = new CancellationTokenSource(
+                    TimeSpan.FromSeconds(5)
+                );
+                IOException? closed = Assert.ThrowsAsync<IOException>(async () =>
+                    await connection.ReceiveFrameAsync(closedCts.Token)
+                );
+                Assert.That(closed, Is.Not.Null);
+            }
+        }
+
+        private static async Task<TestWsConnection?> WaitForConnectionOrNullAsync(
+            TestWsServer server
+        )
+        {
+            CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            try
+            {
+                return await server.WaitForConnectionAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+        }
+
+        private static async Task WaitForProbeArrivalAsync(TestWsServer server)
+        {
+            for (int attempt = 0; attempt < 200; attempt++)
+            {
+                foreach (string path in server.HttpRequestPaths.ToArray())
+                {
+                    if (path.EndsWith("/client-config", StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+                }
+
+                await Task.Delay(10);
+            }
+
+            Assert.Fail("The client-config probe never reached the server.");
+        }
+
+        [Test]
         public async Task Connect_ProbeFailure_StillConnects()
         {
             await using TestWsServer server = TestWsServer.Start(null);

@@ -197,6 +197,12 @@ namespace SignalFish.Client.Tests.Transport
         /// <summary>Gets or sets the client-config JSON body; <see langword="null"/> makes the endpoint 404.</summary>
         public string? ClientConfigJson { get; set; }
 
+        /// <summary>
+        /// When set, client-config responses are withheld until the gate is
+        /// completed — lets tests park a connect inside the probe.
+        /// </summary>
+        public TaskCompletionSource<bool>? ClientConfigGate { get; set; }
+
         /// <summary>Gets the HTTP request paths observed so far (probe assertions).</summary>
         public ConcurrentQueue<string> HttpRequestPaths { get; } = new ConcurrentQueue<string>();
 
@@ -281,6 +287,11 @@ namespace SignalFish.Client.Tests.Transport
                 }
                 else
                 {
+                    if (ClientConfigGate != null)
+                    {
+                        await ClientConfigGate.Task;
+                    }
+
                     await WriteHttpResponseAsync(stream, path);
                     client.Dispose();
                 }
