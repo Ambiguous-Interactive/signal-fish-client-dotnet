@@ -36,6 +36,26 @@ dotnet_diagnostic.IDE0065.severity = error
 dotnet_diagnostic.CA1028.severity = none
 dotnet_diagnostic.CA1815.severity = none
 
+# Transport sizing probe is deliberately fail-open: any failure (malformed
+# body, proxy interference, exotic socket error) must fall back to the
+# protocol default instead of blocking the connect. The catch-all is the
+# feature; reaction logic keys on close codes, not on probe exceptions.
+[src/SignalFish.Client/Transport/*.cs]
+dotnet_diagnostic.CA1031.severity = none
+
+# Tests never marshal back to a captured context (NUnit installs none), so
+# ConfigureAwait(false) would be pure noise across every await in the suite.
+[tests/**/*.cs]
+dotnet_diagnostic.CA2007.severity = none
+# Test fixtures construct-and-abandon transports on purpose; disposal under
+# stress is asserted explicitly by dedicated tests, not by CA2000 dataflow.
+dotnet_diagnostic.CA2000.severity = none
+# The loopback test server must survive arbitrary/aborted client behavior
+# (half-open sockets, bad handshakes); the catch-all keeps it serving.
+dotnet_diagnostic.CA1031.severity = none
+# SHA1 here is the RFC 6455 WebSocket accept key derivation, not crypto.
+dotnet_diagnostic.CA5350.severity = none
+
 [*.md]
 trim_trailing_whitespace = false
 

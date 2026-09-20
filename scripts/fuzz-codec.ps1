@@ -13,7 +13,11 @@
 
     The corpus and crash artifacts persist in .fuzz/ (gitignored) so local
     triage survives between runs; only the publish/instrumentation output is
-    wiped. The libfuzzer-dotnet driver is pinned by release AND SHA256 (it
+    wiped. The scheduled workflow caches .fuzz/ so weekly runs continue from
+    the previous corpus. When a run finds a crash: triage the input, fix the
+    bug, then graduate the input into a committed regression test (golden
+    fixture or unit test) so the crash can never re-occur silently. The
+    libfuzzer-dotnet driver is pinned by release AND SHA256 (it
     is native code executed in CI). Instrumentation and fuzzing only run on
     Linux; the script fails fast on other platforms. Local runs stay bounded
     (-SecondsPerTarget); long runs belong to the scheduled fuzz workflow.

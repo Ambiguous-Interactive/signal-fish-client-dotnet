@@ -8,6 +8,12 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Transport layer: `ITransport` abstraction with a `ClientWebSocket`
+  implementation. Typed close reporting for every server close code
+  (4000-4007, 1009), a pre-connect sizing probe of the server's
+  `client-config` endpoint, and client-side enforcement of the server's
+  64 KiB inbound frame limit. WebGL targets inject their own transport;
+  the library never touches sockets directly.
 - Protocol envelope decoding. Total: any input yields a typed event, never an
   exception. Unknown message types and unknown fields surface as
   forward-compatible events. Zero allocations on known messages.

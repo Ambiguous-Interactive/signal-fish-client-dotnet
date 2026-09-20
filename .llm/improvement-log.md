@@ -12,23 +12,20 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 ## 2026-09-20 - PR #18 Bugbot round: CWD-dependent tooling class
 
 - Trigger: Cursor Bugbot inline finding on PR #18 ("SharpFuzz ignores
-  repository root"); no human feedback yet.
+  repository root").
 - Evidence: launching `scripts/fuzz-codec.ps1` by absolute path from
-  outside the tree failed at instrumentation (RED reproduced); after the
-  fix the same launch shape ran the full lane clean (GREEN); new
-  `test-install-hooks.ps1` fails 2/2 against the old `install-hooks.ps1`
-  and passes against the fix.
+  outside the tree failed at instrumentation (RED); clean after the fix
+  (GREEN); new `test-install-hooks.ps1` fails 2/2 against the old
+  `install-hooks.ps1` and passes against the fix.
 - Findings: (1) `dotnet tool restore` was anchored to `$RepoRoot` via
   Push-Location but the later `dotnet tool run sharpfuzz` was not - tool
   commands resolve `.config/dotnet-tools.json` by walking up from the CWD.
-  (2) Sweep for the class found one sibling: `install-hooks.ps1` ran bare
-  `git config` against whatever repo the caller's CWD landed in. All other
-  scripts were already CWD-safe ($PSScriptRoot-derived absolute paths).
+  (2) Sweep found one sibling: `install-hooks.ps1` ran bare `git config`
+  against the caller's CWD; all other scripts were already CWD-safe.
 - Applied: tool-run wrapped in the same Push-Location scope;
   `install-hooks.ps1` anchors via `$PSScriptRoot` + `git -C`;
-  `test-install-hooks.ps1` pins the launch-from-outside shape;
-  rule 7 added to the powershell-tooling skill (frontmatter updated, index
-  regenerated).
+  `test-install-hooks.ps1` pins the launch-from-outside shape; rule 7 added
+  to the powershell-tooling skill (frontmatter updated, index regenerated).
 - Open: none.
 
 ## 2026-09-20 - PR #11 feedback round: MCP auth-header class + style rules
@@ -102,8 +99,7 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 - Findings (condensed; full facts in
   [devcontainer-tooling](./references/devcontainer-tooling.md)):
   `containerEnv` cannot self-reference `PATH` (use Dockerfile `ENV`); the
-  dotnet feature v1 shadows the image SDK (install SDKs into
-  `/usr/share/dotnet`); the node feature's nvm hard-fails under
+  dotnet feature v1 shadows the image SDK; nvm hard-fails under
   `NPM_CONFIG_PREFIX`; opencode's arm64 postinstall mis-selects libc;
   named volumes and parents of volume targets can be root-owned.
 - Open: none.
@@ -112,12 +108,10 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 
 - Findings (condensed; full facts in
   [devcontainer-tooling](./references/devcontainer-tooling.md)): global
-  `zai-mcp-server` bin over runtime `npx` for in-container harnesses;
-  `Z_AI_MODE=ZHIPU` switches remote base URLs; configs pruned when
-  credentials disappear; control-character env validation; hermetic
-  self-tests need env skip-seams plus backup/restore traps; key-gated MCP
-  startup is a distinct passing probe outcome; npm registry flakes need
-  bounded retries.
+  `zai-mcp-server` bin over runtime `npx`; `Z_AI_MODE=ZHIPU` switches remote
+  base URLs; configs pruned when credentials disappear; hermetic self-tests
+  need env skip-seams plus backup/restore traps; key-gated MCP startup is a
+  distinct passing probe outcome; npm registry flakes need bounded retries.
 - Open: confirm VS Code resolves the three `shellCommand` inputs on a first
   real session (devcontainer-build CI green on its first real run,
   2026-09-20, which does not verify this).
@@ -236,16 +230,40 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   behavior as a bug. (2) A `ref struct` writer passed **by value** through
   recursive test helpers silently loses nested writes; pass it `ref`. (3) A
   string roundtrip property that slices the inner text between the outer
-  quotes cannot detect missing quote escaping (the framing is re-cut by the
-  property itself); asserting the scanner consumes the rendered bytes
-  byte-exactly catches that whole class. (4) `Encoding.ASCII.GetBytes`
-  silently maps non-ASCII to `?` - wire strings must go through the UTF-8
-  writer, never ASCII helpers.
-- Actions: property suite landed red-green (both reader and writer planted
-  bugs caught); BenchmarkDotNet baselines recorded in `docs/benchmarks.md`
-  (both hot paths 0 B steady-state); CHANGELOG.md adopted (keep-a-changelog,
-  user-visible only); STE user-copy rule added to context.md (rule 16).
-- CI: coverage collection/report narrowed to one representative cell (same
-  tests on all cells), NuGet package cache added, `concurrency`
-  cancel-in-progress added, reportgenerator moved to the tool manifest -
-  net runner-time decrease with unchanged measured coverage.
+  quotes cannot detect missing quote escaping; asserting the scanner consumes
+  the rendered bytes byte-exactly catches that whole class. (4)
+  `Encoding.ASCII.GetBytes` silently maps non-ASCII to `?` - wire strings
+  must go through the UTF-8 writer, never ASCII helpers.
+- Actions: property suite landed red-green; BenchmarkDotNet baselines in
+  `docs/benchmarks.md` (both hot paths 0 B steady-state); CHANGELOG.md
+  adopted (keep-a-changelog, user-visible only); STE user-copy rule added
+  to context.md (rule 16).
+- CI: coverage narrowed to one representative cell (same tests on all
+  cells), NuGet package cache, `concurrency` cancel-in-progress,
+  reportgenerator moved to the tool manifest - net runner-time decrease
+  with unchanged measured coverage.
+
+## 2026-09-20 - Session 010: transport (M2) + loopback WS test server
+
+- Trigger: M2 milestone + issue-debt round (#25 Dependabot, #19 fuzz corpus
+  persistence, #24 TOCTOU avoidance).
+- Findings: (1) NUnit's `Throws.InvalidOperationException` is an *exact*
+  type constraint - derived exception types fail it; assert
+  `Throws.Exception.InstanceOf<T>()` when the contract means the base type.
+  (2) Loopback test servers must hand off connections via a
+  cancellation-safe primitive (semaphore + queue): waiter-TCS handoffs lose
+  connections when the waiter registers after the accept, and stale waiters
+  from timed-out tests steal later connections. (3) `ClientWebSocket`
+  cannot read upgrade-response headers, so the
+  `x-signal-fish-max-outbound-message-size` value must come from the
+  pre-connect `client-config` HTTP probe on .NET; the header path is only
+  usable by browser transports (M7). (4) RFC 6455 close codes are
+  1000-4999: tests must not assert out-of-range codes like 5999 - .NET
+  rejects the frame and the transport correctly reports 1006. (5)
+  TOCTOU-free transport shape: CAS state transitions, single-reader/
+  single-writer claims, exactly-once close delivery, idempotent dispose.
+- Actions: M2.1/M2.2/M2.3 landed red-green (262 tests x 2 TFMs); #25/#19/#24
+  closed with evidence; #26/#20 triaged in comments; test-scoped CA2007/
+  CA2000/CA1031/CA5350 suppressions added to .editorconfig with rationale.
+- CI: `dotnet tool restore` deduped; Dependabot weekly; fuzz corpus persisted
+  across scheduled runs - PR CI flat-to-lower, coverage unchanged.

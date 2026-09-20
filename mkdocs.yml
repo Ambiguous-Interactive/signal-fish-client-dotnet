@@ -7,6 +7,7 @@ repo_name: signal-fish-client-dotnet
 
 nav:
   - Home: index.md
+  - Transport: transport.md
   - Performance baselines: benchmarks.md
 
 # The full theme/page set lands in M7.5; the skeleton uses stock mkdocs.

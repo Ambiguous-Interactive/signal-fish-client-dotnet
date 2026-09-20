@@ -43,6 +43,20 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # Persist the fuzz corpus (.fuzz/corpus + driver + crash artifacts)
+      # between scheduled runs, so each week continues from the last run's
+      # corpus instead of cold-starting from the 47 golden seeds. The key is
+      # unique per run (always saves on success); restore-keys restores the
+      # most recent corpus. The driver is SHA256-pinned on every run, so a
+      # restored cache is verified before use. Scheduled lane only — PR CI
+      # time stays flat.
+      - name: Restore fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: .fuzz
+          key: fuzz-corpus-linux-${{ github.run_id }}
+          restore-keys: fuzz-corpus-linux-
+
       - name: Run codec fuzz lane
         run: >
           pwsh -NoProfile -File scripts/fuzz-codec.ps1
