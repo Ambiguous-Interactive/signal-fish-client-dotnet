@@ -194,3 +194,32 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   tests on all cells), NuGet package cache added, `concurrency`
   cancel-in-progress added, reportgenerator moved to the tool manifest -
   net runner-time decrease with unchanged measured coverage.
+
+## 2026-09-20 - Session 009: SharpFuzz lane (M1.5) + CI trim
+
+- Trigger: M1 completion gate ("fuzz lane clean for 30 min CI run") plus the
+  CI-time objective.
+- Evidence: planted reader bug (throw on empty input) and writer bug
+  (dropped `"` escape) both crash their targets; two harness-expectation
+  bugs found and fixed by fuzzing; full-corpus unit suite, script
+  self-tests, and 150 s/target driver runs green (883k/841k execs).
+- Findings: (1) The libfuzzer-dotnet parent exits on a dead child WITHOUT
+  writing a crash artifact - fuzz hosts must dump crashing inputs themselves
+  before rethrowing. (2) pwsh native-arg parsing can mangle libFuzzer's
+  `-flag=value` tokens; pass them via a splatted argument array. (3)
+  Roundtrip identity is a per-component contract: verbatim payloads
+  roundtrip byte-exactly only when callers pass clean value tokens (the
+  reader canonically excludes insignificant whitespace; the writer never
+  edits bytes). (4) An envelope with no `data` member decodes to an empty
+  `Data` slice - payload `TryDecode` contracts cover data objects only.
+  (5) SharpFuzz publishes `SharpFuzz.Common.dll` separately; instrumentor
+  exclusions must be wildcard-matched, and publish output must be wiped
+  between runs or stale instrumented dlls fail the re-run.
+- Applied: FuzzTests project (reader/writer targets, crash self-dump,
+  frame-text diagnostics), `scripts/fuzz-codec.ps1` (pinned-by-hash driver,
+  manifest-pinned sharpfuzz, persistent `.fuzz/` corpus + crashes), weekly
+  `fuzz.yml` (PR CI untouched); `dotnet.yml` trimmed to one SDK + one TFM
+  build per cell with lints deduped to the coverage cell - measured
+  coverage unchanged.
+- Open: scheduled-run corpus persistence via actions/cache and crash
+  regression-corpus baseline land with M9.4.
