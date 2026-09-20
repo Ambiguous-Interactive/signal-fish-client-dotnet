@@ -19,19 +19,27 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public bool Equals(AuthorityRequestMessage other) => BecomeAuthority == other.BecomeAuthority;
+        public bool Equals(AuthorityRequestMessage other) =>
+            BecomeAuthority == other.BecomeAuthority;
 
         /// <inheritdoc />
-        public override bool Equals(object? obj) => obj is AuthorityRequestMessage other && Equals(other);
+        public override bool Equals(object? obj) =>
+            obj is AuthorityRequestMessage other && Equals(other);
 
         /// <inheritdoc />
         public override int GetHashCode() => BecomeAuthority.GetHashCode();
 
         /// <inheritdoc />
-        public static bool operator ==(AuthorityRequestMessage left, AuthorityRequestMessage right) => left.Equals(right);
+        public static bool operator ==(
+            AuthorityRequestMessage left,
+            AuthorityRequestMessage right
+        ) => left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(AuthorityRequestMessage left, AuthorityRequestMessage right) => !left.Equals(right);
+        public static bool operator !=(
+            AuthorityRequestMessage left,
+            AuthorityRequestMessage right
+        ) => !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of an <c>AuthorityRequest</c>
@@ -39,7 +47,10 @@ namespace SignalFish.Client.Protocol
         /// fields are skipped. Returns <see langword="false"/> for malformed
         /// input or a missing <c>become_authority</c> field.
         /// </summary>
-        internal static bool TryDecode(ReadOnlyMemory<byte> data, out AuthorityRequestMessage message)
+        internal static bool TryDecode(
+            ReadOnlyMemory<byte> data,
+            out AuthorityRequestMessage message
+        )
         {
             message = default;
             JsonScanner scanner = new JsonScanner(data.Span);
@@ -106,18 +117,23 @@ namespace SignalFish.Client.Protocol
             _connectionInfo.Span.SequenceEqual(other._connectionInfo.Span);
 
         /// <inheritdoc />
-        public override bool Equals(object? obj) => obj is ProvideConnectionInfoMessage other && Equals(other);
+        public override bool Equals(object? obj) =>
+            obj is ProvideConnectionInfoMessage other && Equals(other);
 
         /// <inheritdoc />
         public override int GetHashCode() => ProtocolHash.Of(_connectionInfo.Span);
 
         /// <inheritdoc />
-        public static bool operator ==(ProvideConnectionInfoMessage left, ProvideConnectionInfoMessage right) =>
-            left.Equals(right);
+        public static bool operator ==(
+            ProvideConnectionInfoMessage left,
+            ProvideConnectionInfoMessage right
+        ) => left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(ProvideConnectionInfoMessage left, ProvideConnectionInfoMessage right) =>
-            !left.Equals(right);
+        public static bool operator !=(
+            ProvideConnectionInfoMessage left,
+            ProvideConnectionInfoMessage right
+        ) => !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>ProvideConnectionInfo</c>
@@ -126,7 +142,10 @@ namespace SignalFish.Client.Protocol
         /// skipped. Returns <see langword="false"/> for malformed input or a
         /// missing <c>connection_info</c> object.
         /// </summary>
-        internal static bool TryDecode(ReadOnlyMemory<byte> data, out ProvideConnectionInfoMessage message)
+        internal static bool TryDecode(
+            ReadOnlyMemory<byte> data,
+            out ProvideConnectionInfoMessage message
+        )
         {
             message = default;
             JsonScanner scanner = new JsonScanner(data.Span);
@@ -145,7 +164,7 @@ namespace SignalFish.Client.Protocol
 
                 if (scanner.KeyIs(keyRaw, "connection_info"))
                 {
-                    if (!scanner.TryReadObjectSlice(data, valueRaw, out connectionInfo))
+                    if (!JsonScanner.TryReadObjectSlice(data, valueRaw, out connectionInfo))
                     {
                         return false;
                     }

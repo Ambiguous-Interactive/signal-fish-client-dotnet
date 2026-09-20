@@ -34,20 +34,30 @@ $pointerFiles = @(
     'CLAUDE.md',
     'AGENTS.md',
     'GEMINI.md',
-    '.cursor/rules/signal-fish.mdc',
     '.github/copilot-instructions.md',
     'llms.txt'
 )
 
+# The enforced scope of the .llm linters (mirrors lint-file-sizes.ps1's
+# Get-EnforcedPaths): .llm/** plus the pointer files plus every Cursor rule.
+# Every file a linter can reject must trigger the hook, or the hook blesses
+# commits CI rejects.
 $llmRelated = @($staged | Where-Object {
-        $_ -like '.llm/*' -or $pointerFiles -contains $_
+        $_ -like '.llm/*' -or $pointerFiles -contains $_ -or $_ -like '.cursor/rules/*.mdc'
     })
 
-$sizeTargets = @($staged | Where-Object {
-        $_ -like '.llm/*' -or $pointerFiles -contains $_
-    })
+$sizeTargets = $llmRelated
 
 $srcProjects = @($staged | Where-Object { $_ -like 'src/*.csproj' -or $_ -like 'src/**/*.csproj' })
+
+$srcCsFiles = @($staged | Where-Object { $_ -like 'src/*.cs' -or $_ -like 'src/**/*.cs' })
+
+# The LINQ linter rejects injected LINQ from project files too, so it gets
+# every staged src/ .cs and .csproj (it filters to its own accepted set).
+$linqTargets = @($srcCsFiles + $srcProjects)
+
+# Everything CSharpier formats (must match CI's `csharpier check .` scope).
+$formattableFiles = @($staged | Where-Object { $_ -match '\.(cs|csproj|props|targets|slnx)$' })
 
 function Invoke-LintStep {
     param([string]$ScriptPath, [hashtable]$Params = @{})
@@ -121,6 +131,44 @@ if ($srcProjects.Count -gt 0) {
         Write-Host 'pre-commit: zero-dependency lint failed. Run:' -ForegroundColor Red
         Write-Host '  pwsh -NoProfile -File scripts/lint-zero-dependencies.ps1' -ForegroundColor Red
         $failed = $true
+    }
+}
+
+if ($linqTargets.Count -gt 0) {
+    Write-Host 'pre-commit: enforcing the LINQ ban on src/ files...'
+    $linqLinter = Join-Path $repoRoot 'scripts/lint-no-linq.ps1'
+    $result = Invoke-LintStep -ScriptPath $linqLinter -Params @{ RepoRoot = $repoRoot; Paths = $linqTargets }
+    if ($result.ExitCode -ne 0) {
+        foreach ($line in $result.Output) { Write-Host "    | $line" }
+        Write-Host 'pre-commit: no-linq lint failed. Run:' -ForegroundColor Red
+        Write-Host '  pwsh -NoProfile -File scripts/lint-no-linq.ps1' -ForegroundColor Red
+        $failed = $true
+    }
+}
+
+if ($formattableFiles.Count -gt 0) {
+    Write-Host 'pre-commit: checking C# formatting (CSharpier)...'
+    & dotnet tool restore --verbosity quiet 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'pre-commit: dotnet tool restore failed (offline?). Restore the CSharpier' -ForegroundColor Red
+        Write-Host '  tool first (dotnet tool restore) or bypass once with --no-verify.' -ForegroundColor Red
+        $failed = $true
+    }
+    else {
+        $checked = & dotnet tool run csharpier -- check @formattableFiles 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $joined = (@($checked) | ForEach-Object { $_.ToString() }) -join "`n"
+            if ($joined -match 'Cannot find a tool') {
+                Write-Host 'pre-commit: CSharpier is not restored (missing .config/dotnet-tools.json entry).' -ForegroundColor Red
+                Write-Host '  Run: dotnet tool restore' -ForegroundColor Red
+            }
+            else {
+                foreach ($line in @($checked)) { Write-Host "    | $line" }
+                Write-Host 'pre-commit: formatting check failed. Run:' -ForegroundColor Red
+                Write-Host '  dotnet tool run csharpier -- format <files>' -ForegroundColor Red
+            }
+            $failed = $true
+        }
     }
 }
 

@@ -23,25 +23,39 @@ namespace SignalFish.Client.Protocol
     {
         private static readonly byte[] EnvelopeOpen = Encoding.ASCII.GetBytes("{\"type\": \"");
         private static readonly byte[] EnvelopeClosePlain = Encoding.ASCII.GetBytes("\"}");
-        private static readonly byte[] EnvelopeDataOpen = Encoding.ASCII.GetBytes("\", \"data\": {");
+        private static readonly byte[] EnvelopeDataOpen = Encoding.ASCII.GetBytes(
+            "\", \"data\": {"
+        );
 
         private static class TypeNames
         {
             internal static readonly byte[] Authenticate = Encoding.ASCII.GetBytes("Authenticate");
-            internal static readonly byte[] AuthorityRequest = Encoding.ASCII.GetBytes("AuthorityRequest");
+            internal static readonly byte[] AuthorityRequest = Encoding.ASCII.GetBytes(
+                "AuthorityRequest"
+            );
             internal static readonly byte[] GameData = Encoding.ASCII.GetBytes("GameData");
-            internal static readonly byte[] JoinAsSpectator = Encoding.ASCII.GetBytes("JoinAsSpectator");
+            internal static readonly byte[] JoinAsSpectator = Encoding.ASCII.GetBytes(
+                "JoinAsSpectator"
+            );
             internal static readonly byte[] JoinRoom = Encoding.ASCII.GetBytes("JoinRoom");
             internal static readonly byte[] LeaveRoom = Encoding.ASCII.GetBytes("LeaveRoom");
-            internal static readonly byte[] LeaveSpectator = Encoding.ASCII.GetBytes("LeaveSpectator");
+            internal static readonly byte[] LeaveSpectator = Encoding.ASCII.GetBytes(
+                "LeaveSpectator"
+            );
             internal static readonly byte[] Ping = Encoding.ASCII.GetBytes("Ping");
             internal static readonly byte[] PlayerReady = Encoding.ASCII.GetBytes("PlayerReady");
-            internal static readonly byte[] ProvideConnectionInfo = Encoding.ASCII.GetBytes("ProvideConnectionInfo");
+            internal static readonly byte[] ProvideConnectionInfo = Encoding.ASCII.GetBytes(
+                "ProvideConnectionInfo"
+            );
             internal static readonly byte[] Reconnect = Encoding.ASCII.GetBytes("Reconnect");
-            internal static readonly byte[] RoomOperation = Encoding.ASCII.GetBytes("RoomOperation");
+            internal static readonly byte[] RoomOperation = Encoding.ASCII.GetBytes(
+                "RoomOperation"
+            );
             internal static readonly byte[] Signal = Encoding.ASCII.GetBytes("Signal");
             internal static readonly byte[] StartGame = Encoding.ASCII.GetBytes("StartGame");
-            internal static readonly byte[] TransportStatus = Encoding.ASCII.GetBytes("TransportStatus");
+            internal static readonly byte[] TransportStatus = Encoding.ASCII.GetBytes(
+                "TransportStatus"
+            );
         }
 
         private static class FieldNames
@@ -49,12 +63,18 @@ namespace SignalFish.Client.Protocol
             internal static readonly byte[] AppId = Encoding.ASCII.GetBytes("app_id");
             internal static readonly byte[] AuthToken = Encoding.ASCII.GetBytes("auth_token");
             internal static readonly byte[] ConnectToken = Encoding.ASCII.GetBytes("connect_token");
-            internal static readonly byte[] BecomeAuthority = Encoding.ASCII.GetBytes("become_authority");
+            internal static readonly byte[] BecomeAuthority = Encoding.ASCII.GetBytes(
+                "become_authority"
+            );
             internal static readonly byte[] Class = Encoding.ASCII.GetBytes("class");
             internal static readonly byte[] Connected = Encoding.ASCII.GetBytes("connected");
-            internal static readonly byte[] ConnectionInfo = Encoding.ASCII.GetBytes("connection_info");
+            internal static readonly byte[] ConnectionInfo = Encoding.ASCII.GetBytes(
+                "connection_info"
+            );
             internal static readonly byte[] Data = Encoding.ASCII.GetBytes("data");
-            internal static readonly byte[] GameDataFormat = Encoding.ASCII.GetBytes("game_data_format");
+            internal static readonly byte[] GameDataFormat = Encoding.ASCII.GetBytes(
+                "game_data_format"
+            );
             internal static readonly byte[] GameName = Encoding.ASCII.GetBytes("game_name");
             internal static readonly byte[] Generation = Encoding.ASCII.GetBytes("generation");
             internal static readonly byte[] Key = Encoding.ASCII.GetBytes("key");
@@ -65,17 +85,31 @@ namespace SignalFish.Client.Protocol
             internal static readonly byte[] PlayerId = Encoding.ASCII.GetBytes("player_id");
             internal static readonly byte[] PlayerName = Encoding.ASCII.GetBytes("player_name");
             internal static readonly byte[] Platform = Encoding.ASCII.GetBytes("platform");
-            internal static readonly byte[] ProtocolVersion = Encoding.ASCII.GetBytes("protocol_version");
-            internal static readonly byte[] RequestedCapabilities = Encoding.ASCII.GetBytes("requested_capabilities");
+            internal static readonly byte[] ProtocolVersion = Encoding.ASCII.GetBytes(
+                "protocol_version"
+            );
+            internal static readonly byte[] RequestedCapabilities = Encoding.ASCII.GetBytes(
+                "requested_capabilities"
+            );
             internal static readonly byte[] RoomCode = Encoding.ASCII.GetBytes("room_code");
             internal static readonly byte[] RoomId = Encoding.ASCII.GetBytes("room_id");
-            internal static readonly byte[] RelayTransport = Encoding.ASCII.GetBytes("relay_transport");
+            internal static readonly byte[] RelayTransport = Encoding.ASCII.GetBytes(
+                "relay_transport"
+            );
             internal static readonly byte[] SdkVersion = Encoding.ASCII.GetBytes("sdk_version");
-            internal static readonly byte[] SupportsAuthority = Encoding.ASCII.GetBytes("supports_authority");
+            internal static readonly byte[] SupportsAuthority = Encoding.ASCII.GetBytes(
+                "supports_authority"
+            );
             internal static readonly byte[] SignalField = Encoding.ASCII.GetBytes("signal");
-            internal static readonly byte[] SpectatorName = Encoding.ASCII.GetBytes("spectator_name");
-            internal static readonly byte[] SupportedTopologies = Encoding.ASCII.GetBytes("supported_topologies");
-            internal static readonly byte[] SupportedTransports = Encoding.ASCII.GetBytes("supported_transports");
+            internal static readonly byte[] SpectatorName = Encoding.ASCII.GetBytes(
+                "spectator_name"
+            );
+            internal static readonly byte[] SupportedTopologies = Encoding.ASCII.GetBytes(
+                "supported_topologies"
+            );
+            internal static readonly byte[] SupportedTransports = Encoding.ASCII.GetBytes(
+                "supported_transports"
+            );
             internal static readonly byte[] To = Encoding.ASCII.GetBytes("to");
             internal static readonly byte[] Transport = Encoding.ASCII.GetBytes("transport");
             internal static readonly byte[] Type = Encoding.ASCII.GetBytes("type");
@@ -84,7 +118,10 @@ namespace SignalFish.Client.Protocol
         // --- v2 lifecycle -----------------------------------------------------
 
         /// <summary>Writes an <c>Authenticate</c> frame.</summary>
-        public static void WriteAuthenticate(IBufferWriter<byte> destination, in AuthenticateMessage message)
+        public static void WriteAuthenticate(
+            IBufferWriter<byte> destination,
+            in AuthenticateMessage message
+        )
         {
             if (destination is null)
             {
@@ -181,7 +218,10 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <summary>Writes a <c>JoinRoom</c> frame.</summary>
-        public static void WriteJoinRoom(IBufferWriter<byte> destination, in JoinRoomMessage message)
+        public static void WriteJoinRoom(
+            IBufferWriter<byte> destination,
+            in JoinRoomMessage message
+        )
         {
             if (destination is null)
             {
@@ -244,7 +284,10 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <summary>Writes a <c>JoinAsSpectator</c> frame.</summary>
-        public static void WriteJoinAsSpectator(IBufferWriter<byte> destination, in JoinAsSpectatorMessage message)
+        public static void WriteJoinAsSpectator(
+            IBufferWriter<byte> destination,
+            in JoinAsSpectatorMessage message
+        )
         {
             if (destination is null)
             {
@@ -284,7 +327,10 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <summary>Writes a <c>Reconnect</c> frame.</summary>
-        public static void WriteReconnect(IBufferWriter<byte> destination, in ReconnectMessage message)
+        public static void WriteReconnect(
+            IBufferWriter<byte> destination,
+            in ReconnectMessage message
+        )
         {
             if (destination is null)
             {
@@ -317,7 +363,10 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <summary>Writes an <c>AuthorityRequest</c> frame.</summary>
-        public static void WriteAuthorityRequest(IBufferWriter<byte> destination, in AuthorityRequestMessage message)
+        public static void WriteAuthorityRequest(
+            IBufferWriter<byte> destination,
+            in AuthorityRequestMessage message
+        )
         {
             if (destination is null)
             {
@@ -334,7 +383,10 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <summary>Writes a <c>ProvideConnectionInfo</c> frame.</summary>
-        public static void WriteProvideConnectionInfo(IBufferWriter<byte> destination, in ProvideConnectionInfoMessage message)
+        public static void WriteProvideConnectionInfo(
+            IBufferWriter<byte> destination,
+            in ProvideConnectionInfoMessage message
+        )
         {
             if (destination is null)
             {
@@ -393,7 +445,10 @@ namespace SignalFish.Client.Protocol
         /// <c>key</c>; <see cref="GameDataClass.Volatile"/> emits
         /// <c>class</c> only.
         /// </summary>
-        public static void WriteGameData(IBufferWriter<byte> destination, in GameDataMessage message)
+        public static void WriteGameData(
+            IBufferWriter<byte> destination,
+            in GameDataMessage message
+        )
         {
             if (destination is null)
             {
@@ -435,7 +490,10 @@ namespace SignalFish.Client.Protocol
         /// Writes a <c>RoomOperation</c> frame wrapping one room command
         /// with its correlation UUID.
         /// </summary>
-        public static void WriteRoomOperation(IBufferWriter<byte> destination, in RoomOperationMessage message)
+        public static void WriteRoomOperation(
+            IBufferWriter<byte> destination,
+            in RoomOperationMessage message
+        )
         {
             if (destination is null)
             {
@@ -495,7 +553,10 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <summary>Writes a v3 <c>TransportStatus</c> frame.</summary>
-        public static void WriteTransportStatus(IBufferWriter<byte> destination, in TransportStatusMessage message)
+        public static void WriteTransportStatus(
+            IBufferWriter<byte> destination,
+            in TransportStatusMessage message
+        )
         {
             if (destination is null)
             {
@@ -524,11 +585,15 @@ namespace SignalFish.Client.Protocol
         private static readonly byte[] JsonObjectOpen = { (byte)'{' };
         private static readonly byte[] JsonObjectClose = { (byte)'}' };
         private static readonly byte[] KickPlayerType = Encoding.ASCII.GetBytes("KickPlayer");
-        private static readonly byte[] RegenerateRoomCodeType = Encoding.ASCII.GetBytes("RegenerateRoomCode");
+        private static readonly byte[] RegenerateRoomCodeType = Encoding.ASCII.GetBytes(
+            "RegenerateRoomCode"
+        );
         private static readonly byte[] SetRoomAccessType = Encoding.ASCII.GetBytes("SetRoomAccess");
         private static readonly byte[] BanPlayerType = Encoding.ASCII.GetBytes("BanPlayer");
         private static readonly byte[] UnbanPlayerType = Encoding.ASCII.GetBytes("UnbanPlayer");
-        private static readonly byte[] TransferAuthorityType = Encoding.ASCII.GetBytes("TransferAuthority");
+        private static readonly byte[] TransferAuthorityType = Encoding.ASCII.GetBytes(
+            "TransferAuthority"
+        );
         private static readonly byte[] LatestClassToken = Encoding.ASCII.GetBytes("latest");
         private static readonly byte[] VolatileClassToken = Encoding.ASCII.GetBytes("volatile");
 
@@ -557,7 +622,10 @@ namespace SignalFish.Client.Protocol
         {
             if (string.IsNullOrEmpty(value))
             {
-                throw new ArgumentException($"The message must set \"{wireField}\" (a non-empty string).", "message");
+                throw new ArgumentException(
+                    $"The message must set \"{wireField}\" (a non-empty string).",
+                    nameof(value)
+                );
             }
         }
 
@@ -572,7 +640,9 @@ namespace SignalFish.Client.Protocol
             if (value.Length != 36)
             {
                 throw new ArgumentException(
-                    $"The message \"{wireField}\" must be a canonical 36-character hyphenated UUID.", "message");
+                    $"The message \"{wireField}\" must be a canonical 36-character hyphenated UUID.",
+                    nameof(value)
+                );
             }
 
             for (int i = 0; i < value.Length; i++)
@@ -583,13 +653,17 @@ namespace SignalFish.Client.Protocol
                     if (c != '-')
                     {
                         throw new ArgumentException(
-                            $"The message \"{wireField}\" must use the 8-4-4-4-12 hyphen layout.", "message");
+                            $"The message \"{wireField}\" must use the 8-4-4-4-12 hyphen layout.",
+                            nameof(value)
+                        );
                     }
                 }
                 else if (c is not ((>= '0' and <= '9') or (>= 'a' and <= 'f')))
                 {
                     throw new ArgumentException(
-                        $"The message \"{wireField}\" must be lowercase hexadecimal.", "message");
+                        $"The message \"{wireField}\" must be lowercase hexadecimal.",
+                        nameof(value)
+                    );
                 }
             }
         }
@@ -604,21 +678,27 @@ namespace SignalFish.Client.Protocol
             if (json.IsEmpty)
             {
                 throw new ArgumentException(
-                    $"The message must carry a non-empty UTF-8 JSON value for \"{wireField}\".", "message");
+                    $"The message must carry a non-empty UTF-8 JSON value for \"{wireField}\".",
+                    nameof(json)
+                );
             }
 
             JsonScanner scanner = new JsonScanner(json);
             if (scanner.ScanValueRaw(1, JsonScanner.MaxDepth, out _) != DecodeError.None)
             {
                 throw new ArgumentException(
-                    $"The message must carry a valid UTF-8 JSON value for \"{wireField}\".", "message");
+                    $"The message must carry a valid UTF-8 JSON value for \"{wireField}\".",
+                    nameof(json)
+                );
             }
 
             scanner.SkipWhitespace();
             if (!scanner.IsEof)
             {
                 throw new ArgumentException(
-                    $"The message \"{wireField}\" must carry exactly one JSON value.", "message");
+                    $"The message \"{wireField}\" must carry exactly one JSON value.",
+                    nameof(json)
+                );
             }
         }
 
@@ -628,7 +708,9 @@ namespace SignalFish.Client.Protocol
             if (json[0] != (byte)'{')
             {
                 throw new ArgumentException(
-                    $"The message must carry a UTF-8 JSON object for \"{wireField}\".", "message");
+                    $"The message must carry a UTF-8 JSON object for \"{wireField}\".",
+                    nameof(json)
+                );
             }
         }
 
@@ -638,17 +720,32 @@ namespace SignalFish.Client.Protocol
             {
                 case RoomOperationCommandKind.JoinRoom:
                     RequireText(command.JoinRoomPayload.GameName, "operation.JoinRoom.game_name");
-                    RequireText(command.JoinRoomPayload.PlayerName, "operation.JoinRoom.player_name");
+                    RequireText(
+                        command.JoinRoomPayload.PlayerName,
+                        "operation.JoinRoom.player_name"
+                    );
                     break;
                 case RoomOperationCommandKind.JoinAsSpectator:
-                    RequireText(command.JoinAsSpectatorPayload.GameName, "operation.JoinAsSpectator.game_name");
-                    RequireText(command.JoinAsSpectatorPayload.RoomCode, "operation.JoinAsSpectator.room_code");
-                    RequireText(command.JoinAsSpectatorPayload.SpectatorName, "operation.JoinAsSpectator.spectator_name");
+                    RequireText(
+                        command.JoinAsSpectatorPayload.GameName,
+                        "operation.JoinAsSpectator.game_name"
+                    );
+                    RequireText(
+                        command.JoinAsSpectatorPayload.RoomCode,
+                        "operation.JoinAsSpectator.room_code"
+                    );
+                    RequireText(
+                        command.JoinAsSpectatorPayload.SpectatorName,
+                        "operation.JoinAsSpectator.spectator_name"
+                    );
                     break;
                 case RoomOperationCommandKind.Reconnect:
                     RequireText(command.ReconnectPayload.PlayerId, "operation.Reconnect.player_id");
                     RequireText(command.ReconnectPayload.RoomId, "operation.Reconnect.room_id");
-                    RequireText(command.ReconnectPayload.AuthToken, "operation.Reconnect.auth_token");
+                    RequireText(
+                        command.ReconnectPayload.AuthToken,
+                        "operation.Reconnect.auth_token"
+                    );
                     break;
                 case RoomOperationCommandKind.KickPlayer:
                 case RoomOperationCommandKind.BanPlayer:
@@ -663,19 +760,33 @@ namespace SignalFish.Client.Protocol
         {
             switch (command.Kind)
             {
-                case RoomOperationCommandKind.JoinRoom: return TypeNames.JoinRoom;
-                case RoomOperationCommandKind.LeaveRoom: return TypeNames.LeaveRoom;
-                case RoomOperationCommandKind.Reconnect: return TypeNames.Reconnect;
-                case RoomOperationCommandKind.JoinAsSpectator: return TypeNames.JoinAsSpectator;
-                case RoomOperationCommandKind.LeaveSpectator: return TypeNames.LeaveSpectator;
-                case RoomOperationCommandKind.KickPlayer: return KickPlayerType;
-                case RoomOperationCommandKind.RegenerateRoomCode: return RegenerateRoomCodeType;
-                case RoomOperationCommandKind.SetRoomAccess: return SetRoomAccessType;
-                case RoomOperationCommandKind.BanPlayer: return BanPlayerType;
-                case RoomOperationCommandKind.UnbanPlayer: return UnbanPlayerType;
-                case RoomOperationCommandKind.TransferAuthority: return TransferAuthorityType;
+                case RoomOperationCommandKind.JoinRoom:
+                    return TypeNames.JoinRoom;
+                case RoomOperationCommandKind.LeaveRoom:
+                    return TypeNames.LeaveRoom;
+                case RoomOperationCommandKind.Reconnect:
+                    return TypeNames.Reconnect;
+                case RoomOperationCommandKind.JoinAsSpectator:
+                    return TypeNames.JoinAsSpectator;
+                case RoomOperationCommandKind.LeaveSpectator:
+                    return TypeNames.LeaveSpectator;
+                case RoomOperationCommandKind.KickPlayer:
+                    return KickPlayerType;
+                case RoomOperationCommandKind.RegenerateRoomCode:
+                    return RegenerateRoomCodeType;
+                case RoomOperationCommandKind.SetRoomAccess:
+                    return SetRoomAccessType;
+                case RoomOperationCommandKind.BanPlayer:
+                    return BanPlayerType;
+                case RoomOperationCommandKind.UnbanPlayer:
+                    return UnbanPlayerType;
+                case RoomOperationCommandKind.TransferAuthority:
+                    return TransferAuthorityType;
                 default:
-                    throw new ArgumentException($"Unknown room-operation kind: {command.Kind}.", nameof(command));
+                    throw new ArgumentException(
+                        $"Unknown room-operation kind: {command.Kind}.",
+                        nameof(command)
+                    );
             }
         }
 
@@ -683,7 +794,10 @@ namespace SignalFish.Client.Protocol
         /// Writes the optional <c>data</c> member of the wrapped command
         /// object, keeping the legacy command shapes byte-compatible.
         /// </summary>
-        private static void WriteCommandPayload(ref JsonWriter writer, in RoomOperationCommand command)
+        private static void WriteCommandPayload(
+            ref JsonWriter writer,
+            in RoomOperationCommand command
+        )
         {
             switch (command.Kind)
             {
@@ -792,7 +906,10 @@ namespace SignalFish.Client.Protocol
             }
         }
 
-        private static void WriteJoinAsSpectatorFields(ref JsonWriter writer, in JoinAsSpectatorMessage message)
+        private static void WriteJoinAsSpectatorFields(
+            ref JsonWriter writer,
+            in JoinAsSpectatorMessage message
+        )
         {
             writer.WriteKey(FieldNames.GameName);
             writer.WriteString(message.GameName);

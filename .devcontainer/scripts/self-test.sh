@@ -122,6 +122,30 @@ echo "== .NET toolchain (matches CI: 10.0.x + 8.0.x) =="
 check "dotnet SDK 10 present" bash -c 'dotnet --list-sdks | grep -q "^10\."'
 check "dotnet SDK 8 present" bash -c 'dotnet --list-sdks | grep -q "^8\."'
 
+echo "== nested toolchain invocations (pwsh arch-mismatch class) =="
+# Version smokes validate only the top-level apphost. The 2026-09-19
+# incident: a valid arm64 pwsh apphost on PATH with an x86-64 managed
+# payload behind it - direct invocations passed, but nested `& pwsh ...`
+# (what .githooks/pre-commit.ps1 uses for every lint step) died with
+# "exec format error" at commit time, uncatchable by CI (x64 runners).
+check "pwsh nested invocation works" \
+  bash -c "pwsh -NoProfile -Command '& pwsh -NoProfile -Command \"exit 0\"'"
+# Assert the ELF machine type of the resolved pwsh binary matches the host,
+# so an arch-mismatched install is named here instead of failing opaquely at
+# commit time (e_machine at ELF offset 18: 62 = x86-64, 183 = AArch64).
+# Repair for a mismatch: reinstall the official tarball matching
+# `uname -m` over the install prefix (see .llm/improvement-log.md 2026-09-19).
+check "pwsh binary architecture matches host" bash -c '
+  bin="$(readlink -f "$(command -v pwsh)")" || exit 1
+  [ -n "$bin" ] && [ -f "$bin" ] || exit 1
+  head -c 4 "$bin" | od -An -tx1 | grep -q "7f 45 4c 46" || exit 1  # \x7fELF
+  em="$(od -An -tu2 -j18 -N2 --endian=little "$bin" | tr -d "[:space:]")" || exit 1
+  case "$(uname -m)" in
+    x86_64) [ "$em" = "62" ] ;;
+    aarch64 | arm64) [ "$em" = "183" ] ;;
+    *) exit 0 ;;  # unknown host arch: the nested-invocation check is the guard
+  esac'
+
 echo "== agentic CLIs =="
 check "codex installed" bash -lc 'command -v codex'
 check "opencode installed" bash -lc 'command -v opencode'

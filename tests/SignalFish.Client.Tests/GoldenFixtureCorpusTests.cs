@@ -28,18 +28,27 @@ namespace SignalFish.Client.Tests
         [Test]
         public void Corpus_WithPinnedFiles_AreVendoredAndNonEmpty()
         {
-            Assert.That(Directory.Exists(GoldenDirectory), Is.True,
-                $"Golden fixtures missing from test output at {GoldenDirectory}.");
+            Assert.That(
+                Directory.Exists(GoldenDirectory),
+                Is.True,
+                $"Golden fixtures missing from test output at {GoldenDirectory}."
+            );
 
             foreach (string fileName in PinnedFixtureFiles)
             {
                 string path = Path.Combine(GoldenDirectory, fileName);
                 Assert.That(File.Exists(path), Is.True, $"Missing fixture: {fileName}.");
                 string[] lines = File.ReadAllLines(path);
-                Assert.That(lines.Count(IsEnvelopeLine), Is.GreaterThan(0),
-                    $"Fixture has no wire samples: {fileName}.");
-                Assert.That(lines.Where(l => !IsEnvelopeLine(l)), Is.Empty,
-                    $"Fixture has blank or whitespace-only lines (JSONL corruption): {fileName}.");
+                Assert.That(
+                    lines.Count(IsEnvelopeLine),
+                    Is.GreaterThan(0),
+                    $"Fixture has no wire samples: {fileName}."
+                );
+                Assert.That(
+                    lines.Where(l => !IsEnvelopeLine(l)),
+                    Is.Empty,
+                    $"Fixture has blank or whitespace-only lines (JSONL corruption): {fileName}."
+                );
             }
         }
 
@@ -70,14 +79,23 @@ namespace SignalFish.Client.Tests
 
                     using (doc)
                     {
-                        Assert.That(doc.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Object),
-                            $"{fileName}:{i + 1} must be a JSON object.");
-                        Assert.That(HasNonEmptyType(doc.RootElement), Is.True,
-                            $"{fileName}:{i + 1} must carry a non-empty string \"type\" discriminator.");
+                        Assert.That(
+                            doc.RootElement.ValueKind,
+                            Is.EqualTo(JsonValueKind.Object),
+                            $"{fileName}:{i + 1} must be a JSON object."
+                        );
+                        Assert.That(
+                            HasNonEmptyType(doc.RootElement),
+                            Is.True,
+                            $"{fileName}:{i + 1} must carry a non-empty string \"type\" discriminator."
+                        );
                         if (doc.RootElement.TryGetProperty("data", out JsonElement data))
                         {
-                            Assert.That(data.ValueKind, Is.EqualTo(JsonValueKind.Object),
-                                $"{fileName}:{i + 1} \"data\" must be an object when present.");
+                            Assert.That(
+                                data.ValueKind,
+                                Is.EqualTo(JsonValueKind.Object),
+                                $"{fileName}:{i + 1} \"data\" must be an object when present."
+                            );
                         }
                     }
                 }

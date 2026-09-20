@@ -14,6 +14,7 @@ Apply to most tasks in this repository.
 
 | Skill | When to Use |
 | --- | --- |
+| [add-quality-gate](./add-quality-gate/SKILL.md) | Add or modify repo lint/gate tooling (scripts/lint-*.ps1, pre-commit hook steps, CI check steps) with the three-scope contract - keep the linter's enforced set, the hook's trigger set, and CI's trigger set in lockstep so the hook can never bless a commit CI rejects. |
 | [address-pr-feedback](./address-pr-feedback/SKILL.md) | Fetch and resolve all PR feedback (human and bot) mechanically - pull reviews and inline comments via gh, verify every claim against the code, sweep for the failure class, fix red-green, and reply with a finding-to-fix map. |
 | [api-design](./api-design/SKILL.md) | Design the public C# API surface of the SignalFish.Client library. Use when adding or changing public types, methods, struct events, drain patterns, async signatures, disposal semantics, or anything visible to consumers of the NuGet package. |
 | [manage-skills](./manage-skills/SKILL.md) | Create, update, split, or remove agent skills in this repository (.llm/skills/<name>/SKILL.md folders). Use when adding a skill, changing a skill's trigger description, fixing a broken skills index, or when the 300-line limit forces a split. |

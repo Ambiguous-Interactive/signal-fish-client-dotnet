@@ -1,0 +1,17 @@
+<Project>
+    <!-- Repo-wide C# quality gate (issue #6): maximum warnings, warnings as
+       errors, and built-in Roslyn analyzers on every project. CI mirrors
+       this with `-warnaserror`; keeping it here makes local builds fail
+       exactly like CI. Analyzer noise belongs in .editorconfig, not in
+       per-project opt-outs. -->
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+        <WarningLevel>9999</WarningLevel>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <EnableNETAnalyzers>true</EnableNETAnalyzers>
+        <AnalysisLevel>latest-all</AnalysisLevel>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
+        <RunAnalyzersDuringLiveAnalysis>true</RunAnalyzersDuringLiveAnalysis>
+    </PropertyGroup>
+</Project>

@@ -25,7 +25,8 @@ namespace SignalFish.Client.Protocol
             ReadOnlyMemory<byte> data,
             string? typeText,
             DecodeError error,
-            int errorOffset)
+            int errorOffset
+        )
         {
             Kind = kind;
             Message = message;

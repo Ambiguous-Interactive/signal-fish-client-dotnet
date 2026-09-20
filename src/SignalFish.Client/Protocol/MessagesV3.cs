@@ -87,7 +87,8 @@ namespace SignalFish.Client.Protocol
             JoinAsSpectatorMessage joinAsSpectator = default,
             ReconnectMessage reconnect = default,
             string? playerId = null,
-            string? password = null)
+            string? password = null
+        )
         {
             Kind = kind;
             JoinRoomPayload = joinRoom;
@@ -110,8 +111,13 @@ namespace SignalFish.Client.Protocol
             new RoomOperationCommand(RoomOperationCommandKind.Reconnect, reconnect: reconnect);
 
         /// <summary>Wraps a spectator-join command.</summary>
-        public static RoomOperationCommand JoinAsSpectator(in JoinAsSpectatorMessage joinAsSpectator) =>
-            new RoomOperationCommand(RoomOperationCommandKind.JoinAsSpectator, joinAsSpectator: joinAsSpectator);
+        public static RoomOperationCommand JoinAsSpectator(
+            in JoinAsSpectatorMessage joinAsSpectator
+        ) =>
+            new RoomOperationCommand(
+                RoomOperationCommandKind.JoinAsSpectator,
+                joinAsSpectator: joinAsSpectator
+            );
 
         /// <summary>Wraps a leave-spectator command.</summary>
         public static RoomOperationCommand LeaveSpectator() =>
@@ -139,7 +145,10 @@ namespace SignalFish.Client.Protocol
 
         /// <summary>Wraps an authority-transfer command naming a seated player.</summary>
         public static RoomOperationCommand TransferAuthority(string playerId) =>
-            new RoomOperationCommand(RoomOperationCommandKind.TransferAuthority, playerId: playerId);
+            new RoomOperationCommand(
+                RoomOperationCommandKind.TransferAuthority,
+                playerId: playerId
+            );
 
         /// <inheritdoc />
         public bool Equals(RoomOperationCommand other)
@@ -152,19 +161,37 @@ namespace SignalFish.Client.Protocol
             return Kind switch
             {
                 RoomOperationCommandKind.JoinRoom => JoinRoomPayload.Equals(other.JoinRoomPayload),
-                RoomOperationCommandKind.JoinAsSpectator => JoinAsSpectatorPayload.Equals(other.JoinAsSpectatorPayload),
-                RoomOperationCommandKind.Reconnect => ReconnectPayload.Equals(other.ReconnectPayload),
-                RoomOperationCommandKind.SetRoomAccess => AuthenticateMessage.NullableStringEquals(Password, other.Password),
-                RoomOperationCommandKind.KickPlayer => AuthenticateMessage.NullableStringEquals(PlayerId, other.PlayerId),
-                RoomOperationCommandKind.BanPlayer => AuthenticateMessage.NullableStringEquals(PlayerId, other.PlayerId),
-                RoomOperationCommandKind.UnbanPlayer => AuthenticateMessage.NullableStringEquals(PlayerId, other.PlayerId),
-                RoomOperationCommandKind.TransferAuthority => AuthenticateMessage.NullableStringEquals(PlayerId, other.PlayerId),
+                RoomOperationCommandKind.JoinAsSpectator => JoinAsSpectatorPayload.Equals(
+                    other.JoinAsSpectatorPayload
+                ),
+                RoomOperationCommandKind.Reconnect => ReconnectPayload.Equals(
+                    other.ReconnectPayload
+                ),
+                RoomOperationCommandKind.SetRoomAccess => AuthenticateMessage.NullableStringEquals(
+                    Password,
+                    other.Password
+                ),
+                RoomOperationCommandKind.KickPlayer => AuthenticateMessage.NullableStringEquals(
+                    PlayerId,
+                    other.PlayerId
+                ),
+                RoomOperationCommandKind.BanPlayer => AuthenticateMessage.NullableStringEquals(
+                    PlayerId,
+                    other.PlayerId
+                ),
+                RoomOperationCommandKind.UnbanPlayer => AuthenticateMessage.NullableStringEquals(
+                    PlayerId,
+                    other.PlayerId
+                ),
+                RoomOperationCommandKind.TransferAuthority =>
+                    AuthenticateMessage.NullableStringEquals(PlayerId, other.PlayerId),
                 _ => true,
             };
         }
 
         /// <inheritdoc />
-        public override bool Equals(object? obj) => obj is RoomOperationCommand other && Equals(other);
+        public override bool Equals(object? obj) =>
+            obj is RoomOperationCommand other && Equals(other);
 
         /// <inheritdoc />
         public override int GetHashCode()
@@ -197,10 +224,12 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public static bool operator ==(RoomOperationCommand left, RoomOperationCommand right) => left.Equals(right);
+        public static bool operator ==(RoomOperationCommand left, RoomOperationCommand right) =>
+            left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(RoomOperationCommand left, RoomOperationCommand right) => !left.Equals(right);
+        public static bool operator !=(RoomOperationCommand left, RoomOperationCommand right) =>
+            !left.Equals(right);
 
         /// <summary>
         /// Decodes the wrapped <c>operation</c> value of a
@@ -253,7 +282,10 @@ namespace SignalFish.Client.Protocol
             switch (type)
             {
                 case "JoinRoom":
-                    if (!payloadSeen || !JoinRoomMessage.TryDecode(payload, out JoinRoomMessage joinRoom))
+                    if (
+                        !payloadSeen
+                        || !JoinRoomMessage.TryDecode(payload, out JoinRoomMessage joinRoom)
+                    )
                     {
                         return false;
                     }
@@ -264,7 +296,10 @@ namespace SignalFish.Client.Protocol
                     command = LeaveRoom();
                     return true;
                 case "Reconnect":
-                    if (!payloadSeen || !ReconnectMessage.TryDecode(payload, out ReconnectMessage reconnect))
+                    if (
+                        !payloadSeen
+                        || !ReconnectMessage.TryDecode(payload, out ReconnectMessage reconnect)
+                    )
                     {
                         return false;
                     }
@@ -272,8 +307,13 @@ namespace SignalFish.Client.Protocol
                     command = Reconnect(reconnect);
                     return true;
                 case "JoinAsSpectator":
-                    if (!payloadSeen
-                        || !JoinAsSpectatorMessage.TryDecode(payload, out JoinAsSpectatorMessage joinAsSpectator))
+                    if (
+                        !payloadSeen
+                        || !JoinAsSpectatorMessage.TryDecode(
+                            payload,
+                            out JoinAsSpectatorMessage joinAsSpectator
+                        )
+                    )
                     {
                         return false;
                     }
@@ -284,24 +324,44 @@ namespace SignalFish.Client.Protocol
                     command = LeaveSpectator();
                     return true;
                 case "KickPlayer":
-                    return TryDecodePlayerId(payload, RoomOperationCommandKind.KickPlayer, out command);
+                    return TryDecodePlayerId(
+                        payload,
+                        RoomOperationCommandKind.KickPlayer,
+                        out command
+                    );
                 case "RegenerateRoomCode":
                     command = RegenerateRoomCode();
                     return true;
                 case "SetRoomAccess":
                     return TryDecodePassword(payload, out command);
                 case "BanPlayer":
-                    return TryDecodePlayerId(payload, RoomOperationCommandKind.BanPlayer, out command);
+                    return TryDecodePlayerId(
+                        payload,
+                        RoomOperationCommandKind.BanPlayer,
+                        out command
+                    );
                 case "UnbanPlayer":
-                    return TryDecodePlayerId(payload, RoomOperationCommandKind.UnbanPlayer, out command);
+                    return TryDecodePlayerId(
+                        payload,
+                        RoomOperationCommandKind.UnbanPlayer,
+                        out command
+                    );
                 case "TransferAuthority":
-                    return TryDecodePlayerId(payload, RoomOperationCommandKind.TransferAuthority, out command);
+                    return TryDecodePlayerId(
+                        payload,
+                        RoomOperationCommandKind.TransferAuthority,
+                        out command
+                    );
                 default:
                     return false;
             }
         }
 
-        private static bool TryDecodePlayerId(ReadOnlyMemory<byte> data, RoomOperationCommandKind kind, out RoomOperationCommand command)
+        private static bool TryDecodePlayerId(
+            ReadOnlyMemory<byte> data,
+            RoomOperationCommandKind kind,
+            out RoomOperationCommand command
+        )
         {
             command = default;
             JsonScanner scanner = new JsonScanner(data.Span);
@@ -343,7 +403,10 @@ namespace SignalFish.Client.Protocol
             return true;
         }
 
-        private static bool TryDecodePassword(ReadOnlyMemory<byte> data, out RoomOperationCommand command)
+        private static bool TryDecodePassword(
+            ReadOnlyMemory<byte> data,
+            out RoomOperationCommand command
+        )
         {
             command = default;
             JsonScanner scanner = new JsonScanner(data.Span);
@@ -416,7 +479,8 @@ namespace SignalFish.Client.Protocol
             && Command.Equals(other.Command);
 
         /// <inheritdoc />
-        public override bool Equals(object? obj) => obj is RoomOperationMessage other && Equals(other);
+        public override bool Equals(object? obj) =>
+            obj is RoomOperationMessage other && Equals(other);
 
         /// <inheritdoc />
         public override int GetHashCode()
@@ -428,10 +492,12 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public static bool operator ==(RoomOperationMessage left, RoomOperationMessage right) => left.Equals(right);
+        public static bool operator ==(RoomOperationMessage left, RoomOperationMessage right) =>
+            left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(RoomOperationMessage left, RoomOperationMessage right) => !left.Equals(right);
+        public static bool operator !=(RoomOperationMessage left, RoomOperationMessage right) =>
+            !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>RoomOperation</c> envelope
@@ -466,7 +532,7 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "operation"))
                 {
-                    if (!scanner.TryReadObjectSlice(data, valueRaw, out operation))
+                    if (!JsonScanner.TryReadObjectSlice(data, valueRaw, out operation))
                     {
                         return false;
                     }
@@ -477,10 +543,12 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (state != JsonMemberState.EndObject
+            if (
+                state != JsonMemberState.EndObject
                 || operationId is null
                 || !operationSeen
-                || !RoomOperationCommand.TryDecode(operation, out RoomOperationCommand command))
+                || !RoomOperationCommand.TryDecode(operation, out RoomOperationCommand command)
+            )
             {
                 return false;
             }
@@ -542,10 +610,12 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public static bool operator ==(SignalMessage left, SignalMessage right) => left.Equals(right);
+        public static bool operator ==(SignalMessage left, SignalMessage right) =>
+            left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(SignalMessage left, SignalMessage right) => !left.Equals(right);
+        public static bool operator !=(SignalMessage left, SignalMessage right) =>
+            !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>Signal</c> envelope (the
@@ -560,7 +630,8 @@ namespace SignalFish.Client.Protocol
             JsonScanner scanner = new JsonScanner(data.Span);
             JsonMemberState state = scanner.BeginObject();
 
-            string? to = null, generation = null;
+            string? to = null,
+                generation = null;
             ReadOnlyMemory<byte> signal = default;
             bool signalSeen = false;
 
@@ -596,7 +667,12 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (state != JsonMemberState.EndObject || to is null || generation is null || !signalSeen)
+            if (
+                state != JsonMemberState.EndObject
+                || to is null
+                || generation is null
+                || !signalSeen
+            )
             {
                 return false;
             }
@@ -632,7 +708,8 @@ namespace SignalFish.Client.Protocol
             && Connected == other.Connected;
 
         /// <inheritdoc />
-        public override bool Equals(object? obj) => obj is TransportStatusMessage other && Equals(other);
+        public override bool Equals(object? obj) =>
+            obj is TransportStatusMessage other && Equals(other);
 
         /// <inheritdoc />
         public override int GetHashCode()
@@ -644,10 +721,12 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public static bool operator ==(TransportStatusMessage left, TransportStatusMessage right) => left.Equals(right);
+        public static bool operator ==(TransportStatusMessage left, TransportStatusMessage right) =>
+            left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(TransportStatusMessage left, TransportStatusMessage right) => !left.Equals(right);
+        public static bool operator !=(TransportStatusMessage left, TransportStatusMessage right) =>
+            !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>TransportStatus</c>
@@ -655,7 +734,10 @@ namespace SignalFish.Client.Protocol
         /// fields are skipped. Returns <see langword="false"/> for malformed
         /// input or a missing required field.
         /// </summary>
-        internal static bool TryDecode(ReadOnlyMemory<byte> data, out TransportStatusMessage message)
+        internal static bool TryDecode(
+            ReadOnlyMemory<byte> data,
+            out TransportStatusMessage message
+        )
         {
             message = default;
             JsonScanner scanner = new JsonScanner(data.Span);

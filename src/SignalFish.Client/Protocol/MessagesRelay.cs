@@ -37,9 +37,7 @@ namespace SignalFish.Client.Protocol
         /// </summary>
         /// <param name="payload">The game-data JSON value, as UTF-8 bytes.</param>
         public GameDataMessage(ReadOnlyMemory<byte> payload)
-            : this(payload, GameDataClass.Reliable, key: 0)
-        {
-        }
+            : this(payload, GameDataClass.Reliable, key: 0) { }
 
         /// <summary>
         /// Initializes a new classified <see cref="GameDataMessage"/>. The
@@ -51,7 +49,11 @@ namespace SignalFish.Client.Protocol
         /// <param name="payload">The game-data JSON value, as UTF-8 bytes.</param>
         /// <param name="classification">The v3 delivery class.</param>
         /// <param name="key">The sender-defined coalescing key (used by <see cref="GameDataClass.Latest"/> only).</param>
-        public GameDataMessage(ReadOnlyMemory<byte> payload, GameDataClass classification, uint key = 0)
+        public GameDataMessage(
+            ReadOnlyMemory<byte> payload,
+            GameDataClass classification,
+            uint key = 0
+        )
         {
             _payload = payload;
             Class = classification;
@@ -90,10 +92,12 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public static bool operator ==(GameDataMessage left, GameDataMessage right) => left.Equals(right);
+        public static bool operator ==(GameDataMessage left, GameDataMessage right) =>
+            left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(GameDataMessage left, GameDataMessage right) => !left.Equals(right);
+        public static bool operator !=(GameDataMessage left, GameDataMessage right) =>
+            !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>GameData</c> envelope (the

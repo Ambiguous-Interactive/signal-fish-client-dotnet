@@ -243,3 +243,44 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 - Actions: applied in this change set (ref-passing helpers, explicit
   branching in `TryDecodePassword`); follow-up: fold rules (1)+(2) into the
   json-serialization skill when it is next edited (300-line cap applies).
+
+## 2026-09-20 - repo quality round: analyzers, LINQ ban, CSharpier, nested-pwsh self-test
+
+- Trigger: issue debt round (#5 CSharpier, #6 max warnings + analyzers,
+  #7 zero-alloc enforcement, #12 devcontainer nested-invocation self-test).
+- Findings: (1) `Directory.Build.props` conditions cannot see properties set
+  in the csproj body (`IsTestProject`) - conditional NoWarn must live in
+  `Directory.Build.targets`. (2) `latest-all` analyzer set + NUnit requires
+  three test-scoped suppressions (underscore names CA1707, framework-guaranteed
+  args CA1062, public classes CA1515); byte-backed wire enums (CA1028) and the
+  non-compared hot-path event struct (CA1815) are perf-intentional and are
+  suppressed in `.editorconfig` with rationale. (3) The reader had no
+  allocation gate; the corpus-wide steady-state gate (min delta over 4 passes,
+  0 B) now covers decode; red-checked with a planted allocation. (4) LINQ ban
+  is enforced as a repo-conventional PowerShell linter (BannedApiAnalyzers
+  would violate the zero-PackageReference rule for src/). (5) Version smokes
+  cannot catch arch-mismatched nested binaries; the self-test now runs the
+  real nested `& pwsh` invocation and asserts the ELF e_machine (od, offset
+  18) matches `uname -m`.
+- Actions: applied in this change set; CI nets a time *decrease* (coverage
+  collection trimmed to the Linux cells that consume it).
+
+## 2026-09-20 - PR #14 feedback round: gate scope mismatch class (hook vs linter vs CI)
+
+- Trigger: Cursor Bugbot on PR #14 - the pre-commit hook forwarded only
+  staged `src/**/*.cs` to the LINQ linter, so a staged src `.csproj`
+  injecting `<Using Include="System.Linq" />` (an input the linter had
+  learned to reject) was blessed locally and failed in CI.
+- Findings: (1) the class generalizes - a gate is enforced in three scopes
+  (linter default-mode enforced set, hook staged-file selector, CI
+  trigger); the hook must be a superset of the enforced set's accepted
+  inputs. (2) Sibling sweep found a second instance: lint-file-sizes
+  enforces every `.cursor/rules/*.mdc` but the hook knew only one pointer
+  file. (3) Hook self-test cases share the git index - staged files
+  accumulate, so an earlier violating file makes later cases pass for the
+  wrong reason; each case must `git reset -q` first (this masked the
+  .csproj case on the first red run).
+- Actions: both selectors fixed and red-green tested (4 new assertions in
+  test-pre-commit.ps1); knowledge captured as a new skill
+  `.llm/skills/add-quality-gate/` plus a sweep-table row in
+  address-pr-feedback.

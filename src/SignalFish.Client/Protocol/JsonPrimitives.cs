@@ -180,7 +180,8 @@ namespace SignalFish.Client.Protocol
         /// Validates and consumes any JSON value at the current position,
         /// tracking nesting depth against <paramref name="maxDepth"/>.
         /// </summary>
-        internal DecodeError ScanValue(int depth, int maxDepth) => ScanValueRaw(depth, maxDepth, out _);
+        internal DecodeError ScanValue(int depth, int maxDepth) =>
+            ScanValueRaw(depth, maxDepth, out _);
 
         /// <summary>
         /// Validates and consumes any JSON value at the current position and
@@ -212,7 +213,11 @@ namespace SignalFish.Client.Protocol
                 case (byte)'n':
                 {
                     int start = _pos;
-                    DecodeError literal = ScanLiteral(_buf[_pos] == (byte)'t' ? "true" : _buf[_pos] == (byte)'f' ? "false" : "null");
+                    DecodeError literal = ScanLiteral(
+                        _buf[_pos] == (byte)'t' ? "true"
+                        : _buf[_pos] == (byte)'f' ? "false"
+                        : "null"
+                    );
                     if (literal == DecodeError.None)
                     {
                         raw = start.._pos;
@@ -343,7 +348,8 @@ namespace SignalFish.Client.Protocol
                 return true;
             }
 
-            Span<byte> name = asciiName.Length <= 64 ? stackalloc byte[64] : new byte[asciiName.Length];
+            Span<byte> name =
+                asciiName.Length <= 64 ? stackalloc byte[64] : new byte[asciiName.Length];
             for (int i = 0; i < asciiName.Length; i++)
             {
                 name[i] = (byte)asciiName[i];
@@ -429,7 +435,11 @@ namespace SignalFish.Client.Protocol
         /// Returns a scanned value as a verbatim JSON object slice of
         /// <paramref name="data"/> (no re-encode; passthrough contract).
         /// </summary>
-        internal bool TryReadObjectSlice(ReadOnlyMemory<byte> data, Range valueRaw, out ReadOnlyMemory<byte> slice)
+        internal static bool TryReadObjectSlice(
+            ReadOnlyMemory<byte> data,
+            Range valueRaw,
+            out ReadOnlyMemory<byte> slice
+        )
         {
             (int Offset, int Length) s = valueRaw.GetOffsetAndLength(data.Length);
             slice = default;
@@ -446,7 +456,11 @@ namespace SignalFish.Client.Protocol
         /// Reads a scanned value that must be a JSON array of strings into a
         /// list (decode path; allocates the result and its strings).
         /// </summary>
-        internal bool TryReadStringArray(ReadOnlyMemory<byte> data, Range valueRaw, out IReadOnlyList<string>? values)
+        internal static bool TryReadStringArray(
+            ReadOnlyMemory<byte> data,
+            Range valueRaw,
+            out IReadOnlyList<string>? values
+        )
         {
             values = null;
             (int Offset, int Length) s = valueRaw.GetOffsetAndLength(data.Length);
@@ -473,14 +487,21 @@ namespace SignalFish.Client.Protocol
                 while (true)
                 {
                     scanner.SkipWhitespace();
-                    if (scanner.ScanStringRaw(out Range element, out bool hasEscapes) != DecodeError.None)
+                    if (
+                        scanner.ScanStringRaw(out Range element, out bool hasEscapes)
+                        != DecodeError.None
+                    )
                     {
                         return false;
                     }
 
                     (int EOffset, int ELength) e = element.GetOffsetAndLength(s.Length);
-                    list.Add(MaterializeString(
-                        data.Span.Slice(s.Offset + e.EOffset + 1, e.ELength - 2), hasEscapes));
+                    list.Add(
+                        MaterializeString(
+                            data.Span.Slice(s.Offset + e.EOffset + 1, e.ELength - 2),
+                            hasEscapes
+                        )
+                    );
                     scanner.SkipWhitespace();
                     byte next = scanner.Peek;
                     if (next == (byte)',')
@@ -516,7 +537,11 @@ namespace SignalFish.Client.Protocol
         /// name. Known names are plain ASCII, so only escapes that resolve to
         /// single ASCII bytes can match.
         /// </summary>
-        internal static bool KeyEquals(ReadOnlySpan<byte> keyInner, bool hasEscapes, ReadOnlySpan<byte> asciiName)
+        internal static bool KeyEquals(
+            ReadOnlySpan<byte> keyInner,
+            bool hasEscapes,
+            ReadOnlySpan<byte> asciiName
+        )
         {
             if (!hasEscapes)
             {
@@ -582,7 +607,10 @@ namespace SignalFish.Client.Protocol
                     continue;
                 }
 
-                written += AppendUtf8Segment(inner.Slice(segmentStart, i - segmentStart), chars.Slice(written));
+                written += AppendUtf8Segment(
+                    inner.Slice(segmentStart, i - segmentStart),
+                    chars.Slice(written)
+                );
                 int scalar = DecodeEscapeScalar(inner, ref i);
                 chars[written++] = scalar >= 0 ? (char)scalar : '?';
                 segmentStart = i;
@@ -620,14 +648,22 @@ namespace SignalFish.Client.Protocol
             index += 2;
             switch (e)
             {
-                case (byte)'"': return (byte)'"';
-                case (byte)'\\': return (byte)'\\';
-                case (byte)'/': return (byte)'/';
-                case (byte)'b': return 0x08;
-                case (byte)'f': return 0x0C;
-                case (byte)'n': return 0x0A;
-                case (byte)'r': return 0x0D;
-                case (byte)'t': return 0x09;
+                case (byte)'"':
+                    return (byte)'"';
+                case (byte)'\\':
+                    return (byte)'\\';
+                case (byte)'/':
+                    return (byte)'/';
+                case (byte)'b':
+                    return 0x08;
+                case (byte)'f':
+                    return 0x0C;
+                case (byte)'n':
+                    return 0x0A;
+                case (byte)'r':
+                    return 0x0D;
+                case (byte)'t':
+                    return 0x09;
                 case (byte)'u':
                     if (index + 4 > keyInner.Length)
                     {
@@ -658,14 +694,22 @@ namespace SignalFish.Client.Protocol
             index += 2;
             switch (e)
             {
-                case (byte)'"': return '"';
-                case (byte)'\\': return '\\';
-                case (byte)'/': return '/';
-                case (byte)'b': return '\b';
-                case (byte)'f': return '\f';
-                case (byte)'n': return '\n';
-                case (byte)'r': return '\r';
-                case (byte)'t': return '\t';
+                case (byte)'"':
+                    return '"';
+                case (byte)'\\':
+                    return '\\';
+                case (byte)'/':
+                    return '/';
+                case (byte)'b':
+                    return '\b';
+                case (byte)'f':
+                    return '\f';
+                case (byte)'n':
+                    return '\n';
+                case (byte)'r':
+                    return '\r';
+                case (byte)'t':
+                    return '\t';
                 case (byte)'u':
                     if (index + 4 > inner.Length)
                     {
@@ -705,7 +749,14 @@ namespace SignalFish.Client.Protocol
         }
 
         private static readonly byte[] TrueLiteral = { (byte)'t', (byte)'r', (byte)'u', (byte)'e' };
-        private static readonly byte[] FalseLiteral = { (byte)'f', (byte)'a', (byte)'l', (byte)'s', (byte)'e' };
+        private static readonly byte[] FalseLiteral =
+        {
+            (byte)'f',
+            (byte)'a',
+            (byte)'l',
+            (byte)'s',
+            (byte)'e',
+        };
         private static readonly byte[] NullLiteral = { (byte)'n', (byte)'u', (byte)'l', (byte)'l' };
 
         /// <summary>
@@ -988,7 +1039,8 @@ namespace SignalFish.Client.Protocol
             }
 
             int required;
-            byte lo = 0x80, hi = 0xBF;
+            byte lo = 0x80,
+                hi = 0xBF;
             switch (lead)
             {
                 case >= 0xC2 and <= 0xDF:
@@ -1048,9 +1100,9 @@ namespace SignalFish.Client.Protocol
         internal static bool IsDigit(byte b) => b >= (byte)'0' && b <= (byte)'9';
 
         internal static bool IsHex(byte b) =>
-            (b >= (byte)'0' && b <= (byte)'9') ||
-            (b >= (byte)'a' && b <= (byte)'f') ||
-            (b >= (byte)'A' && b <= (byte)'F');
+            (b >= (byte)'0' && b <= (byte)'9')
+            || (b >= (byte)'a' && b <= (byte)'f')
+            || (b >= (byte)'A' && b <= (byte)'F');
     }
 
     /// <summary>
@@ -1181,7 +1233,10 @@ namespace SignalFish.Client.Protocol
                 {
                     scratch[0] = c;
                     Ensure(3);
-                    _pos += System.Text.Encoding.UTF8.GetBytes(scratch.Slice(0, 1), _span.Slice(_pos));
+                    _pos += System.Text.Encoding.UTF8.GetBytes(
+                        scratch.Slice(0, 1),
+                        _span.Slice(_pos)
+                    );
                     i++;
                 }
             }
@@ -1223,7 +1278,9 @@ namespace SignalFish.Client.Protocol
                     WriteBytes(CommaSpace);
                 }
 
-                WriteString(values[i] ?? throw new ArgumentException("Array elements must not be null."));
+                WriteString(
+                    values[i] ?? throw new ArgumentException("Array elements must not be null.")
+                );
             }
 
             WriteByte((byte)']');
@@ -1238,8 +1295,7 @@ namespace SignalFish.Client.Protocol
             {
                 digits[len++] = (byte)('0' + (value % 10));
                 value /= 10;
-            }
-            while (value != 0);
+            } while (value != 0);
 
             while (len > 0)
             {
@@ -1268,12 +1324,20 @@ namespace SignalFish.Client.Protocol
 
         private static readonly byte[] ColonSpace = { (byte)':', (byte)' ' };
         private static readonly byte[] TrueLiteral = { (byte)'t', (byte)'r', (byte)'u', (byte)'e' };
-        private static readonly byte[] FalseLiteral = { (byte)'f', (byte)'a', (byte)'l', (byte)'s', (byte)'e' };
+        private static readonly byte[] FalseLiteral =
+        {
+            (byte)'f',
+            (byte)'a',
+            (byte)'l',
+            (byte)'s',
+            (byte)'e',
+        };
         private static readonly byte[] NullLiteral = { (byte)'n', (byte)'u', (byte)'l', (byte)'l' };
 
         private static bool NeedsEscape(byte b) => b < 0x20 || b == (byte)'"' || b == (byte)'\\';
 
-        private static bool NeedsEscapeChar(char c) => c < 0x20 || c == '"' || c == '\\' || c >= 0x80;
+        private static bool NeedsEscapeChar(char c) =>
+            c < 0x20 || c == '"' || c == '\\' || c >= 0x80;
 
         private void WriteEscaped(byte b)
         {
@@ -1327,4 +1391,3 @@ namespace SignalFish.Client.Protocol
         }
     }
 }
-

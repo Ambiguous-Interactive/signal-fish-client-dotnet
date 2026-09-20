@@ -22,6 +22,20 @@ dotnet_diagnostic.IDE0008.severity = error
 csharp_using_directive_placement = inside_namespace:error
 dotnet_diagnostic.IDE0065.severity = error
 
+# Wire-protocol conventions (scoped to src/SignalFish.Client/Protocol/ so
+# other code still gets checked):
+# - CA1028 (enums should be Int32): the protocol enums (MessageKind,
+#   EnvelopeEventKind, DecodeError, delivery classes, room-op kinds) are
+#   deliberately byte-backed: they live inside hot-path structs and ring
+#   buffers where cache density is the point (locked zero-alloc budget).
+# - CA1815 (override Equals/== on public structs): EnvelopeEvent is a
+#   hot-path struct consumed via DrainEvents; it is never compared, so
+#   operator/Equals overrides would be dead weight on the allocation-free
+#   path.
+[src/SignalFish.Client/Protocol/*.cs]
+dotnet_diagnostic.CA1028.severity = none
+dotnet_diagnostic.CA1815.severity = none
+
 [*.md]
 trim_trailing_whitespace = false
 
