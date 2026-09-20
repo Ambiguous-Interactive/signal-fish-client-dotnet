@@ -7,9 +7,9 @@ namespace SignalFish.Client.Core
     {
         private SessionEvent(SessionEventKind kind, Guid playerId, RoomMembership membership)
         {
-            this.Kind = kind;
-            this.PlayerId = playerId;
-            this.Membership = membership;
+            Kind = kind;
+            PlayerId = playerId;
+            Membership = membership;
         }
 
         /// <summary>The session fact that happened.</summary>
@@ -51,14 +51,14 @@ namespace SignalFish.Client.Core
 
         public bool Equals(SessionEvent other)
         {
-            return this.Kind == other.Kind
-                && this.PlayerId == other.PlayerId
-                && this.Membership == other.Membership;
+            return Kind == other.Kind
+                && PlayerId == other.PlayerId
+                && Membership == other.Membership;
         }
 
         public override bool Equals(object obj)
         {
-            return obj is SessionEvent other && this.Equals(other);
+            return obj is SessionEvent other && Equals(other);
         }
 
         public override int GetHashCode()
@@ -66,9 +66,9 @@ namespace SignalFish.Client.Core
             unchecked
             {
                 int hash = 17;
-                hash = (hash * 31) + (int)this.Kind;
-                hash = (hash * 31) + this.PlayerId.GetHashCode();
-                hash = (hash * 31) + this.Membership.GetHashCode();
+                hash = (hash * 31) + (int)Kind;
+                hash = (hash * 31) + PlayerId.GetHashCode();
+                hash = (hash * 31) + Membership.GetHashCode();
                 return hash;
             }
         }

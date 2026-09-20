@@ -12,10 +12,10 @@ namespace SignalFish.Client.Core
     {
         public RoomMembership(RoomRole role, Guid playerId, Guid roomId, string? roomCode)
         {
-            this.Role = role;
-            this.PlayerId = playerId;
-            this.RoomId = roomId;
-            this.RoomCode = roomCode;
+            Role = role;
+            PlayerId = playerId;
+            RoomId = roomId;
+            RoomCode = roomCode;
         }
 
         /// <summary>Confirmed role. Zero only in the absent membership.</summary>
@@ -33,7 +33,7 @@ namespace SignalFish.Client.Core
         /// <summary>True when a confirmed membership is present.</summary>
         public bool IsPresent
         {
-            get { return this.Role != RoomRole.None; }
+            get { return Role is RoomRole.Player or RoomRole.Spectator; }
         }
 
         public static bool operator ==(RoomMembership left, RoomMembership right)
@@ -48,15 +48,15 @@ namespace SignalFish.Client.Core
 
         public bool Equals(RoomMembership other)
         {
-            return this.Role == other.Role
-                && this.PlayerId == other.PlayerId
-                && this.RoomId == other.RoomId
-                && string.Equals(this.RoomCode, other.RoomCode, StringComparison.Ordinal);
+            return Role == other.Role
+                && PlayerId == other.PlayerId
+                && RoomId == other.RoomId
+                && string.Equals(RoomCode, other.RoomCode, StringComparison.Ordinal);
         }
 
         public override bool Equals(object obj)
         {
-            return obj is RoomMembership other && this.Equals(other);
+            return obj is RoomMembership other && Equals(other);
         }
 
         public override int GetHashCode()
@@ -64,10 +64,10 @@ namespace SignalFish.Client.Core
             unchecked
             {
                 int hash = 17;
-                hash = (hash * 31) + (int)this.Role;
-                hash = (hash * 31) + this.PlayerId.GetHashCode();
-                hash = (hash * 31) + this.RoomId.GetHashCode();
-                hash = (hash * 31) + (this.RoomCode?.GetHashCode(StringComparison.Ordinal) ?? 0);
+                hash = (hash * 31) + (int)Role;
+                hash = (hash * 31) + PlayerId.GetHashCode();
+                hash = (hash * 31) + RoomId.GetHashCode();
+                hash = (hash * 31) + (RoomCode?.GetHashCode(StringComparison.Ordinal) ?? 0);
                 return hash;
             }
         }

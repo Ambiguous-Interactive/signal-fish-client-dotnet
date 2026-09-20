@@ -11,14 +11,20 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     public enum GameDataClass : byte
     {
+        /// <summary>Sentinel for <c>default(GameDataClass)</c>; not a delivery class.</summary>
+        [Obsolete(
+            "This value only exists so the enum default (0) is not a delivery class. Construct GameDataMessage explicitly; the writer refuses an unset class."
+        )]
+        None = 0,
+
         /// <summary>Relay-floor delivery: preserve the message or close the slow recipient loudly. No wire metadata.</summary>
-        Reliable = 0,
+        Reliable = 1,
 
         /// <summary>Coalescing delivery: retain only the newest queued value for the message's key.</summary>
-        Latest = 1,
+        Latest = 2,
 
         /// <summary>Opportunistic delivery: never paces the sender.</summary>
-        Volatile = 2,
+        Volatile = 3,
     }
 
     /// <summary>

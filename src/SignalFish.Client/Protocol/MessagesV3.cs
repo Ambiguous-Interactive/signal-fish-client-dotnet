@@ -9,38 +9,44 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     public enum RoomOperationCommandKind : byte
     {
+        /// <summary>Sentinel for <c>default(RoomOperationCommandKind)</c>; not a command.</summary>
+        [Obsolete(
+            "This value only exists so the enum default (0) is not a valid command. Build operations through the RoomOperation factories."
+        )]
+        None = 0,
+
         /// <summary>Join or create a room (full <see cref="JoinRoomMessage"/> payload).</summary>
-        JoinRoom = 0,
+        JoinRoom = 1,
 
         /// <summary>Leave the current room (no payload).</summary>
-        LeaveRoom = 1,
+        LeaveRoom = 2,
 
         /// <summary>Resume a seat with the server-issued token (full <see cref="ReconnectMessage"/> payload).</summary>
-        Reconnect = 2,
+        Reconnect = 3,
 
         /// <summary>Join as a spectator (full <see cref="JoinAsSpectatorMessage"/> payload).</summary>
-        JoinAsSpectator = 3,
+        JoinAsSpectator = 4,
 
         /// <summary>Stop spectating (no payload).</summary>
-        LeaveSpectator = 4,
+        LeaveSpectator = 5,
 
         /// <summary>Remove a seated player or pending reconnection holder (player_id payload).</summary>
-        KickPlayer = 5,
+        KickPlayer = 6,
 
         /// <summary>Rotate the room code (no payload).</summary>
-        RegenerateRoomCode = 6,
+        RegenerateRoomCode = 7,
 
         /// <summary>Seal or reopen the room (nullable password payload).</summary>
-        SetRoomAccess = 7,
+        SetRoomAccess = 8,
 
         /// <summary>Kick and ban a member for the room's lifetime (player_id payload).</summary>
-        BanPlayer = 8,
+        BanPlayer = 9,
 
         /// <summary>Lift a room ban, idempotently (player_id payload).</summary>
-        UnbanPlayer = 9,
+        UnbanPlayer = 10,
 
         /// <summary>Transfer authority to a seated player (player_id payload).</summary>
-        TransferAuthority = 10,
+        TransferAuthority = 11,
     }
 
     /// <summary>

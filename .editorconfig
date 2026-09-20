@@ -14,6 +14,8 @@ indent_size = 4
 # C# style rules enforced at build time (EnforceCodeStyleInBuild) and by
 # `dotnet format`. Ban `var`: every local declares its type explicitly
 # (IDE0008). `using` directives live inside the namespace (IDE0065).
+# `this.` qualification is banned (IDE0003 family): private fields carry the
+# `_camelCase` prefix, so member access never needs disambiguation.
 [*.cs]
 csharp_style_var_for_built_in_types = false:error
 csharp_style_var_when_type_is_apparent = false:error
@@ -21,6 +23,28 @@ csharp_style_var_elsewhere = false:error
 dotnet_diagnostic.IDE0008.severity = error
 csharp_using_directive_placement = inside_namespace:error
 dotnet_diagnostic.IDE0065.severity = error
+dotnet_style_qualification_for_field = false:error
+dotnet_style_qualification_for_property = false:error
+dotnet_style_qualification_for_method = false:error
+dotnet_style_qualification_for_event = false:error
+
+# Private fields are `_camelCase` (matches the repo naming conventions):
+# the underscore prefix is what makes the `this.` ban above safe. Const
+# fields stay PascalCase per the repo naming table (first matching rule
+# wins).
+dotnet_naming_rule.const_fields_pascal.severity = error
+dotnet_naming_rule.const_fields_pascal.symbols = const_fields
+dotnet_naming_rule.const_fields_pascal.style = const_fields_pascal_case
+dotnet_naming_symbols.const_fields.applicable_kinds = field
+dotnet_naming_symbols.const_fields.applicable_modifiers = const
+dotnet_naming_style.const_fields_pascal_case.capitalization = pascal_case
+dotnet_naming_rule.private_fields_underscore_prefix.severity = error
+dotnet_naming_rule.private_fields_underscore_prefix.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore_prefix.style = private_fields_underscore_camel
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.private_fields_underscore_camel.required_prefix = _
+dotnet_naming_style.private_fields_underscore_camel.capitalization = camel_case
 
 # Wire-protocol conventions (scoped to src/SignalFish.Client/Protocol/ so
 # other code still gets checked):

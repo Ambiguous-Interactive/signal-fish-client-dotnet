@@ -1,5 +1,7 @@
 namespace SignalFish.Client.Core
 {
+    using System;
+
     /// <summary>
     /// A directed room operation with a typed terminal answer on the wire.
     /// While one is pending, the machine is fenced: every command except
@@ -8,7 +10,10 @@ namespace SignalFish.Client.Core
     /// </summary>
     public enum PendingRoomOperation
     {
-        /// <summary>No operation in flight.</summary>
+        /// <summary>Sentinel for <c>default(PendingRoomOperation)</c>; no operation in flight.</summary>
+        [Obsolete(
+            "This value only exists so the enum default (0) is not a valid operation. Compare against default(PendingRoomOperation) instead."
+        )]
         None = 0,
 
         /// <summary>Awaiting RoomJoined / RoomJoinFailed.</summary>

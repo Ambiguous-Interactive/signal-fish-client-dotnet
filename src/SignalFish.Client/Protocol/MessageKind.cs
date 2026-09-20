@@ -1,5 +1,7 @@
 namespace SignalFish.Client.Protocol
 {
+    using System;
+
     /// <summary>
     /// Known protocol message types, routed by the wire <c>type</c>
     /// discriminator (PascalCase). Covers the mandatory v2 relay floor plus
@@ -9,7 +11,10 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     public enum MessageKind : byte
     {
-        /// <summary>No routed message (default; used by failed decodes).</summary>
+        /// <summary>Sentinel for <c>default(MessageKind)</c>; produced by failed decodes.</summary>
+        [Obsolete(
+            "This value only exists so the enum default (0) is not a routed message. Compare against default(MessageKind) instead."
+        )]
         None = 0,
 
         /// <summary><c>Authenticate</c> (C→S): optional credentials + v3 capabilities.</summary>

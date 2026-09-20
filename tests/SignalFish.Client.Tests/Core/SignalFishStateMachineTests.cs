@@ -98,7 +98,7 @@ namespace SignalFish.Client.Tests.Core
                 AdmissionError Expected
             )[] rows =
             {
-                ("fresh+ping", Fresh(), ClientCommand.Ping, AdmissionError.None),
+                ("fresh+ping", Fresh(), ClientCommand.Ping, default(AdmissionError)),
                 (
                     "fresh+joinRoom",
                     Fresh(),
@@ -123,19 +123,19 @@ namespace SignalFish.Client.Tests.Core
                     "authed+joinRoom",
                     AuthenticatedAtLeast(),
                     ClientCommand.JoinRoom,
-                    AdmissionError.None
+                    default(AdmissionError)
                 ),
                 (
                     "authed+joinSpectator",
                     AuthenticatedAtLeast(),
                     ClientCommand.JoinAsSpectator,
-                    AdmissionError.None
+                    default(AdmissionError)
                 ),
                 (
                     "authed+reconnect",
                     AuthenticatedAtLeast(),
                     ClientCommand.Reconnect,
-                    AdmissionError.None
+                    default(AdmissionError)
                 ),
                 (
                     "authed+leaveRoom",
@@ -165,7 +165,7 @@ namespace SignalFish.Client.Tests.Core
                     "fenced+ping",
                     Fenced(PendingRoomOperation.JoinPlayer),
                     ClientCommand.Ping,
-                    AdmissionError.None
+                    default(AdmissionError)
                 ),
                 (
                     "fenced+joinRoom",
@@ -201,7 +201,7 @@ namespace SignalFish.Client.Tests.Core
                     "player+leaveRoom",
                     InRoom(RoomRole.Player),
                     ClientCommand.LeaveRoom,
-                    AdmissionError.None
+                    default(AdmissionError)
                 ),
                 (
                     "player+leaveSpectator",
@@ -213,19 +213,19 @@ namespace SignalFish.Client.Tests.Core
                     "player+setReady",
                     InRoom(RoomRole.Player),
                     ClientCommand.SetReady,
-                    AdmissionError.None
+                    default(AdmissionError)
                 ),
                 (
                     "player+startGame",
                     InRoom(RoomRole.Player),
                     ClientCommand.StartGame,
-                    AdmissionError.None
+                    default(AdmissionError)
                 ),
                 (
                     "player+gameData",
                     InRoom(RoomRole.Player),
                     ClientCommand.SendGameData,
-                    AdmissionError.None
+                    default(AdmissionError)
                 ),
                 (
                     "player+joinRoom",
@@ -249,7 +249,7 @@ namespace SignalFish.Client.Tests.Core
                     "spectator+leaveSpectator",
                     InRoom(RoomRole.Spectator),
                     ClientCommand.LeaveSpectator,
-                    AdmissionError.None
+                    default(AdmissionError)
                 ),
                 (
                     "spectator+leaveRoom",
@@ -311,11 +311,13 @@ namespace SignalFish.Client.Tests.Core
                 ) in rows
             )
             {
+                bool admitted = machine.TryAdmit(command, out AdmissionError error);
                 Assert.That(
-                    machine.Admit(command),
-                    Is.EqualTo(expected),
-                    "admission row failed: " + label
+                    admitted,
+                    Is.EqualTo(expected == default(AdmissionError)),
+                    "admission row failed (admitted): " + label
                 );
+                Assert.That(error, Is.EqualTo(expected), "admission row failed (error): " + label);
             }
         }
 
@@ -364,14 +366,14 @@ namespace SignalFish.Client.Tests.Core
                     "joinConfirmed",
                     PendingRoomOperation.JoinPlayer,
                     SessionEvent.Joined(SessionEventKind.RoomJoined, Membership(RoomRole.Player)),
-                    PendingRoomOperation.None,
+                    default(PendingRoomOperation),
                     true
                 ),
                 (
                     "joinFailed",
                     PendingRoomOperation.JoinPlayer,
                     SessionEvent.From(SessionEventKind.JoinRoomFailed),
-                    PendingRoomOperation.None,
+                    default(PendingRoomOperation),
                     false
                 ),
                 (
@@ -395,21 +397,21 @@ namespace SignalFish.Client.Tests.Core
                         SessionEventKind.SpectatorJoined,
                         Membership(RoomRole.Spectator)
                     ),
-                    PendingRoomOperation.None,
+                    default(PendingRoomOperation),
                     true
                 ),
                 (
                     "spectatorFailed",
                     PendingRoomOperation.JoinSpectator,
                     SessionEvent.From(SessionEventKind.JoinSpectatorFailed),
-                    PendingRoomOperation.None,
+                    default(PendingRoomOperation),
                     false
                 ),
                 (
                     "leaveConfirmed",
                     PendingRoomOperation.LeavePlayer,
                     SessionEvent.From(SessionEventKind.RoomLeft),
-                    PendingRoomOperation.None,
+                    default(PendingRoomOperation),
                     false
                 ),
                 (
@@ -423,28 +425,28 @@ namespace SignalFish.Client.Tests.Core
                     "spectatorLeaveConfirmed",
                     PendingRoomOperation.LeaveSpectator,
                     SessionEvent.From(SessionEventKind.SpectatorLeft),
-                    PendingRoomOperation.None,
+                    default(PendingRoomOperation),
                     false
                 ),
                 (
                     "reconnectConfirmed",
                     PendingRoomOperation.ReconnectPlayer,
                     SessionEvent.Joined(SessionEventKind.Reconnected, Membership(RoomRole.Player)),
-                    PendingRoomOperation.None,
+                    default(PendingRoomOperation),
                     true
                 ),
                 (
                     "reconnectFailed",
                     PendingRoomOperation.ReconnectPlayer,
                     SessionEvent.From(SessionEventKind.ReconnectFailed),
-                    PendingRoomOperation.None,
+                    default(PendingRoomOperation),
                     false
                 ),
                 (
                     "teardownReleases",
                     PendingRoomOperation.JoinPlayer,
                     SessionEvent.From(SessionEventKind.Disconnected),
-                    PendingRoomOperation.None,
+                    default(PendingRoomOperation),
                     false
                 ),
             };
@@ -567,7 +569,7 @@ namespace SignalFish.Client.Tests.Core
         public void Arm_None_IsMisuse()
         {
             SignalFishStateMachine machine = Fresh();
-            Assert.That(() => machine.Arm(PendingRoomOperation.None), Throws.ArgumentException);
+            Assert.That(() => machine.Arm(default(PendingRoomOperation)), Throws.ArgumentException);
         }
 
         [Test]
@@ -630,7 +632,7 @@ namespace SignalFish.Client.Tests.Core
             Assert.That(machine.IsConnected, Is.False);
             Assert.That(machine.IsAuthenticated, Is.False);
             Assert.That(machine.Membership.IsPresent, Is.False);
-            Assert.That(machine.PendingOperation, Is.EqualTo(PendingRoomOperation.None));
+            Assert.That(machine.PendingOperation, Is.EqualTo(default(PendingRoomOperation)));
         }
 
         [Test]
@@ -644,13 +646,13 @@ namespace SignalFish.Client.Tests.Core
                 long before = GC.GetAllocatedBytesForCurrentThread();
                 for (int iteration = 0; iteration < 100; iteration++)
                 {
-                    machine.Admit(ClientCommand.Ping);
-                    machine.Admit(ClientCommand.JoinRoom);
+                    machine.TryAdmit(ClientCommand.Ping, out AdmissionError _);
+                    machine.TryAdmit(ClientCommand.JoinRoom, out AdmissionError _);
                     machine.Arm(PendingRoomOperation.JoinPlayer);
-                    machine.Admit(ClientCommand.JoinRoom);
+                    machine.TryAdmit(ClientCommand.JoinRoom, out AdmissionError _);
                     machine.Apply(SessionEvent.Joined(SessionEventKind.RoomJoined, membership));
-                    machine.Admit(ClientCommand.SendGameData);
-                    machine.Admit(ClientCommand.LeaveRoom);
+                    machine.TryAdmit(ClientCommand.SendGameData, out AdmissionError _);
+                    machine.TryAdmit(ClientCommand.LeaveRoom, out AdmissionError _);
                     machine.Apply(SessionEvent.From(SessionEventKind.ServerError));
                     machine.Apply(SessionEvent.From(SessionEventKind.RoomLeft));
                 }

@@ -1,5 +1,7 @@
 namespace SignalFish.Client.Core
 {
+    using System;
+
     /// <summary>
     /// Driver-level session facts the state machine reacts to — the decoded
     /// subset of server envelopes (and transport liveness) that can change
@@ -8,7 +10,10 @@ namespace SignalFish.Client.Core
     /// </summary>
     public enum SessionEventKind
     {
-        /// <summary>Not a session fact (the default); applying it is a no-op.</summary>
+        /// <summary>Sentinel for <c>default(SessionEventKind)</c>; not a session fact.</summary>
+        [Obsolete(
+            "This value only exists so the enum default (0) is not a session fact. Apply ignores it."
+        )]
         None = 0,
 
         /// <summary>The transport handshake completed; the wire is open.</summary>

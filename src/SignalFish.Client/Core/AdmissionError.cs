@@ -1,5 +1,7 @@
 namespace SignalFish.Client.Core
 {
+    using System;
+
     /// <summary>
     /// Why a command was refused locally. Precedence matches the Rust
     /// client: <see cref="NotConnected"/> → <see cref="NotAuthenticated"/> →
@@ -8,7 +10,10 @@ namespace SignalFish.Client.Core
     /// </summary>
     public enum AdmissionError
     {
-        /// <summary>Admitted; the caller may send.</summary>
+        /// <summary>Sentinel for <c>default(AdmissionError)</c>; no error (the command is admitted).</summary>
+        [Obsolete(
+            "This value only exists so the enum default (0) is not an error. Use TryAdmit and branch on its bool instead of referencing this member."
+        )]
         None = 0,
 
         /// <summary>No live session (never connected, or terminal).</summary>

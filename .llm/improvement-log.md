@@ -9,281 +9,151 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
-## 2026-09-20 - PR #18 Bugbot round: CWD-dependent tooling class
+## 2026-09-20 - session 011: polling core (M3.1/M3.2) + enum-default and this.-ban project sweep
 
-- Trigger: Cursor Bugbot inline finding on PR #18 ("SharpFuzz ignores
-  repository root").
-- Evidence: launching `scripts/fuzz-codec.ps1` by absolute path from
-  outside the tree failed at instrumentation (RED); clean after the fix
-  (GREEN); new `test-install-hooks.ps1` fails 2/2 against the old
-  `install-hooks.ps1` and passes against the fix.
-- Findings: (1) `dotnet tool restore` was anchored to `$RepoRoot` via
-  Push-Location but the later `dotnet tool run sharpfuzz` was not - tool
-  commands resolve `.config/dotnet-tools.json` by walking up from the CWD.
-  (2) Sweep found one sibling: `install-hooks.ps1` ran bare `git config`
-  against the caller's CWD; all other scripts were already CWD-safe.
-- Applied: tool-run wrapped in the same Push-Location scope;
-  `install-hooks.ps1` anchors via `$PSScriptRoot` + `git -C`;
-  `test-install-hooks.ps1` pins the launch-from-outside shape; rule 7 added
-  to the powershell-tooling skill (frontmatter updated, index regenerated).
+- Trigger: PR #30 human review: (1) force every enum's default (0) to a
+  non-valid `None` sentinel with `[Obsolete]`, project-wide; (2) ban `this.`
+  qualification. Supersedes the PR #11-era decision to leave
+  `MessageKind`/`DecodeError` unmarked.
+- Evidence: 13 enums inventoried; only `EnvelopeEventKind` was compliant.
+  `ConnectionPhase`/`ClientCommand`/`JsonMemberState`/`GameDataClass`/
+  `RoomOperationCommandKind` had valid members at 0 — worst case,
+  `default(GameDataMessage)` silently claimed *reliable* delivery. Marking
+  sentinels `[Obsolete]` first turned `-warnaserror` into the sweep linter:
+  CS0618 enumerated all 57 reference sites, each swept to `default(T)`.
+- Findings: (1) `EnforceCodeStyleInBuild` does NOT enforce IDE0003
+  (this. qualification) or naming rules (IDE1006) — Roslyn computes them
+  IDE-side only; build-time enforcement needs the repo-conventional lint
+  script (new `lint-no-this-qualification.ps1` + self-test + hook + CI,
+  mirroring `lint-no-linq.ps1`; dotted `this.` is always a violation —
+  ctor chaining `: this(` and indexers `this[` carry no dot). (2) Mechanical
+  identifier renames contaminate XML-doc prose — grep `///` for the old
+  token after any scripted rename. (3) The writer now refuses
+  `default(GameDataMessage)` (unset delivery class) — encode misuse throws,
+  matching the codec philosophy. (4) Public API flipped `Admit` →
+  `TryAdmit(command, out AdmissionError)` so callers never reference the
+  sentinel by name.
+- Applied: enum sweep (all 13 enums), `this.` ban sweep + `_camelCase`
+  field renames, `.editorconfig` qualification/naming rules (IDE-side),
+  lint script + hook + CI step, rules 17-18 in context.md, enum-default
+  pattern in [api-design](./skills/api-design/SKILL.md). 287 tests x 2 TFMs.
 - Open: none.
 
-## 2026-09-20 - PR #11 feedback round: MCP auth-header class + style rules
+## 2026-09-20 - session 010: transport (M2) + loopback WS test server
 
-- Trigger: Bugbot (1 High, 1 dup-of-fixed) + 3 human repo-wide style asks on
-  PR #11.
-- Evidence: Bugbot High verified — `write-mcp-configs.mjs` called
-  `builder.remote(url)` while the claude/copilot/gemini/cursor builders take
-  `(url, key)` and interpolate `Bearer ${key}` → those harnesses persisted
-  `Bearer undefined` for all three Z.AI remotes (opencode/nanocoder
-  unaffected: env refs). RED: added 5 auth-header self-test assertions, ran
-  self-test → exactly those 5 failed (118 pass). Class sweep: codex TOML
-  writer already correct (`bearer_token_env_var`), `.vscode/mcp.json` uses
-  `${input:}`, `ai-backends.sh` clean — one bad site total. GREEN after the
-  one-line fix + an inline guard that throws when an Authorization carries
-  neither the key nor an env-ref marker: 123/123.
-- Findings: (1) URL-only assertions on remote MCP entries are a coverage
-  blind spot — auth headers need value assertions with injected throwaway
-  creds. (2) Optional-parameter builder functions that interpolate into
-  output are an arity footgun: a forgotten argument becomes a literal
-  "undefined" in output; fail at write time, not at auth time. (3) The human
-  asks (no-var, usings-inside-namespace, enum-0-sentinel) were mechanized:
-  `.editorconfig` IDE0008/IDE0065 severity=error + EnforceCodeStyleInBuild,
-  `dotnet format` applied the bulk, ~59 non-inferable sites hand-fixed;
-  enforcement red-checked with a planted violation.
-- Applied: fix + guard + 8 self-test assertions; `EnvelopeEventKind` gained
-  an `[Obsolete] None = 0` sentinel (real values shifted; `MessageKind`/
-  `DecodeError` already had sanctioned `None` sentinels — no Obsolete there,
-  comparisons are legitimate); all repo `.cs` files moved usings inside
-  namespaces and dropped `var`; rules captured in
-  [api-design](./skills/api-design/SKILL.md) and MCP-writer facts in
-  [devcontainer-tooling](./references/devcontainer-tooling.md).
-- Open: none for this round; toolchain-smoke follow-up filed as an issue.
+- Findings: (1) NUnit's `Throws.InvalidOperationException` is an *exact*
+  type constraint - derived types fail it; use
+  `Throws.Exception.InstanceOf<T>()` for base-type contracts. (2) Loopback
+  test servers hand off connections via a cancellation-safe primitive
+  (semaphore + queue): waiter-TCS handoffs lose connections and stale
+  waiters steal later ones. (3) `ClientWebSocket` cannot read
+  upgrade-response headers - size comes from the pre-connect
+  `client-config` HTTP probe; the header path is browser-transport-only
+  (M7). (4) RFC 6455 close codes are 1000-4999; out-of-range test codes
+  surface as 1006. (5) TOCTOU-free transport shape: CAS transitions,
+  single reader/writer, exactly-once close, idempotent dispose.
+- Applied: M2 landed red-green (262 tests x 2 TFMs); test-scoped CA2007/
+  CA2000/CA1031/CA5350 suppressions in .editorconfig. Open: none.
 
-## 2026-09-19 - session 005: M1.2 envelope codec + devcontainer carry-forward
+## 2026-09-20 - session 009: SharpFuzz lane (M1.5) + CI trim
 
-- Trigger: PLAN M1.2 red-green (EnvelopeReader) + committing session 004's
-  untracked devcontainer work.
-- Findings (condensed): an apphost shim can work top-level yet spawn a broken
-  `$PSHOME` binary - arch-validate nested invocations, not just
-  `pwsh --version`; C# 9 relational patterns need explicit `LangVersion` on
-  netstandard2.1; netstandard2.1 lacks Range-based `Slice` and parameterless
-  `GetOffsetAndLength()`; stateful loop-exit flags beat switch-breaks in
-  parsers.
-- Applied: `Protocol/` package (scanner, reader, events, kinds); 123 tests
-  both TFMs. Knowledge graduated into skills/references.
-- Open: none.
+- Findings: (1) the libfuzzer-dotnet parent exits on a dead child WITHOUT a
+  crash artifact - fuzz hosts must dump crashing inputs themselves. (2) pwsh
+  native-arg parsing mangles `-flag=value` tokens; splat them. (3) verbatim
+  payloads roundtrip byte-exactly only with clean value tokens. (4) an
+  envelope with no `data` decodes to an empty slice. (5) SharpFuzz.Common.dll
+  needs wildcard instrumentation exclusions; publish output must be wiped
+  between runs. (6) restore scoping is graph-global - `-p:TargetFramework=`
+  strips other TFMs (NETSDK1005); "one SDK per cell" is unachievable while
+  Tests targets net8.0;net10.0.
+- Applied: FuzzTests project, `fuzz-codec.ps1`, weekly `fuzz.yml`, dotnet.yml
+  trim (coverage unchanged). Open: corpus persistence + regression baseline
+  land with M9.4.
 
-## 2026-09-19 - devcontainer EACCES: root-owned volume mountpaths
+## 2026-09-20 - session 008: property tests + perf baseline + changelog
 
-- Findings (condensed; full facts in
-  [devcontainer-tooling](./references/devcontainer-tooling.md)): fix volume
-  ownership at image build time - pre-create mountpoints vscode-owned, parents
-  listed before children (`install -d -o` chowns only the final component);
-  `--version` smokes do not cover state-writing paths, assert dir writability.
-- Open: none (verified in-container).
+- Findings: (1) FsCheck can emit lone surrogates; `WriteString` maps them to
+  U+FFFD *by design* - generators must exclude them. (2) a ref-struct writer
+  passed by value through recursive helpers silently loses nested writes;
+  pass `ref`. (3) a string roundtrip that slices inner text misses missing
+  quote escaping; assert the scanner consumes rendered bytes exactly. (4)
+  `Encoding.ASCII.GetBytes` maps non-ASCII to `?`; wire strings go through
+  the UTF-8 writer only.
+- Applied: FsCheck suite, BenchmarkDotNet baselines (`docs/benchmarks.md`),
+  CHANGELOG.md, STE user-copy rule (context rule 16). Open: none.
 
-## 2026-09-19 - devcontainer upgrade (MCP survey, AI backends, build speed)
+## 2026-09-20 - PR #14 feedback round: gate scope mismatch class
 
-- Findings (condensed; full facts in
-  [devcontainer-tooling](./references/devcontainer-tooling.md)):
-  `os.homedir()` ignores `HOME` on win32 (host-side tests are a live
-  pollution hazard); verification spanning two ephemeral containers tests
-  nothing; `COPY --from` stages beat curl-installers on repeat builds; codex
-  MCP env intentionally persists the zai-vision key (chmod 600), so blanket
-  no-secrets greps false-positive there.
-- Open: Unity MCP relay consideration deferred until Unity work starts.
-
-## 2026-09-19 - devcontainer with prewired agentic harnesses and MCP
-
-- Findings (condensed; full facts in
-  [devcontainer-tooling](./references/devcontainer-tooling.md)):
-  `containerEnv` cannot self-reference `PATH` (use Dockerfile `ENV`); the
-  dotnet feature v1 shadows the image SDK; nvm hard-fails under
-  `NPM_CONFIG_PREFIX`; opencode's arm64 postinstall mis-selects libc;
-  named volumes and parents of volume targets can be root-owned.
-- Open: none.
-
-## 2026-09-19 - devcontainer MCP round 2: convergence with sibling repos
-
-- Findings (condensed; full facts in
-  [devcontainer-tooling](./references/devcontainer-tooling.md)): global
-  `zai-mcp-server` bin over runtime `npx`; `Z_AI_MODE=ZHIPU` switches remote
-  base URLs; configs pruned when credentials disappear; hermetic self-tests
-  need env skip-seams plus backup/restore traps; key-gated MCP startup is a
-  distinct passing probe outcome; npm registry flakes need bounded retries.
-- Open: confirm VS Code resolves the three `shellCommand` inputs on a first
-  real session (devcontainer-build CI green on its first real run,
-  2026-09-20, which does not verify this).
-
-## 2026-09-20 - envelope writer (M1.3): ref-struct copy hazard caught by red-green
-
-- Trigger: M1.3 milestone work (EnvelopeWriter + payload structs + decode).
-- Evidence: with `JsonWriter` (ref struct) passed by value, helpers mutated
-  their copy; the caller's stale `_span`/`_pos` then clobbered
-  already-flushed buffer regions — the byte-identical fixture test caught it
-  only for messages whose helper wrote AFTER a flush boundary (RoomOperation
-  moderation payloads), while 20 of 21 fixture cases stayed green.
-  `TryReadString` assigns its `out` param before failing, so
-  `TryReadString(..) || TryReadNull(..)` turned JSON `null` into `""` and
-  broke SetRoomAccess reopen roundtripping.
-- Findings: (1) repo rule — a `ref struct` with mutable position state must
-  be `ref`-passed into every helper that writes through it; by-value
-  passing compiles clean and corrupts silently. Caught here by tests; worth
-  a json-serialization skill note. (2) `Try*` methods that assign `out`
-  params eagerly must not be composed with `||` when the failure-path value
-  is observable. (3) Mutation-checking paid off: all three planted bugs
-  (wire drift, missing validation, dropped decode advance) were detected by
-  the suite. (4) Adversarial review round: `stackalloc` inside a loop
-  accumulates per iteration (frame memory is reclaimed only at method
-  return) — reproduced a fatal, uncatchable StackOverflowException at
-  ~800k non-ASCII chars; "the slots are reused" is a myth. Hoist one
-  scratch span above the loop. Also fixed: struct ctor must normalize
-  ignored fields or `Equals` contradicts the wire; verbatim-payload
-  "valid JSON" docs must match enforcement (full allocation-free rescan
-  added).
-- Actions: applied in this change set (ref-passing helpers, explicit
-  branching in `TryDecodePassword`); follow-up: fold rules (1)+(2) into the
-  json-serialization skill when it is next edited (300-line cap applies).
+- Findings: (1) a gate lives in three scopes (linter enforced set, hook
+  staged-file selector, CI trigger); the hook must be a superset of the
+  enforced set's accepted inputs. (2) hook self-test cases share the git
+  index - each case must `git reset -q` first or earlier violations mask
+  later cases.
+- Applied: selectors fixed red-green; class captured in
+  [add-quality-gate](./skills/add-quality-gate/SKILL.md) and a sweep row in
+  [address-pr-feedback](./skills/address-pr-feedback/SKILL.md). Open: none.
 
 ## 2026-09-20 - repo quality round: analyzers, LINQ ban, CSharpier, nested-pwsh self-test
 
-- Trigger: issue debt round (#5 CSharpier, #6 max warnings + analyzers,
-  #7 zero-alloc enforcement, #12 devcontainer nested-invocation self-test).
-- Findings: (1) `Directory.Build.props` conditions cannot see properties set
-  in the csproj body (`IsTestProject`) - conditional NoWarn must live in
-  `Directory.Build.targets`. (2) `latest-all` analyzer set + NUnit requires
-  three test-scoped suppressions (underscore names CA1707, framework-guaranteed
-  args CA1062, public classes CA1515); byte-backed wire enums (CA1028) and the
-  non-compared hot-path event struct (CA1815) are perf-intentional and are
-  suppressed in `.editorconfig` with rationale. (3) The reader had no
-  allocation gate; the corpus-wide steady-state gate (min delta over 4 passes,
-  0 B) now covers decode; red-checked with a planted allocation. (4) LINQ ban
-  is enforced as a repo-conventional PowerShell linter (BannedApiAnalyzers
-  would violate the zero-PackageReference rule for src/). (5) Version smokes
-  cannot catch arch-mismatched nested binaries; the self-test now runs the
-  real nested `& pwsh` invocation and asserts the ELF e_machine (od, offset
-  18) matches `uname -m`.
-- Actions: applied in this change set; CI nets a time *decrease* (coverage
-  collection trimmed to the Linux cells that consume it).
+- Findings: (1) conditional NoWarn must live in `Directory.Build.targets`
+  (props cannot see csproj-body properties). (2) test-scoped analyzer
+  suppressions (CA1707/CA1062/CA1515) plus perf-intentional CA1028/CA1815
+  suppressions with rationale. (3) the LINQ ban is a PowerShell linter - 
+  BannedApiAnalyzers would violate the zero-PackageReference rule. (4)
+  version smokes cannot catch arch-mismatched nested binaries; self-test
+  runs the real nested `& pwsh` and asserts the ELF e_machine. (5) decode
+  corpus-wide allocation gate (min delta over 4 passes).
 
-## 2026-09-20 - PR #14 feedback round: gate scope mismatch class (hook vs linter vs CI)
+## 2026-09-20 - envelope writer (M1.3): ref-struct copy hazard caught by red-green
 
-- Trigger: Cursor Bugbot on PR #14 - the pre-commit hook forwarded only
-  staged `src/**/*.cs` to the LINQ linter, so a staged src `.csproj`
-  injecting `<Using Include="System.Linq" />` (an input the linter had
-  learned to reject) was blessed locally and failed in CI.
-- Findings: (1) the class generalizes - a gate is enforced in three scopes
-  (linter default-mode enforced set, hook staged-file selector, CI
-  trigger); the hook must be a superset of the enforced set's accepted
-  inputs. (2) Sibling sweep found a second instance: lint-file-sizes
-  enforces every `.cursor/rules/*.mdc` but the hook knew only one pointer
-  file. (3) Hook self-test cases share the git index - staged files
-  accumulate, so an earlier violating file makes later cases pass for the
-  wrong reason; each case must `git reset -q` first (this masked the
-  .csproj case on the first red run).
-- Actions: both selectors fixed and red-green tested (4 new assertions in
-  test-pre-commit.ps1); knowledge captured as a new skill
-  `.llm/skills/add-quality-gate/` plus a sweep-table row in
-  address-pr-feedback.
+- Findings: (1) a ref struct with mutable position state must be
+  `ref`-passed into every helper writing through it; by-value compiles clean
+  and corrupts silently. (2) `Try*` methods assigning `out` eagerly must not
+  compose with `||` when the failure-path value is observable. (3)
+  `stackalloc` inside a loop accumulates per iteration (reclaimed only at
+  method return) - fatal, uncatchable StackOverflowException; hoist one
+  scratch span. (4) struct ctors must normalize ignored fields or `Equals`
+  contradicts the wire.
+- Open: fold (1)+(2) into json-serialization when next edited (300-line cap).
 
-## 2026-09-20 - Session 009: SharpFuzz lane (M1.5) + CI trim
+## 2026-09-20 - PR #18 Bugbot round: CWD-dependent tooling class
 
-- Trigger: M1 completion gate ("fuzz lane clean for 30 min CI run") plus the
-  CI-time objective.
-- Evidence: planted reader bug (throw on empty input) and writer bug
-  (dropped `"` escape) both crash their targets; two harness-expectation
-  bugs found and fixed by fuzzing; full-corpus unit suite, script
-  self-tests, and 150 s/target driver runs green (883k/841k execs).
-- Findings: (1) The libfuzzer-dotnet parent exits on a dead child WITHOUT
-  writing a crash artifact - fuzz hosts must dump crashing inputs themselves
-  before rethrowing. (2) pwsh native-arg parsing can mangle libFuzzer's
-  `-flag=value` tokens; pass them via a splatted argument array. (3)
-  Roundtrip identity is a per-component contract: verbatim payloads
-  roundtrip byte-exactly only when callers pass clean value tokens (the
-  reader canonically excludes insignificant whitespace; the writer never
-  edits bytes). (4) An envelope with no `data` member decodes to an empty
-  `Data` slice - payload `TryDecode` contracts cover data objects only.
-  (5) SharpFuzz publishes `SharpFuzz.Common.dll` separately; instrumentor
-  exclusions must be wildcard-matched, and publish output must be wiped
-  between runs or stale instrumented dlls fail the re-run. (6) Restore
-  scoping is graph-global: `-p:TargetFramework=` on restore strips every
-  referenced project's other TFMs from its assets file (NETSDK1005), so a
-  multi-TFM test project forces dual SDK installs on all CI cells - "one
-  SDK per cell" is unachievable while `Tests` targets net8.0;net10.0.
-- Applied: FuzzTests project (reader/writer targets, crash self-dump,
-  frame-text diagnostics), `scripts/fuzz-codec.ps1` (pinned-by-hash driver,
-  manifest-pinned sharpfuzz, persistent `.fuzz/` corpus + crashes), weekly
-  `fuzz.yml` (PR CI untouched); `dotnet.yml` trimmed to one SDK + one TFM
-  build per cell with lints deduped to the coverage cell - measured
-  coverage unchanged.
-- Open: scheduled-run corpus persistence via actions/cache and crash
-  regression-corpus baseline land with M9.4.
+- Findings: `dotnet tool run` resolves the manifest by walking up from the
+  CWD; every tool invocation needs the same `$RepoRoot`/`git -C` anchoring
+  as the script itself. Rule 7 in powershell-tooling; pinned by
+  test-install-hooks.ps1. Open: none.
 
-## 2026-09-20 - Session 008: property tests + perf baseline + changelog
+## 2026-09-20 - PR #11 feedback round: MCP auth-header class + style mechanization
 
-- Trigger: issue-debt round (#15 CHANGELOG, #9 upstream check, #7 benchmarks)
-  plus M1.4/M1.6.
-- Findings: (1) FsCheck 2.16's `Gen.Elements` over a char pool can emit lone
-  surrogates, but `JsonWriter.WriteString` replaces them with U+FFFD *by
-  design* - generators must exclude them or the property asserts an intended
-  behavior as a bug. (2) A `ref struct` writer passed **by value** through
-  recursive test helpers silently loses nested writes; pass it `ref`. (3) A
-  string roundtrip property that slices the inner text between the outer
-  quotes cannot detect missing quote escaping; asserting the scanner consumes
-  the rendered bytes byte-exactly catches that whole class. (4)
-  `Encoding.ASCII.GetBytes` silently maps non-ASCII to `?` - wire strings
-  must go through the UTF-8 writer, never ASCII helpers.
-- Actions: property suite landed red-green; BenchmarkDotNet baselines in
-  `docs/benchmarks.md` (both hot paths 0 B steady-state); CHANGELOG.md
-  adopted (keep-a-changelog, user-visible only); STE user-copy rule added
-  to context.md (rule 16).
-- CI: coverage narrowed to one representative cell (same tests on all
-  cells), NuGet package cache, `concurrency` cancel-in-progress,
-  reportgenerator moved to the tool manifest - net runner-time decrease
-  with unchanged measured coverage.
+- Findings: (1) URL-only assertions on remote MCP entries are a coverage
+  blind spot - auth headers need value assertions with throwaway creds. (2)
+  optional-parameter builders interpolating into output turn a forgotten
+  argument into a literal "undefined"; fail at write time. (3) no-var and
+  usings-inside-namespace were mechanized via `.editorconfig` +
+  EnforceCodeStyleInBuild; `EnvelopeEventKind` gained the first
+  `[Obsolete] None = 0` sentinel (project-wide completion in session 011).
+- Applied: fix + guard + self-tests; MCP-writer facts in
+  [devcontainer-tooling](./references/devcontainer-tooling.md). Open: none.
 
-## 2026-09-20 - Session 010: transport (M2) + loopback WS test server
+## 2026-09-19 - devcontainer rounds (5 entries, condensed)
 
-- Trigger: M2 milestone + issue-debt round (#25 Dependabot, #19 fuzz corpus
-  persistence, #24 TOCTOU avoidance).
-- Findings: (1) NUnit's `Throws.InvalidOperationException` is an *exact*
-  type constraint - derived exception types fail it; assert
-  `Throws.Exception.InstanceOf<T>()` when the contract means the base type.
-  (2) Loopback test servers must hand off connections via a
-  cancellation-safe primitive (semaphore + queue): waiter-TCS handoffs lose
-  connections when the waiter registers after the accept, and stale waiters
-  from timed-out tests steal later connections. (3) `ClientWebSocket`
-  cannot read upgrade-response headers, so the
-  `x-signal-fish-max-outbound-message-size` value must come from the
-  pre-connect `client-config` HTTP probe on .NET; the header path is only
-  usable by browser transports (M7). (4) RFC 6455 close codes are
-  1000-4999: tests must not assert out-of-range codes like 5999 - .NET
-  rejects the frame and the transport correctly reports 1006. (5)
-  TOCTOU-free transport shape: CAS state transitions, single-reader/
-  single-writer claims, exactly-once close delivery, idempotent dispose.
-- Actions: M2.1/M2.2/M2.3 landed red-green (262 tests x 2 TFMs); #25/#19/#24
-  closed with evidence; #26/#20 triaged in comments; test-scoped CA2007/
-  CA2000/CA1031/CA5350 suppressions added to .editorconfig with rationale.
-- CI: `dotnet tool restore` deduped; Dependabot weekly; fuzz corpus persisted
-  across scheduled runs - PR CI flat-to-lower, coverage unchanged.
+- Full facts in [devcontainer-tooling](./references/devcontainer-tooling.md):
+  fix volume ownership at image build time (pre-create mountpoints
+  vscode-owned, parents first); `os.homedir()` ignores `HOME` on win32;
+  `containerEnv` cannot self-reference `PATH`; the dotnet feature v1 shadows
+  the image SDK; nvm hard-fails under `NPM_CONFIG_PREFIX`; apphost shims work
+  top-level yet spawn broken `$PSHOME` binaries - arch-validate nested
+  invocations; codex MCP env intentionally persists the zai-vision key
+  (chmod 600) so blanket no-secrets greps false-positive there; hermetic
+  self-tests need env skip-seams plus backup/restore traps; `COPY --from`
+  beats curl-installers; global `zai-mcp-server` bin over runtime `npx`;
+  `Z_AI_MODE=ZHIPU` switches remote base URLs; configs prune when
+  credentials disappear.
+- Open: none (Unity MCP relay deferred until Unity work starts).
 
-## 2026-09-20 (session 011)
+## 2026-09-19 - session 005: M1.2 envelope codec + devcontainer carry-forward
 
-- What: M3.1/M3.2 polling core (clock abstraction + connection state
-  machine) landed red-green; 285 tests x 2 TFMs; adversarial review round
-  produced 3 majors, all fixed before ship.
-- Findings: (1) Success releases must be type-matched like failures - an
-  unconditional "clear fence on RoomJoined/SpectatorJoined/Reconnected"
-  lets a stray success swap membership mid-fence (violates fail-closed).
-  (2) Hand-rolled tick math overflowed at ~107 days of process uptime
-  (Linux Stopwatch.Frequency = 1e9); `Stopwatch.ElapsedMilliseconds` is
-  overflow-safe - never scale raw timestamps by hand. (3) Public state
-  mutators must defend their own invariants: ignore unauthenticated joins,
-  repeated authentications, and default(0) events. (4) Enum-as-state
-  inputs need an inert 0 member or `default` fabricates live events.
-- Actions: guards + type-matched releases in `SignalFishStateMachine`
-  pinned by new fence/phase/equality tables; `SessionEventKind.None`;
-  improvement folded into session-011 log. Issue debt: #21/#22 closed,
-  #7 progress noted.
-- CI: no workflow changes; PR CI flat, coverage strictly additive.
+- Findings: C# 9 relational patterns need explicit `LangVersion` on
+  netstandard2.1; netstandard2.1 lacks Range-based `Slice` and parameterless
+  `GetOffsetAndLength()`; stateful loop-exit flags beat switch-breaks in
+  parsers. Open: none.

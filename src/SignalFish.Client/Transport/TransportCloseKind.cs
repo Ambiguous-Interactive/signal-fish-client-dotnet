@@ -1,5 +1,7 @@
 namespace SignalFish.Client.Transport
 {
+    using System;
+
     /// <summary>
     /// The server-defined meaning of a WebSocket close code, mapped from the
     /// canonical protocol close-code table (4000-4007, 1009). Error codes are
@@ -7,7 +9,10 @@ namespace SignalFish.Client.Transport
     /// </summary>
     public enum TransportCloseKind
     {
-        /// <summary>No close observed yet (default value).</summary>
+        /// <summary>Sentinel for <c>default(TransportCloseKind)</c>; not a close code.</summary>
+        [Obsolete(
+            "This value only exists so the enum default (0) is not a close code. Compare against default(TransportCloseKind) instead."
+        )]
         None = 0,
 
         /// <summary>1000: normal closure.</summary>

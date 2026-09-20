@@ -60,15 +60,39 @@ LINQ-ban, and zero-dep lints green; all automation self-tests green.
 
 - Enums are `int`-backed (analyzer-clean). The `Protocol/` byte-backed
   suppression stays scoped to wire types; `Core/` types are not on the wire.
-- `Admit` is pure; `Arm` is separate — a failed enqueue never wedges the
-  fence (mirrors Rust's `record_admission`-after-validate order and its
-  serialization-failure release).
+- `TryAdmit` is pure (bool + `out` error, assigned just before return);
+  `Arm` is separate — a failed enqueue never wedges the fence (mirrors
+  Rust's `record_admission`-after-validate order and its serialization-
+  failure release).
 - `PendingOperationFor` returns `PendingRoomOperation?` — nullable-struct
   style, no sentinels (issue #26 direction).
 - Authority-gated `StartGame` (Rust `AuthorityRequired`) intentionally
   deferred to M5.2 when authority tracking exists.
 - Wire payloads → `SessionEvent` mapping lands with M3.3 (inbound payload
   decode); the machine is wire-agnostic by design.
+
+## Reviewer round 2 (human, PR #30): enum-default sentinel + this. ban, project sweep
+
+- **Enum defaults (applied to all 13 enums)**: `0` is now a `[Obsolete]`
+  `None` sentinel everywhere (only `EnvelopeEventKind` was compliant; the
+  PR #11-era narrower decision is superseded). Marking first made
+  `-warnaserror` the sweep linter — CS0618 enumerated all 57 named
+  references, swept to `default(TEnum)`. Danger fixed:
+  `default(GameDataClass)` used to mean *reliable*; the writer now refuses
+  an unset class. Public `Admit` → `TryAdmit(command, out AdmissionError)`
+  so callers never name the sentinel.
+- **`this.` ban**: swept the 5 session files (the only offenders; also
+  renamed fields to the `_camelCase` repo convention). Enforcement reality:
+  Roslyn's `EnforceCodeStyleInBuild` does NOT enforce IDE0003 or naming
+  rules — added `scripts/lint-no-this-qualification.ps1` (+ self-test +
+  hook + CI step, the established `lint-no-linq` shape). Red checks:
+  planted `this._connected` (ignored by build, caught by lint) and planted
+  missing-underscore field.
+- **Knowledge captured**: rules 17-18 in `.llm/context.md`; api-design
+  skill enum-default pattern updated (superseding text) + linter
+  precedent note; improvement-log compacted 289 → 159 lines with the
+  session-011 entry added properly (newest-first, correct format).
+- 287 tests × net8.0 + net10.0 green; all lints + self-tests green.
 
 ## CI
 

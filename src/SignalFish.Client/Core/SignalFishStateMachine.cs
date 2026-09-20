@@ -12,18 +12,18 @@ namespace SignalFish.Client.Core
     /// </summary>
     public sealed class SignalFishStateMachine
     {
-        private bool connected;
-        private bool transportReady;
-        private bool authenticated;
-        private Guid authenticatedPlayerId;
-        private RoomMembership membership;
-        private PendingRoomOperation pendingOperation;
-        private bool terminal;
+        private bool _connected;
+        private bool _transportReady;
+        private bool _authenticated;
+        private Guid _authenticatedPlayerId;
+        private RoomMembership _membership;
+        private PendingRoomOperation _pendingOperation;
+        private bool _terminal;
 
         /// <summary>Creates the machine in the connecting phase (constructed-live, Rust parity).</summary>
         public SignalFishStateMachine()
         {
-            this.connected = true;
+            _connected = true;
         }
 
         /// <summary>Derived phase: membership &gt; authenticated &gt; transport-ready &gt; connecting.</summary>
@@ -31,22 +31,22 @@ namespace SignalFish.Client.Core
         {
             get
             {
-                if (this.terminal)
+                if (_terminal)
                 {
                     return ConnectionPhase.Terminal;
                 }
 
-                if (this.membership.IsPresent)
+                if (_membership.IsPresent)
                 {
                     return ConnectionPhase.InRoom;
                 }
 
-                if (this.authenticated)
+                if (_authenticated)
                 {
                     return ConnectionPhase.Authenticated;
                 }
 
-                if (this.transportReady)
+                if (_transportReady)
                 {
                     return ConnectionPhase.TransportReady;
                 }
@@ -58,62 +58,70 @@ namespace SignalFish.Client.Core
         /// <summary>True until the session goes terminal.</summary>
         public bool IsConnected
         {
-            get { return this.connected; }
+            get { return _connected; }
         }
 
         /// <summary>Handshake observed on the current connection (sticky until teardown).</summary>
         public bool IsTransportReady
         {
-            get { return this.transportReady; }
+            get { return _transportReady; }
         }
 
         /// <summary>Server confirmed authentication on this connection.</summary>
         public bool IsAuthenticated
         {
-            get { return this.authenticated; }
+            get { return _authenticated; }
         }
 
         /// <summary>Player id assigned by the server at authentication.</summary>
         public Guid AuthenticatedPlayerId
         {
-            get { return this.authenticatedPlayerId; }
+            get { return _authenticatedPlayerId; }
         }
 
         /// <summary>The four-field membership invariant; absent outside a confirmed room.</summary>
         public RoomMembership Membership
         {
-            get { return this.membership; }
+            get { return _membership; }
         }
 
         /// <summary>The in-flight directed room operation, if any.</summary>
         public PendingRoomOperation PendingOperation
         {
-            get { return this.pendingOperation; }
+            get { return _pendingOperation; }
         }
 
         /// <summary>
-        /// Decides whether <paramref name="command"/> may be sent now. Pure:
-        /// arming is a separate step so a failed enqueue never wedges the
-        /// fence.
+        /// Decides whether <paramref name="command"/> may be sent now.
+        /// Returns true when admitted; otherwise false with
+        /// <paramref name="error"/> describing the refusal (assigned just
+        /// before return). Pure: arming is a separate step so a failed
+        /// enqueue never wedges the fence.
         /// </summary>
-        public AdmissionError Admit(ClientCommand command)
+        public bool TryAdmit(ClientCommand command, out AdmissionError error)
         {
-            if (!this.connected)
+            error = Admit(command);
+            return error == default(AdmissionError);
+        }
+
+        private AdmissionError Admit(ClientCommand command)
+        {
+            if (!_connected)
             {
                 return AdmissionError.NotConnected;
             }
 
             if (command == ClientCommand.Ping)
             {
-                return AdmissionError.None;
+                return default;
             }
 
-            if (IsDirected(command) && !this.authenticated)
+            if (IsDirected(command) && !_authenticated)
             {
                 return AdmissionError.NotAuthenticated;
             }
 
-            if (this.pendingOperation != PendingRoomOperation.None)
+            if (_pendingOperation != default(PendingRoomOperation))
             {
                 return AdmissionError.RoomOperationPending;
             }
@@ -123,22 +131,20 @@ namespace SignalFish.Client.Core
                 case ClientCommand.JoinRoom:
                 case ClientCommand.JoinAsSpectator:
                 case ClientCommand.Reconnect:
-                    return this.membership.IsPresent
-                        ? AdmissionError.AlreadyInRoom
-                        : AdmissionError.None;
+                    return _membership.IsPresent ? AdmissionError.AlreadyInRoom : default;
                 case ClientCommand.LeaveRoom:
                 case ClientCommand.LeaveSpectator:
-                    return this.AdmitRoomScoped(command);
+                    return AdmitRoomScoped(command);
                 case ClientCommand.SetReady:
                 case ClientCommand.StartGame:
                 case ClientCommand.SendGameData:
-                    if (!this.membership.IsPresent)
+                    if (!_membership.IsPresent)
                     {
                         return AdmissionError.NotInRoom;
                     }
 
-                    return this.membership.Role == RoomRole.Player
-                        ? AdmissionError.None
+                    return _membership.Role == RoomRole.Player
+                        ? default
                         : AdmissionError.WrongRoomRole;
                 default:
                     throw new ArgumentException(
@@ -174,14 +180,14 @@ namespace SignalFish.Client.Core
 
         /// <summary>
         /// Arms the fence for a queued directed operation. Call only after
-        /// <see cref="Admit"/> returned <see cref="AdmissionError.None"/> and
-        /// the send was enqueued; <see cref="PendingRoomOperation.None"/> is
-        /// a misuse and throws. The fence is released by typed results or
+        /// <see cref="TryAdmit"/> returned true and the send was enqueued;
+        /// the default <c>PendingRoomOperation</c> value is a misuse and
+        /// throws. The fence is released by typed results or
         /// teardown — never by re-arming.
         /// </summary>
         public void Arm(PendingRoomOperation operation)
         {
-            if (operation == PendingRoomOperation.None)
+            if (operation == default(PendingRoomOperation))
             {
                 throw new ArgumentException(
                     "Cannot arm a None fence; arm a directed operation.",
@@ -189,13 +195,13 @@ namespace SignalFish.Client.Core
                 );
             }
 
-            this.pendingOperation = operation;
+            _pendingOperation = operation;
         }
 
         /// <summary>Applies one session fact. Absorbing after teardown.</summary>
         public void Apply(SessionEvent sessionEvent)
         {
-            if (this.terminal)
+            if (_terminal)
             {
                 return;
             }
@@ -203,74 +209,75 @@ namespace SignalFish.Client.Core
             switch (sessionEvent.Kind)
             {
                 case SessionEventKind.TransportReady:
-                    this.transportReady = true;
+                    _transportReady = true;
                     break;
                 case SessionEventKind.Authenticated:
                     // Fail-closed: a repeated or conflicting authentication is
                     // a protocol violation; the first assignment stands.
-                    if (!this.authenticated)
+                    if (!_authenticated)
                     {
-                        this.authenticated = true;
-                        this.authenticatedPlayerId = sessionEvent.PlayerId;
+                        _authenticated = true;
+                        _authenticatedPlayerId = sessionEvent.PlayerId;
                     }
 
                     break;
                 case SessionEventKind.RoomJoined:
                 case SessionEventKind.SpectatorJoined:
                 case SessionEventKind.Reconnected:
-                    // Fail-closed: ignore a membership the server could not
+                    // Fail-closed: ignore a _membership the server could not
                     // have confirmed — no authentication yet, or a success
                     // kind that does not answer the fenced operation (a
                     // protocol violation). Membership and fence stay put.
                     PendingRoomOperation release = SuccessRelease(sessionEvent.Kind);
                     if (
-                        !this.authenticated
+                        !_authenticated
                         || (
-                            this.pendingOperation != PendingRoomOperation.None
-                            && this.pendingOperation != release
+                            _pendingOperation != default(PendingRoomOperation)
+                            && _pendingOperation != release
                         )
                     )
                     {
                         break;
                     }
 
-                    this.membership = sessionEvent.Membership;
-                    this.ReleaseIfPending(release);
+                    _membership = sessionEvent.Membership;
+                    ReleaseIfPending(release);
                     break;
                 case SessionEventKind.RoomLeft:
                 case SessionEventKind.SpectatorLeft:
                     // Fail-closed: while fenced, only the leave kind the fence
-                    // awaits may clear membership; a mismatched leave is a
+                    // awaits may clear _membership; a mismatched leave is a
                     // protocol violation and is ignored. Unfenced, a leave is
                     // accepted (tolerant server-initiated removal).
                     if (
-                        this.pendingOperation != PendingRoomOperation.None
-                        && this.pendingOperation != LeaveRelease(sessionEvent.Kind)
+                        _pendingOperation != default(PendingRoomOperation)
+                        && _pendingOperation != LeaveRelease(sessionEvent.Kind)
                     )
                     {
                         break;
                     }
 
-                    this.membership = default;
-                    this.ReleaseIfPending(LeaveRelease(sessionEvent.Kind));
+                    _membership = default;
+                    ReleaseIfPending(LeaveRelease(sessionEvent.Kind));
                     break;
                 case SessionEventKind.JoinRoomFailed:
-                    this.ReleaseIfPending(PendingRoomOperation.JoinPlayer);
+                    ReleaseIfPending(PendingRoomOperation.JoinPlayer);
                     break;
                 case SessionEventKind.JoinSpectatorFailed:
-                    this.ReleaseIfPending(PendingRoomOperation.JoinSpectator);
+                    ReleaseIfPending(PendingRoomOperation.JoinSpectator);
                     break;
                 case SessionEventKind.ReconnectFailed:
-                    this.ReleaseIfPending(PendingRoomOperation.ReconnectPlayer);
+                    ReleaseIfPending(PendingRoomOperation.ReconnectPlayer);
                     break;
                 case SessionEventKind.ServerError:
                     // Informational only: the fence stays armed (fail-closed).
                     break;
                 case SessionEventKind.Disconnected:
-                    this.ClearSession();
+                    ClearSession();
                     break;
-                case SessionEventKind.None:
-                    // Not a session fact; ignored so default events are inert.
+                default:
+                    // Not a session fact (or an additive future kind);
+                    // ignored so default events stay inert.
                     break;
             }
         }
@@ -286,22 +293,20 @@ namespace SignalFish.Client.Core
                 case SessionEventKind.Reconnected:
                     return PendingRoomOperation.ReconnectPlayer;
                 default:
-                    return PendingRoomOperation.None;
+                    return default(PendingRoomOperation);
             }
         }
 
         private AdmissionError AdmitRoomScoped(ClientCommand command)
         {
-            if (!this.membership.IsPresent)
+            if (!_membership.IsPresent)
             {
                 return AdmissionError.NotInRoom;
             }
 
             RoomRole required =
                 command == ClientCommand.LeaveRoom ? RoomRole.Player : RoomRole.Spectator;
-            return this.membership.Role == required
-                ? AdmissionError.None
-                : AdmissionError.WrongRoomRole;
+            return _membership.Role == required ? default : AdmissionError.WrongRoomRole;
         }
 
         private static PendingRoomOperation LeaveRelease(SessionEventKind kind)
@@ -313,21 +318,21 @@ namespace SignalFish.Client.Core
 
         private void ReleaseIfPending(PendingRoomOperation operation)
         {
-            if (this.pendingOperation == operation)
+            if (_pendingOperation == operation)
             {
-                this.pendingOperation = PendingRoomOperation.None;
+                _pendingOperation = default(PendingRoomOperation);
             }
         }
 
         private void ClearSession()
         {
-            this.terminal = true;
-            this.connected = false;
-            this.transportReady = false;
-            this.authenticated = false;
-            this.authenticatedPlayerId = Guid.Empty;
-            this.membership = default;
-            this.pendingOperation = PendingRoomOperation.None;
+            _terminal = true;
+            _connected = false;
+            _transportReady = false;
+            _authenticated = false;
+            _authenticatedPlayerId = Guid.Empty;
+            _membership = default;
+            _pendingOperation = default(PendingRoomOperation);
         }
 
         private static bool IsDirected(ClientCommand command)

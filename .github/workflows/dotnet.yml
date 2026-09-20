@@ -76,6 +76,11 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/lint-no-linq.ps1
 
+      - name: Enforce the this.-qualification ban on C# sources
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/lint-no-this-qualification.ps1
+
       # One restore covers both tool invocations below (CSharpier check and
       # the coverage report).
       - name: Restore pinned tools

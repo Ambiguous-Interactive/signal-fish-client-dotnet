@@ -51,7 +51,7 @@ namespace SignalFish.Client.Protocol
 
         /// <summary>
         /// Returns the exact wire <c>type</c> name for a known message kind,
-        /// or <see langword="null"/> for <see cref="MessageKind.None"/> or
+        /// or <see langword="null"/> for <see cref="default(MessageKind)"/> or
         /// any value outside the defined kind range.
         /// </summary>
         public static string? ToWireName(MessageKind kind)
@@ -76,7 +76,7 @@ namespace SignalFish.Client.Protocol
                 }
             }
 
-            kind = MessageKind.None;
+            kind = default(MessageKind);
             return false;
         }
 
