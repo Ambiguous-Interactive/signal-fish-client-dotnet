@@ -36,10 +36,10 @@ jobs:
       # Env indirection keeps the dispatch input out of the command line.
       SECONDS_PER_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.seconds_per_target || 900 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -51,7 +51,7 @@ jobs:
       # restored cache is verified before use. Scheduled lane only — PR CI
       # time stays flat.
       - name: Restore fuzz corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .fuzz
           key: fuzz-corpus-linux-${{ github.run_id }}
@@ -64,7 +64,7 @@ jobs:
 
       - name: Upload crash artifacts
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-crashes
           path: .fuzz/crashes/
