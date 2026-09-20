@@ -23,7 +23,13 @@ dotnet build
 dotnet test
 pwsh -NoProfile -File scripts/install-hooks.ps1   # one-time: activate git hooks
 pwsh -NoProfile -File scripts/tests/run-all.ps1   # automation self-tests
+dotnet tool restore                               # one-time: restore CSharpier
+dotnet tool run csharpier -- format .             # deterministic C# formatting
 ```
+
+The client library builds with warnings-as-errors, the full built-in analyzer
+set, and a LINQ ban (`src/` only); CSharpier and the pre-commit hooks keep
+formatting and the lints enforced locally.
 
 ## AI-assisted development
 

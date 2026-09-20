@@ -47,6 +47,26 @@ try {
     & git -C $repo add docs
     $run = Invoke-Hook
     Assert-Equal 0 $run.ExitCode 'multiple staged non-.llm files: hook exits 0'
+
+    # --- src/ branches: LINQ ban + CSharpier -------------------------------
+    # A clean src/ file must pass both new gates. The disposable repo has no
+    # .config manifest, so the CSharpier step reports the clear
+    # not-restored guidance instead of a raw dotnet error.
+    Write-TestFile -Path (Join-Path $repo 'src/clean.cs') -Content 'namespace X { internal static class A { } }'
+    & git -C $repo add src/clean.cs
+    $run = Invoke-Hook
+    $joined = (@($run.Output) | ForEach-Object { $_.ToString() }) -join "`n"
+    Assert-True ($joined -match 'enforcing the LINQ ban') 'staged src .cs triggers the LINQ lint'
+    Assert-True ($joined -match 'checking C# formatting') 'staged src .cs triggers the CSharpier check'
+    Assert-True ($joined -match 'CSharpier is not restored') 'missing tool manifest produces restore guidance'
+
+    # A LINQ-using src/ file must be blocked with the ban message.
+    Write-TestFile -Path (Join-Path $repo 'src/linq.cs') -Content 'namespace X { using System.Linq; internal static class A { } }'
+    & git -C $repo add src/linq.cs
+    $run = Invoke-Hook
+    $joined = (@($run.Output) | ForEach-Object { $_.ToString() }) -join "`n"
+    Assert-True ($run.ExitCode -ne 0) 'LINQ-using src file blocks the commit'
+    Assert-True ($joined -match 'System\.Linq reference found') 'block message names the LINQ ban'
 }
 finally {
     Remove-TestRepo -Path $repo

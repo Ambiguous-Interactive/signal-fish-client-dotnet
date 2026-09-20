@@ -243,3 +243,24 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 - Actions: applied in this change set (ref-passing helpers, explicit
   branching in `TryDecodePassword`); follow-up: fold rules (1)+(2) into the
   json-serialization skill when it is next edited (300-line cap applies).
+
+## 2026-09-20 - repo quality round: analyzers, LINQ ban, CSharpier, nested-pwsh self-test
+
+- Trigger: issue debt round (#5 CSharpier, #6 max warnings + analyzers,
+  #7 zero-alloc enforcement, #12 devcontainer nested-invocation self-test).
+- Findings: (1) `Directory.Build.props` conditions cannot see properties set
+  in the csproj body (`IsTestProject`) - conditional NoWarn must live in
+  `Directory.Build.targets`. (2) `latest-all` analyzer set + NUnit requires
+  three test-scoped suppressions (underscore names CA1707, framework-guaranteed
+  args CA1062, public classes CA1515); byte-backed wire enums (CA1028) and the
+  non-compared hot-path event struct (CA1815) are perf-intentional and are
+  suppressed in `.editorconfig` with rationale. (3) The reader had no
+  allocation gate; the corpus-wide steady-state gate (min delta over 4 passes,
+  0 B) now covers decode; red-checked with a planted allocation. (4) LINQ ban
+  is enforced as a repo-conventional PowerShell linter (BannedApiAnalyzers
+  would violate the zero-PackageReference rule for src/). (5) Version smokes
+  cannot catch arch-mismatched nested binaries; the self-test now runs the
+  real nested `& pwsh` invocation and asserts the ELF e_machine (od, offset
+  18) matches `uname -m`.
+- Actions: applied in this change set; CI nets a time *decrease* (coverage
+  collection trimmed to the Linux cells that consume it).

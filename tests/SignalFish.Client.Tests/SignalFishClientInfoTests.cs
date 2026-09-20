@@ -28,7 +28,10 @@ namespace SignalFish.Client.Tests
         [TestCase("::1", "[::1]")]
         [TestCase("2001:db8::1", "[2001:db8::1]")]
         [TestCase("::ffff:127.0.0.1", "[::ffff:127.0.0.1]")]
-        public void DefaultServerUri_Ipv6Host_BracketsHostForValidUri(string host, string expectedHost)
+        public void DefaultServerUri_Ipv6Host_BracketsHostForValidUri(
+            string host,
+            string expectedHost
+        )
         {
             Uri uri = SignalFishClientInfo.DefaultServerUri(host);
 
@@ -50,7 +53,10 @@ namespace SignalFish.Client.Tests
         [TestCase("   ")]
         public void DefaultServerUri_EmptyHost_Throws(string? host)
         {
-            Assert.That(() => SignalFishClientInfo.DefaultServerUri(host!), Throws.ArgumentException);
+            Assert.That(
+                () => SignalFishClientInfo.DefaultServerUri(host!),
+                Throws.ArgumentException
+            );
         }
 
         [Test]

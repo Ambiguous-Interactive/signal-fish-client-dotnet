@@ -32,8 +32,20 @@ namespace SignalFish.Client.Protocol
         /// <summary>Nesting depth of root-level member values (the root object is level 1).</summary>
         private const int RootMemberDepth = 2;
 
-        private static readonly byte[] TypeKeyBytes = { (byte)'t', (byte)'y', (byte)'p', (byte)'e' };
-        private static readonly byte[] DataKeyBytes = { (byte)'d', (byte)'a', (byte)'t', (byte)'a' };
+        private static readonly byte[] TypeKeyBytes =
+        {
+            (byte)'t',
+            (byte)'y',
+            (byte)'p',
+            (byte)'e',
+        };
+        private static readonly byte[] DataKeyBytes =
+        {
+            (byte)'d',
+            (byte)'a',
+            (byte)'t',
+            (byte)'a',
+        };
 
         /// <summary>
         /// Decodes one envelope frame. Never throws and never allocates on
@@ -95,7 +107,8 @@ namespace SignalFish.Client.Protocol
                 scanner.SkipWhitespace();
                 ReadOnlySpan<byte> keyInner = KeyInner(span, keyRaw);
                 bool isType = !typeSeen && KeyEquals(keyInner, keyHasEscapes, TypeKeyBytes);
-                bool isData = !isType && !dataSeen && KeyEquals(keyInner, keyHasEscapes, DataKeyBytes);
+                bool isData =
+                    !isType && !dataSeen && KeyEquals(keyInner, keyHasEscapes, DataKeyBytes);
 
                 if (isType)
                 {
@@ -199,7 +212,11 @@ namespace SignalFish.Client.Protocol
             ReadOnlySpan<byte> typeInner = KeyInner(span, typeRaw);
             if (typeInner.Length == 0)
             {
-                return Fail(frame, DecodeError.EmptyType, typeRaw.GetOffsetAndLength(span.Length).Offset);
+                return Fail(
+                    frame,
+                    DecodeError.EmptyType,
+                    typeRaw.GetOffsetAndLength(span.Length).Offset
+                );
             }
 
             ReadOnlyMemory<byte> data = dataSeen && !dataIsNull ? Slice(frame, dataRaw) : default;
@@ -207,21 +224,42 @@ namespace SignalFish.Client.Protocol
             if (!typeHasEscapes && MessageKindNames.TryRoute(typeInner, out MessageKind kind))
             {
                 return new EnvelopeEvent(
-                    EnvelopeEventKind.Message, kind, frame, data, typeText: null,
-                    DecodeError.None, errorOffset: 0);
+                    EnvelopeEventKind.Message,
+                    kind,
+                    frame,
+                    data,
+                    typeText: null,
+                    DecodeError.None,
+                    errorOffset: 0
+                );
             }
 
             // Unknown type: forward-compatible event carrying the raw frame.
             return new EnvelopeEvent(
-                EnvelopeEventKind.UnknownMessage, MessageKind.None, frame, data,
+                EnvelopeEventKind.UnknownMessage,
+                MessageKind.None,
+                frame,
+                data,
                 typeText: DecodeTypeText(typeInner, typeHasEscapes),
-                DecodeError.None, errorOffset: 0);
+                DecodeError.None,
+                errorOffset: 0
+            );
         }
 
-        private static EnvelopeEvent Fail(ReadOnlyMemory<byte> frame, DecodeError error, int offset) =>
+        private static EnvelopeEvent Fail(
+            ReadOnlyMemory<byte> frame,
+            DecodeError error,
+            int offset
+        ) =>
             new EnvelopeEvent(
-                EnvelopeEventKind.DecodeFailed, MessageKind.None, frame, data: default,
-                typeText: null, error, offset);
+                EnvelopeEventKind.DecodeFailed,
+                MessageKind.None,
+                frame,
+                data: default,
+                typeText: null,
+                error,
+                offset
+            );
 
         /// <summary>Slices a raw range (netstandard2.1 has no Range-based Slice).</summary>
         private static ReadOnlyMemory<byte> Slice(ReadOnlyMemory<byte> frame, Range range)
@@ -241,8 +279,11 @@ namespace SignalFish.Client.Protocol
         /// name. Shared with payload decode — see
         /// <see cref="JsonScanner.KeyEquals"/>.
         /// </summary>
-        private static bool KeyEquals(ReadOnlySpan<byte> keyInner, bool hasEscapes, ReadOnlySpan<byte> asciiName) =>
-            JsonScanner.KeyEquals(keyInner, hasEscapes, asciiName);
+        private static bool KeyEquals(
+            ReadOnlySpan<byte> keyInner,
+            bool hasEscapes,
+            ReadOnlySpan<byte> asciiName
+        ) => JsonScanner.KeyEquals(keyInner, hasEscapes, asciiName);
 
         /// <summary>
         /// Materializes an unrecognized <c>type</c> string (rare path; this

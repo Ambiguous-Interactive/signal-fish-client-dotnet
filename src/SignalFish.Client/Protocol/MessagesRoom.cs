@@ -29,7 +29,8 @@ namespace SignalFish.Client.Protocol
             string gameName,
             string roomCode,
             string spectatorName,
-            string? password = null)
+            string? password = null
+        )
         {
             GameName = gameName;
             RoomCode = roomCode;
@@ -45,7 +46,8 @@ namespace SignalFish.Client.Protocol
             && AuthenticateMessage.NullableStringEquals(Password, other.Password);
 
         /// <inheritdoc />
-        public override bool Equals(object? obj) => obj is JoinAsSpectatorMessage other && Equals(other);
+        public override bool Equals(object? obj) =>
+            obj is JoinAsSpectatorMessage other && Equals(other);
 
         /// <inheritdoc />
         public override int GetHashCode()
@@ -59,10 +61,12 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public static bool operator ==(JoinAsSpectatorMessage left, JoinAsSpectatorMessage right) => left.Equals(right);
+        public static bool operator ==(JoinAsSpectatorMessage left, JoinAsSpectatorMessage right) =>
+            left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(JoinAsSpectatorMessage left, JoinAsSpectatorMessage right) => !left.Equals(right);
+        public static bool operator !=(JoinAsSpectatorMessage left, JoinAsSpectatorMessage right) =>
+            !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>JoinAsSpectator</c>
@@ -70,13 +74,19 @@ namespace SignalFish.Client.Protocol
         /// fields are skipped. Returns <see langword="false"/> for malformed
         /// input or a missing required field.
         /// </summary>
-        internal static bool TryDecode(ReadOnlyMemory<byte> data, out JoinAsSpectatorMessage message)
+        internal static bool TryDecode(
+            ReadOnlyMemory<byte> data,
+            out JoinAsSpectatorMessage message
+        )
         {
             message = default;
             JsonScanner scanner = new JsonScanner(data.Span);
             JsonMemberState state = scanner.BeginObject();
 
-            string? gameName = null, roomCode = null, spectatorName = null, password = null;
+            string? gameName = null,
+                roomCode = null,
+                spectatorName = null,
+                password = null;
 
             while (state == JsonMemberState.Member)
             {
@@ -118,8 +128,12 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (state != JsonMemberState.EndObject
-                || gameName is null || roomCode is null || spectatorName is null)
+            if (
+                state != JsonMemberState.EndObject
+                || gameName is null
+                || roomCode is null
+                || spectatorName is null
+            )
             {
                 return false;
             }
@@ -174,10 +188,12 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public static bool operator ==(ReconnectMessage left, ReconnectMessage right) => left.Equals(right);
+        public static bool operator ==(ReconnectMessage left, ReconnectMessage right) =>
+            left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(ReconnectMessage left, ReconnectMessage right) => !left.Equals(right);
+        public static bool operator !=(ReconnectMessage left, ReconnectMessage right) =>
+            !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>Reconnect</c> envelope (the
@@ -191,7 +207,9 @@ namespace SignalFish.Client.Protocol
             JsonScanner scanner = new JsonScanner(data.Span);
             JsonMemberState state = scanner.BeginObject();
 
-            string? playerId = null, roomId = null, authToken = null;
+            string? playerId = null,
+                roomId = null,
+                authToken = null;
 
             while (state == JsonMemberState.Member)
             {
@@ -226,8 +244,12 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (state != JsonMemberState.EndObject
-                || playerId is null || roomId is null || authToken is null)
+            if (
+                state != JsonMemberState.EndObject
+                || playerId is null
+                || roomId is null
+                || authToken is null
+            )
             {
                 return false;
             }
@@ -236,6 +258,7 @@ namespace SignalFish.Client.Protocol
             return true;
         }
     }
+
     /// <summary>
     /// Payload of the outbound <c>JoinRoom</c> message (C→S): join or create
     /// a room. <see cref="GameName"/> and <see cref="PlayerName"/> are
@@ -276,7 +299,8 @@ namespace SignalFish.Client.Protocol
             uint? maxPlayers = null,
             bool? supportsAuthority = null,
             string? relayTransport = null,
-            string? password = null)
+            string? password = null
+        )
         {
             GameName = gameName;
             PlayerName = playerName;
@@ -315,10 +339,12 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <inheritdoc />
-        public static bool operator ==(JoinRoomMessage left, JoinRoomMessage right) => left.Equals(right);
+        public static bool operator ==(JoinRoomMessage left, JoinRoomMessage right) =>
+            left.Equals(right);
 
         /// <inheritdoc />
-        public static bool operator !=(JoinRoomMessage left, JoinRoomMessage right) => !left.Equals(right);
+        public static bool operator !=(JoinRoomMessage left, JoinRoomMessage right) =>
+            !left.Equals(right);
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>JoinRoom</c> envelope (the
@@ -331,7 +357,11 @@ namespace SignalFish.Client.Protocol
             JsonScanner scanner = new JsonScanner(data.Span);
             JsonMemberState state = scanner.BeginObject();
 
-            string? gameName = null, playerName = null, roomCode = null, relayTransport = null, password = null;
+            string? gameName = null,
+                playerName = null,
+                roomCode = null,
+                relayTransport = null,
+                password = null;
             uint? maxPlayers = null;
             bool? supportsAuthority = null;
 
@@ -406,7 +436,14 @@ namespace SignalFish.Client.Protocol
             }
 
             message = new JoinRoomMessage(
-                gameName, playerName, roomCode, maxPlayers, supportsAuthority, relayTransport, password);
+                gameName,
+                playerName,
+                roomCode,
+                maxPlayers,
+                supportsAuthority,
+                relayTransport,
+                password
+            );
             return true;
         }
     }

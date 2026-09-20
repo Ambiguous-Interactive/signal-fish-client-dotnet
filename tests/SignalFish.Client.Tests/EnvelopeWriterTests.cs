@@ -17,7 +17,12 @@ namespace SignalFish.Client.Tests
     /// </summary>
     public sealed class FixtureMessage
     {
-        internal FixtureMessage(string wire, MessageKind kind, object payload, Action<IBufferWriter<byte>> write)
+        internal FixtureMessage(
+            string wire,
+            MessageKind kind,
+            object payload,
+            Action<IBufferWriter<byte>> write
+        )
         {
             Wire = wire;
             Kind = kind;
@@ -49,25 +54,33 @@ namespace SignalFish.Client.Tests
             "v3-client-messages.jsonl",
         };
 
+        private static readonly string[] RelayTransportNames = { "relay", "direct", "webrtc" };
+
+        private static readonly string[] TopologyNames = { "relay", "host", "mesh" };
+
+        private static readonly string[] CapabilityNames = { "room_operation_ids" };
+
         internal static IEnumerable<TestCaseData> ClientFixtureMessages()
         {
             foreach (string fileName in ClientFixtureFiles)
             {
-                string[] lines = File.ReadAllLines(Path.Combine(GoldenFixtures.GoldenDirectory, fileName));
+                string[] lines = File.ReadAllLines(
+                    Path.Combine(GoldenFixtures.GoldenDirectory, fileName)
+                );
                 for (int i = 0; i < lines.Length; i++)
                 {
                     FixtureMessage message = BuildFromFixture(lines[i]);
-                    yield return new TestCaseData(message)
-                        .SetArgDisplayNames($"{fileName}:{i + 1}", message.Kind.ToString());
+                    yield return new TestCaseData(message).SetArgDisplayNames(
+                        $"{fileName}:{i + 1}",
+                        message.Kind.ToString()
+                    );
                 }
             }
         }
 
         internal static List<FixtureMessage> BuildAllClientFixtureMessages()
         {
-            return ClientFixtureMessages()
-                .Select(c => (FixtureMessage)c.Arguments![0]!)
-                .ToList();
+            return ClientFixtureMessages().Select(c => (FixtureMessage)c.Arguments![0]!).ToList();
         }
 
         // --- Golden fixture corpus: byte-identical + roundtrip ----------------
@@ -80,8 +93,11 @@ namespace SignalFish.Client.Tests
 
             fixture.Write(buffer);
 
-            Assert.That(buffer.WrittenSpan.ToArray(), Is.EqualTo(expected),
-                $"{fixture.Kind} must reproduce the fixture bytes exactly.");
+            Assert.That(
+                buffer.WrittenSpan.ToArray(),
+                Is.EqualTo(expected),
+                $"{fixture.Kind} must reproduce the fixture bytes exactly."
+            );
         }
 
         [Test, TestCaseSource(nameof(ClientFixtureMessages))]
@@ -94,8 +110,11 @@ namespace SignalFish.Client.Tests
 
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.Message), fixture.Wire);
             Assert.That(ev.Message, Is.EqualTo(fixture.Kind), fixture.Wire);
-            Assert.That(PayloadDecodesTo(fixture.Kind, ev.Data, fixture.Payload), Is.True,
-                $"Written frame must decode back to the same payload: {fixture.Wire}");
+            Assert.That(
+                PayloadDecodesTo(fixture.Kind, ev.Data, fixture.Payload),
+                Is.True,
+                $"Written frame must decode back to the same payload: {fixture.Wire}"
+            );
         }
 
         [Test, TestCaseSource(nameof(ClientFixtureMessages))]
@@ -108,7 +127,10 @@ namespace SignalFish.Client.Tests
             using JsonDocument doc = JsonDocument.Parse(json);
 
             Assert.That(doc.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Object));
-            Assert.That(doc.RootElement.GetProperty("type").GetString(), Is.EqualTo(fixture.Kind.ToString()));
+            Assert.That(
+                doc.RootElement.GetProperty("type").GetString(),
+                Is.EqualTo(fixture.Kind.ToString())
+            );
         }
 
         // --- Envelope shape ----------------------------------------------------
@@ -116,14 +138,16 @@ namespace SignalFish.Client.Tests
         [Test]
         public void Write_PayloadlessCommands_OmitDataMemberEntirely()
         {
-            foreach ((Action<IBufferWriter<byte>> write, string type) in new[]
-            {
-                ((Action<IBufferWriter<byte>>)EnvelopeWriter.WritePing, "Ping"),
-                (EnvelopeWriter.WritePlayerReady, "PlayerReady"),
-                (EnvelopeWriter.WriteStartGame, "StartGame"),
-                (EnvelopeWriter.WriteLeaveRoom, "LeaveRoom"),
-                (EnvelopeWriter.WriteLeaveSpectator, "LeaveSpectator"),
-            })
+            foreach (
+                (Action<IBufferWriter<byte>> write, string type) in new[]
+                {
+                    ((Action<IBufferWriter<byte>>)EnvelopeWriter.WritePing, "Ping"),
+                    (EnvelopeWriter.WritePlayerReady, "PlayerReady"),
+                    (EnvelopeWriter.WriteStartGame, "StartGame"),
+                    (EnvelopeWriter.WriteLeaveRoom, "LeaveRoom"),
+                    (EnvelopeWriter.WriteLeaveSpectator, "LeaveSpectator"),
+                }
+            )
             {
                 ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(64);
                 write(buffer);
@@ -131,7 +155,8 @@ namespace SignalFish.Client.Tests
                 Assert.That(
                     Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()),
                     Is.EqualTo($"{{\"type\": \"{type}\"}}"),
-                    $"{type} must omit the data member.");
+                    $"{type} must omit the data member."
+                );
             }
         }
 
@@ -143,36 +168,53 @@ namespace SignalFish.Client.Tests
 
             Assert.That(
                 Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()),
-                Is.EqualTo("{\"type\": \"Authenticate\", \"data\": {\"app_id\": \"my-game\"}}"));
+                Is.EqualTo("{\"type\": \"Authenticate\", \"data\": {\"app_id\": \"my-game\"}}")
+            );
         }
 
         [Test]
         public void Write_EmptyCapabilityArrays_EmitEmptyJsonArrays()
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(128);
-            EnvelopeWriter.WriteAuthenticate(buffer, new AuthenticateMessage(
-                appId: "a",
-                protocolVersion: 3,
-                supportedTransports: Array.Empty<string>()));
+            EnvelopeWriter.WriteAuthenticate(
+                buffer,
+                new AuthenticateMessage(
+                    appId: "a",
+                    protocolVersion: 3,
+                    supportedTransports: Array.Empty<string>()
+                )
+            );
 
             Assert.That(
                 Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()),
-                Is.EqualTo("{\"type\": \"Authenticate\", \"data\": {\"app_id\": \"a\", \"protocol_version\": 3, \"supported_transports\": []}}"));
+                Is.EqualTo(
+                    "{\"type\": \"Authenticate\", \"data\": {\"app_id\": \"a\", \"protocol_version\": 3, \"supported_transports\": []}}"
+                )
+            );
         }
 
         [Test]
         public void Write_ReliableGameData_MatchesLegacyV2WireForm()
         {
             ArrayBufferWriter<byte> reliable = new ArrayBufferWriter<byte>(64);
-            EnvelopeWriter.WriteGameData(reliable, new GameDataMessage(Encoding.UTF8.GetBytes("{\"tick\": 1}")));
+            EnvelopeWriter.WriteGameData(
+                reliable,
+                new GameDataMessage(Encoding.UTF8.GetBytes("{\"tick\": 1}"))
+            );
             ArrayBufferWriter<byte> explicitReliable = new ArrayBufferWriter<byte>(64);
-            EnvelopeWriter.WriteGameData(explicitReliable, new GameDataMessage(
-                Encoding.UTF8.GetBytes("{\"tick\": 1}"), GameDataClass.Reliable));
+            EnvelopeWriter.WriteGameData(
+                explicitReliable,
+                new GameDataMessage(Encoding.UTF8.GetBytes("{\"tick\": 1}"), GameDataClass.Reliable)
+            );
 
             Assert.That(
                 Encoding.UTF8.GetString(reliable.WrittenSpan.ToArray()),
-                Is.EqualTo("{\"type\": \"GameData\", \"data\": {\"data\": {\"tick\": 1}}}"));
-            Assert.That(reliable.WrittenSpan.ToArray(), Is.EqualTo(explicitReliable.WrittenSpan.ToArray()));
+                Is.EqualTo("{\"type\": \"GameData\", \"data\": {\"data\": {\"tick\": 1}}}")
+            );
+            Assert.That(
+                reliable.WrittenSpan.ToArray(),
+                Is.EqualTo(explicitReliable.WrittenSpan.ToArray())
+            );
         }
 
         // --- Non-fixture field combinations (roundtrip-pinned) ------------------
@@ -180,73 +222,125 @@ namespace SignalFish.Client.Tests
         [Test]
         public void Write_JoinRoom_CreationForm_RoundTrips()
         {
-            JoinRoomMessage message = new JoinRoomMessage("my-game", "Alice", maxPlayers: 8, supportsAuthority: true);
+            JoinRoomMessage message = new JoinRoomMessage(
+                "my-game",
+                "Alice",
+                maxPlayers: 8,
+                supportsAuthority: true
+            );
 
-            AssertRoundTrips(MessageKind.JoinRoom, message, static (w, m) => EnvelopeWriter.WriteJoinRoom(w, in m));
+            AssertRoundTrips(
+                MessageKind.JoinRoom,
+                message,
+                static (w, m) => EnvelopeWriter.WriteJoinRoom(w, in m)
+            );
 
             Assert.That(
                 Encoding.UTF8.GetString(Written(MessageKind.JoinRoom, message)),
                 Is.EqualTo(
-                    "{\"type\": \"JoinRoom\", \"data\": {\"game_name\": \"my-game\", \"player_name\": \"Alice\", \"max_players\": 8, \"supports_authority\": true}}"));
+                    "{\"type\": \"JoinRoom\", \"data\": {\"game_name\": \"my-game\", \"player_name\": \"Alice\", \"max_players\": 8, \"supports_authority\": true}}"
+                )
+            );
         }
 
         [Test]
         public void Write_JoinRoom_AllOptionalFields_ByteExact()
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(128);
-            EnvelopeWriter.WriteJoinRoom(buffer, new JoinRoomMessage(
-                "my-game",
-                "Alice",
-                roomCode: "ABC123",
-                maxPlayers: 4,
-                supportsAuthority: false,
-                relayTransport: "tcp",
-                password: "pw"));
+            EnvelopeWriter.WriteJoinRoom(
+                buffer,
+                new JoinRoomMessage(
+                    "my-game",
+                    "Alice",
+                    roomCode: "ABC123",
+                    maxPlayers: 4,
+                    supportsAuthority: false,
+                    relayTransport: "tcp",
+                    password: "pw"
+                )
+            );
 
             Assert.That(
                 Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()),
                 Is.EqualTo(
                     "{\"type\": \"JoinRoom\", \"data\": {\"game_name\": \"my-game\", \"player_name\": \"Alice\","
-                    + " \"room_code\": \"ABC123\", \"max_players\": 4, \"supports_authority\": false,"
-                    + " \"relay_transport\": \"tcp\", \"password\": \"pw\"}}"));
+                        + " \"room_code\": \"ABC123\", \"max_players\": 4, \"supports_authority\": false,"
+                        + " \"relay_transport\": \"tcp\", \"password\": \"pw\"}}"
+                )
+            );
         }
 
         [Test]
         public void Write_JoinRoom_WithPassword_RoundTrips()
         {
-            JoinRoomMessage message = new JoinRoomMessage("my-game", "Alice", roomCode: "ABC123", password: "s3cret!");
+            JoinRoomMessage message = new JoinRoomMessage(
+                "my-game",
+                "Alice",
+                roomCode: "ABC123",
+                password: "s3cret!"
+            );
 
-            AssertRoundTrips(MessageKind.JoinRoom, message, static (w, m) => EnvelopeWriter.WriteJoinRoom(w, in m));
+            AssertRoundTrips(
+                MessageKind.JoinRoom,
+                message,
+                static (w, m) => EnvelopeWriter.WriteJoinRoom(w, in m)
+            );
         }
 
         [Test]
         public void Write_JoinAsSpectator_WithPassword_RoundTrips()
         {
-            JoinAsSpectatorMessage message = new JoinAsSpectatorMessage("my-game", "ABC123", "Observer", password: "s3cret!");
+            JoinAsSpectatorMessage message = new JoinAsSpectatorMessage(
+                "my-game",
+                "ABC123",
+                "Observer",
+                password: "s3cret!"
+            );
 
-            AssertRoundTrips(MessageKind.JoinAsSpectator, message, static (w, m) => EnvelopeWriter.WriteJoinAsSpectator(w, in m));
+            AssertRoundTrips(
+                MessageKind.JoinAsSpectator,
+                message,
+                static (w, m) => EnvelopeWriter.WriteJoinAsSpectator(w, in m)
+            );
 
             Assert.That(
                 Encoding.UTF8.GetString(Written(MessageKind.JoinAsSpectator, message)),
                 Is.EqualTo(
                     "{\"type\": \"JoinAsSpectator\", \"data\": {\"game_name\": \"my-game\","
-                    + " \"room_code\": \"ABC123\", \"spectator_name\": \"Observer\", \"password\": \"s3cret!\"}}"));
+                        + " \"room_code\": \"ABC123\", \"spectator_name\": \"Observer\", \"password\": \"s3cret!\"}}"
+                )
+            );
         }
 
         [Test]
         public void Write_RoomOperation_SetRoomAccess_BothPolarities_RoundTrip()
         {
             RoomOperationMessage seal = new RoomOperationMessage(
-                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", RoomOperationCommand.SetRoomAccess("pw"));
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                RoomOperationCommand.SetRoomAccess("pw")
+            );
             RoomOperationMessage reopen = new RoomOperationMessage(
-                "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", RoomOperationCommand.SetRoomAccess(null));
+                "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                RoomOperationCommand.SetRoomAccess(null)
+            );
 
-            AssertRoundTrips(MessageKind.RoomOperation, seal, static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m));
-            AssertRoundTrips(MessageKind.RoomOperation, reopen, static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m));
+            AssertRoundTrips(
+                MessageKind.RoomOperation,
+                seal,
+                static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m)
+            );
+            AssertRoundTrips(
+                MessageKind.RoomOperation,
+                reopen,
+                static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m)
+            );
 
             string reopenJson = Encoding.UTF8.GetString(Written(MessageKind.RoomOperation, reopen));
-            Assert.That(reopenJson, Does.Contain("\"password\": null"),
-                "SetRoomAccess reopen must present an explicit null password.");
+            Assert.That(
+                reopenJson,
+                Does.Contain("\"password\": null"),
+                "SetRoomAccess reopen must present an explicit null password."
+            );
         }
 
         [Test]
@@ -254,36 +348,59 @@ namespace SignalFish.Client.Tests
         {
             // The nested operation shapes have no golden fixtures upstream,
             // so their canonical field order is pinned here byte-exactly.
-            foreach ((RoomOperationCommand command, string operationJson) in new[]
-            {
-                (RoomOperationCommand.KickPlayer("cccccccc-cccc-cccc-cccc-cccccccccccc"),
-                    "{\"type\": \"KickPlayer\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"),
-                (RoomOperationCommand.RegenerateRoomCode(), "{\"type\": \"RegenerateRoomCode\"}"),
-                (RoomOperationCommand.SetRoomAccess("pw"),
-                    "{\"type\": \"SetRoomAccess\", \"data\": {\"password\": \"pw\"}}"),
-                (RoomOperationCommand.SetRoomAccess(null),
-                    "{\"type\": \"SetRoomAccess\", \"data\": {\"password\": null}}"),
-                (RoomOperationCommand.BanPlayer("cccccccc-cccc-cccc-cccc-cccccccccccc"),
-                    "{\"type\": \"BanPlayer\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"),
-                (RoomOperationCommand.UnbanPlayer("cccccccc-cccc-cccc-cccc-cccccccccccc"),
-                    "{\"type\": \"UnbanPlayer\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"),
-                (RoomOperationCommand.TransferAuthority("cccccccc-cccc-cccc-cccc-cccccccccccc"),
-                    "{\"type\": \"TransferAuthority\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"),
-            })
+            foreach (
+                (RoomOperationCommand command, string operationJson) in new[]
+                {
+                    (
+                        RoomOperationCommand.KickPlayer("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                        "{\"type\": \"KickPlayer\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"
+                    ),
+                    (
+                        RoomOperationCommand.RegenerateRoomCode(),
+                        "{\"type\": \"RegenerateRoomCode\"}"
+                    ),
+                    (
+                        RoomOperationCommand.SetRoomAccess("pw"),
+                        "{\"type\": \"SetRoomAccess\", \"data\": {\"password\": \"pw\"}}"
+                    ),
+                    (
+                        RoomOperationCommand.SetRoomAccess(null),
+                        "{\"type\": \"SetRoomAccess\", \"data\": {\"password\": null}}"
+                    ),
+                    (
+                        RoomOperationCommand.BanPlayer("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                        "{\"type\": \"BanPlayer\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"
+                    ),
+                    (
+                        RoomOperationCommand.UnbanPlayer("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                        "{\"type\": \"UnbanPlayer\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"
+                    ),
+                    (
+                        RoomOperationCommand.TransferAuthority(
+                            "cccccccc-cccc-cccc-cccc-cccccccccccc"
+                        ),
+                        "{\"type\": \"TransferAuthority\", \"data\": {\"player_id\": \"cccccccc-cccc-cccc-cccc-cccccccccccc\"}}"
+                    ),
+                }
+            )
             {
                 RoomOperationMessage message = new RoomOperationMessage(
-                    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", command);
+                    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    command
+                );
                 ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(256);
                 EnvelopeWriter.WriteRoomOperation(buffer, in message);
 
                 string expected =
                     "{\"type\": \"RoomOperation\", \"data\": {\"operation_id\":"
                     + " \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\", \"operation\": "
-                    + operationJson + "}}";
+                    + operationJson
+                    + "}}";
                 Assert.That(
                     Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()),
                     Is.EqualTo(expected),
-                    $"{command.Kind} nested operation must match the canonical shape.");
+                    $"{command.Kind} nested operation must match the canonical shape."
+                );
             }
         }
 
@@ -292,25 +409,44 @@ namespace SignalFish.Client.Tests
         {
             RoomOperationMessage join = new RoomOperationMessage(
                 "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                RoomOperationCommand.JoinRoom(new JoinRoomMessage("my-game", "Alice", roomCode: "ABC123")));
+                RoomOperationCommand.JoinRoom(
+                    new JoinRoomMessage("my-game", "Alice", roomCode: "ABC123")
+                )
+            );
             RoomOperationMessage reconnect = new RoomOperationMessage(
                 "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-                RoomOperationCommand.Reconnect(new ReconnectMessage("p", "r", "t")));
+                RoomOperationCommand.Reconnect(new ReconnectMessage("p", "r", "t"))
+            );
             RoomOperationMessage spectator = new RoomOperationMessage(
                 "cccccccc-cccc-cccc-cccc-cccccccccccc",
-                RoomOperationCommand.JoinAsSpectator(new JoinAsSpectatorMessage("g", "ABC123", "S")));
+                RoomOperationCommand.JoinAsSpectator(new JoinAsSpectatorMessage("g", "ABC123", "S"))
+            );
 
-            AssertRoundTrips(MessageKind.RoomOperation, join, static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m));
-            AssertRoundTrips(MessageKind.RoomOperation, reconnect, static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m));
-            AssertRoundTrips(MessageKind.RoomOperation, spectator, static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m));
+            AssertRoundTrips(
+                MessageKind.RoomOperation,
+                join,
+                static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m)
+            );
+            AssertRoundTrips(
+                MessageKind.RoomOperation,
+                reconnect,
+                static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m)
+            );
+            AssertRoundTrips(
+                MessageKind.RoomOperation,
+                spectator,
+                static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m)
+            );
 
             Assert.That(
                 Encoding.UTF8.GetString(Written(MessageKind.RoomOperation, join)),
                 Is.EqualTo(
                     "{\"type\": \"RoomOperation\", \"data\": {\"operation_id\":"
-                    + " \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\", \"operation\": {\"type\": \"JoinRoom\","
-                    + " \"data\": {\"game_name\": \"my-game\", \"player_name\": \"Alice\", \"room_code\": \"ABC123\"}}}}"),
-                "The nested JoinRoom payload must keep the canonical field order.");
+                        + " \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\", \"operation\": {\"type\": \"JoinRoom\","
+                        + " \"data\": {\"game_name\": \"my-game\", \"player_name\": \"Alice\", \"room_code\": \"ABC123\"}}}}"
+                ),
+                "The nested JoinRoom payload must keep the canonical field order."
+            );
         }
 
         // --- String escaping ----------------------------------------------------
@@ -330,9 +466,15 @@ namespace SignalFish.Client.Tests
             EnvelopeWriter.WriteJoinRoom(buffer, new JoinRoomMessage(value, value));
 
             string expected =
-                "{\"type\": \"JoinRoom\", \"data\": {\"game_name\": \"" + escapedJson
-                + "\", \"player_name\": \"" + escapedJson + "\"}}";
-            Assert.That(Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()), Is.EqualTo(expected));
+                "{\"type\": \"JoinRoom\", \"data\": {\"game_name\": \""
+                + escapedJson
+                + "\", \"player_name\": \""
+                + escapedJson
+                + "\"}}";
+            Assert.That(
+                Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()),
+                Is.EqualTo(expected)
+            );
 
             // The escaped frame must decode back to the original string.
             EnvelopeEvent ev = EnvelopeReader.Decode(buffer.WrittenSpan.ToArray());
@@ -348,10 +490,21 @@ namespace SignalFish.Client.Tests
             EnvelopeWriter.WriteJoinRoom(buffer, new JoinRoomMessage(value, "p"));
 
             byte[] bytes = buffer.WrittenSpan.ToArray();
-            Assert.That(IndexOf(bytes, Encoding.UTF8.GetBytes("☃")), Is.GreaterThanOrEqualTo(0),
-                "Non-ASCII characters must pass through as UTF-8.");
-            Assert.That(bytes, Is.EqualTo(Encoding.UTF8.GetBytes(
-                "{\"type\": \"JoinRoom\", \"data\": {\"game_name\": \"" + value + "\", \"player_name\": \"p\"}}")));
+            Assert.That(
+                IndexOf(bytes, Encoding.UTF8.GetBytes("☃")),
+                Is.GreaterThanOrEqualTo(0),
+                "Non-ASCII characters must pass through as UTF-8."
+            );
+            Assert.That(
+                bytes,
+                Is.EqualTo(
+                    Encoding.UTF8.GetBytes(
+                        "{\"type\": \"JoinRoom\", \"data\": {\"game_name\": \""
+                            + value
+                            + "\", \"player_name\": \"p\"}}"
+                    )
+                )
+            );
 
             EnvelopeEvent ev = EnvelopeReader.Decode(bytes);
             Assert.That(JoinRoomMessage.TryDecode(ev.Data, out JoinRoomMessage decoded), Is.True);
@@ -370,9 +523,10 @@ namespace SignalFish.Client.Tests
                 sdkVersion: "1.2.3",
                 platform: "unity",
                 protocolVersion: 3,
-                supportedTransports: new[] { "relay", "direct", "webrtc" },
-                supportedTopologies: new[] { "relay", "host", "mesh" },
-                requestedCapabilities: new[] { "room_operation_ids" });
+                supportedTransports: RelayTransportNames,
+                supportedTopologies: TopologyNames,
+                requestedCapabilities: CapabilityNames
+            );
 
             ArrayBufferWriter<byte> single = new ArrayBufferWriter<byte>(64);
             EnvelopeWriter.WriteAuthenticate(single, in message);
@@ -380,8 +534,11 @@ namespace SignalFish.Client.Tests
             ChunkedBufferWriter chunked = new ChunkedBufferWriter(chunkSize);
             EnvelopeWriter.WriteAuthenticate(chunked, in message);
 
-            Assert.That(chunked.ToArray(), Is.EqualTo(single.WrittenSpan.ToArray()),
-                $"Chunked writes (chunk size {chunkSize}) must produce identical output.");
+            Assert.That(
+                chunked.ToArray(),
+                Is.EqualTo(single.WrittenSpan.ToArray()),
+                $"Chunked writes (chunk size {chunkSize}) must produce identical output."
+            );
         }
 
         [Test]
@@ -402,11 +559,18 @@ namespace SignalFish.Client.Tests
         public void GameData_NonLatestKey_IsNormalizedAway()
         {
             byte[] payloadBytes = Encoding.UTF8.GetBytes("{}");
-            GameDataMessage payload = new GameDataMessage(payloadBytes, GameDataClass.Volatile, key: 5);
+            GameDataMessage payload = new GameDataMessage(
+                payloadBytes,
+                GameDataClass.Volatile,
+                key: 5
+            );
 
             Assert.That(payload.Key, Is.EqualTo(0));
-            Assert.That(payload, Is.EqualTo(new GameDataMessage(payload.Payload, GameDataClass.Volatile)),
-                "A key without class latest must not change equality.");
+            Assert.That(
+                payload,
+                Is.EqualTo(new GameDataMessage(payload.Payload, GameDataClass.Volatile)),
+                "A key without class latest must not change equality."
+            );
         }
 
         // --- Encode misuse is a programmer error ---------------------------------
@@ -415,64 +579,114 @@ namespace SignalFish.Client.Tests
         public void Write_MissingRequiredFields_ThrowsArgumentException()
         {
             Assert.That(
-                () => EnvelopeWriter.WriteJoinRoom(new ArrayBufferWriter<byte>(), new JoinRoomMessage(null!, "Alice")),
-                Throws.ArgumentException);
+                () =>
+                    EnvelopeWriter.WriteJoinRoom(
+                        new ArrayBufferWriter<byte>(),
+                        new JoinRoomMessage(null!, "Alice")
+                    ),
+                Throws.ArgumentException
+            );
             Assert.That(
-                () => EnvelopeWriter.WriteReconnect(new ArrayBufferWriter<byte>(), new ReconnectMessage("p", "r", null!)),
-                Throws.ArgumentException);
+                () =>
+                    EnvelopeWriter.WriteReconnect(
+                        new ArrayBufferWriter<byte>(),
+                        new ReconnectMessage("p", "r", null!)
+                    ),
+                Throws.ArgumentException
+            );
             Assert.That(
-                () => EnvelopeWriter.WriteJoinAsSpectator(new ArrayBufferWriter<byte>(), new JoinAsSpectatorMessage("g", "C", null!)),
-                Throws.ArgumentException);
+                () =>
+                    EnvelopeWriter.WriteJoinAsSpectator(
+                        new ArrayBufferWriter<byte>(),
+                        new JoinAsSpectatorMessage("g", "C", null!)
+                    ),
+                Throws.ArgumentException
+            );
             Assert.That(
-                () => EnvelopeWriter.WriteTransportStatus(new ArrayBufferWriter<byte>(), new TransportStatusMessage(null!, true)),
-                Throws.ArgumentException);
+                () =>
+                    EnvelopeWriter.WriteTransportStatus(
+                        new ArrayBufferWriter<byte>(),
+                        new TransportStatusMessage(null!, true)
+                    ),
+                Throws.ArgumentException
+            );
             Assert.That(
-                () => EnvelopeWriter.WriteRoomOperation(
-                    new ArrayBufferWriter<byte>(), new RoomOperationMessage("not-a-uuid", RoomOperationCommand.LeaveRoom())),
+                () =>
+                    EnvelopeWriter.WriteRoomOperation(
+                        new ArrayBufferWriter<byte>(),
+                        new RoomOperationMessage("not-a-uuid", RoomOperationCommand.LeaveRoom())
+                    ),
                 Throws.ArgumentException,
-                "operation_id must be the canonical hyphenated lowercase UUID form.");
+                "operation_id must be the canonical hyphenated lowercase UUID form."
+            );
 
             RoomOperationCommand command = RoomOperationCommand.KickPlayer("target");
             Assert.That(
-                () => EnvelopeWriter.WriteSignal(
-                    new ArrayBufferWriter<byte>(), new SignalMessage("peer", "gen", Encoding.UTF8.GetBytes("{}"))),
+                () =>
+                    EnvelopeWriter.WriteSignal(
+                        new ArrayBufferWriter<byte>(),
+                        new SignalMessage("peer", "gen", Encoding.UTF8.GetBytes("{}"))
+                    ),
                 Throws.ArgumentException,
-                "Signal target and generation must be canonical UUIDs.");
+                "Signal target and generation must be canonical UUIDs."
+            );
         }
 
         [Test]
         public void Write_InvalidVerbatimPayloads_ThrowArgumentException()
         {
             Assert.That(
-                () => EnvelopeWriter.WriteGameData(new ArrayBufferWriter<byte>(), new GameDataMessage(Array.Empty<byte>())),
-                Throws.ArgumentException);
+                () =>
+                    EnvelopeWriter.WriteGameData(
+                        new ArrayBufferWriter<byte>(),
+                        new GameDataMessage(Array.Empty<byte>())
+                    ),
+                Throws.ArgumentException
+            );
             Assert.That(
-                () => EnvelopeWriter.WriteProvideConnectionInfo(
-                    new ArrayBufferWriter<byte>(), new ProvideConnectionInfoMessage(Encoding.UTF8.GetBytes("[1, 2]"))),
-                Throws.ArgumentException);
+                () =>
+                    EnvelopeWriter.WriteProvideConnectionInfo(
+                        new ArrayBufferWriter<byte>(),
+                        new ProvideConnectionInfoMessage(Encoding.UTF8.GetBytes("[1, 2]"))
+                    ),
+                Throws.ArgumentException
+            );
             Assert.That(
-                () => EnvelopeWriter.WriteSignal(
-                    new ArrayBufferWriter<byte>(),
-                    new SignalMessage("peer", "gen", Array.Empty<byte>())),
-                Throws.ArgumentException);
+                () =>
+                    EnvelopeWriter.WriteSignal(
+                        new ArrayBufferWriter<byte>(),
+                        new SignalMessage("peer", "gen", Array.Empty<byte>())
+                    ),
+                Throws.ArgumentException
+            );
             Assert.That(
-                () => EnvelopeWriter.WriteGameData(
-                    new ArrayBufferWriter<byte>(), new GameDataMessage(Encoding.UTF8.GetBytes("{oops"))),
+                () =>
+                    EnvelopeWriter.WriteGameData(
+                        new ArrayBufferWriter<byte>(),
+                        new GameDataMessage(Encoding.UTF8.GetBytes("{oops"))
+                    ),
                 Throws.ArgumentException,
-                "A malformed verbatim payload must fail at the call site, not corrupt the frame.");
+                "A malformed verbatim payload must fail at the call site, not corrupt the frame."
+            );
             Assert.That(
-                () => EnvelopeWriter.WriteProvideConnectionInfo(
-                    new ArrayBufferWriter<byte>(),
-                    new ProvideConnectionInfoMessage(Encoding.UTF8.GetBytes("{} trailing"))),
+                () =>
+                    EnvelopeWriter.WriteProvideConnectionInfo(
+                        new ArrayBufferWriter<byte>(),
+                        new ProvideConnectionInfoMessage(Encoding.UTF8.GetBytes("{} trailing"))
+                    ),
                 Throws.ArgumentException,
-                "Verbatim payloads must carry exactly one JSON value.");
+                "Verbatim payloads must carry exactly one JSON value."
+            );
         }
 
         [Test]
         public void Write_NullDestination_ThrowsArgumentNullException()
         {
             JoinRoomMessage message = new JoinRoomMessage("g", "p");
-            Assert.That(() => EnvelopeWriter.WriteJoinRoom(null!, in message), Throws.ArgumentNullException);
+            Assert.That(
+                () => EnvelopeWriter.WriteJoinRoom(null!, in message),
+                Throws.ArgumentNullException
+            );
             Assert.That(() => EnvelopeWriter.WritePing(null!), Throws.ArgumentNullException);
         }
 
@@ -486,7 +700,10 @@ namespace SignalFish.Client.Tests
         [TestCase("{\"game_name\": \"g\", \"player_name\": \"p\",,}")] // malformed separator
         public void Decode_MalformedPayload_ReturnsFalseWithoutThrowing(string payload)
         {
-            Assert.That(JoinRoomMessage.TryDecode(Encoding.UTF8.GetBytes(payload), out _), Is.False);
+            Assert.That(
+                JoinRoomMessage.TryDecode(Encoding.UTF8.GetBytes(payload), out _),
+                Is.False
+            );
         }
 
         [Test]
@@ -495,8 +712,11 @@ namespace SignalFish.Client.Tests
             // The envelope routes keys escape-aware; payload decode must agree.
             Assert.That(
                 JoinRoomMessage.TryDecode(
-                    Encoding.UTF8.GetBytes("{\"\\u0067ame_name\": \"g\", \"player_name\": \"p\"}"), out JoinRoomMessage decoded),
-                Is.True);
+                    Encoding.UTF8.GetBytes("{\"\\u0067ame_name\": \"g\", \"player_name\": \"p\"}"),
+                    out JoinRoomMessage decoded
+                ),
+                Is.True
+            );
             Assert.That(decoded.GameName, Is.EqualTo("g"));
             Assert.That(decoded.PlayerName, Is.EqualTo("p"));
         }
@@ -507,9 +727,12 @@ namespace SignalFish.Client.Tests
             Assert.That(
                 ReconnectMessage.TryDecode(
                     Encoding.UTF8.GetBytes(
-                        "{\"future\": {\"a\": [1, 2, {\"b\": null}]}, \"player_id\": \"p\", \"room_id\": \"r\", \"auth_token\": \"t\"}"),
-                    out ReconnectMessage decoded),
-                Is.True);
+                        "{\"future\": {\"a\": [1, 2, {\"b\": null}]}, \"player_id\": \"p\", \"room_id\": \"r\", \"auth_token\": \"t\"}"
+                    ),
+                    out ReconnectMessage decoded
+                ),
+                Is.True
+            );
             Assert.That(decoded, Is.EqualTo(new ReconnectMessage("p", "r", "t")));
         }
 
@@ -518,11 +741,19 @@ namespace SignalFish.Client.Tests
         {
             Assert.That(
                 GameDataMessage.TryDecode(
-                    Encoding.UTF8.GetBytes("{\"data\": {\"x\": 1}, \"class\": \"reliable\", \"key\": 9}"),
-                    out GameDataMessage decoded),
-                Is.True);
+                    Encoding.UTF8.GetBytes(
+                        "{\"data\": {\"x\": 1}, \"class\": \"reliable\", \"key\": 9}"
+                    ),
+                    out GameDataMessage decoded
+                ),
+                Is.True
+            );
             Assert.That(decoded.Class, Is.EqualTo(GameDataClass.Reliable));
-            Assert.That(decoded.Key, Is.EqualTo(0), "The key is only meaningful alongside class latest.");
+            Assert.That(
+                decoded.Key,
+                Is.EqualTo(0),
+                "The key is only meaningful alongside class latest."
+            );
         }
 
         [Test]
@@ -530,8 +761,11 @@ namespace SignalFish.Client.Tests
         {
             Assert.That(
                 GameDataMessage.TryDecode(
-                    Encoding.UTF8.GetBytes("{\"data\": {}, \"class\": \"banana\"}"), out _),
-                Is.False);
+                    Encoding.UTF8.GetBytes("{\"data\": {}, \"class\": \"banana\"}"),
+                    out _
+                ),
+                Is.False
+            );
         }
 
         [Test]
@@ -540,15 +774,24 @@ namespace SignalFish.Client.Tests
             Assert.That(
                 RoomOperationMessage.TryDecode(
                     Encoding.UTF8.GetBytes(
-                        "{\"operation_id\": \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\", \"operation\": {\"type\": \"NukeRoom\"}}"),
-                    out _),
-                Is.False);
+                        "{\"operation_id\": \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\", \"operation\": {\"type\": \"NukeRoom\"}}"
+                    ),
+                    out _
+                ),
+                Is.False
+            );
         }
 
         [Test]
         public void Decode_EmptyAuthenticateObject_DecodesToDefault()
         {
-            Assert.That(AuthenticateMessage.TryDecode(Encoding.UTF8.GetBytes("{}"), out AuthenticateMessage decoded), Is.True);
+            Assert.That(
+                AuthenticateMessage.TryDecode(
+                    Encoding.UTF8.GetBytes("{}"),
+                    out AuthenticateMessage decoded
+                ),
+                Is.True
+            );
             Assert.That(decoded, Is.EqualTo(default(AuthenticateMessage)));
         }
 
@@ -587,8 +830,11 @@ namespace SignalFish.Client.Tests
                 minDelta = Math.Min(minDelta, after - before);
             }
 
-            Assert.That(minDelta, Is.EqualTo(0),
-                "Steady-state encoding of the whole outbound corpus must not allocate.");
+            Assert.That(
+                minDelta,
+                Is.EqualTo(0),
+                "Steady-state encoding of the whole outbound corpus must not allocate."
+            );
         }
 
         // --- Helpers -----------------------------------------------------------------
@@ -603,7 +849,8 @@ namespace SignalFish.Client.Tests
         private static void AssertRoundTrips<TMessage>(
             MessageKind kind,
             TMessage message,
-            Action<IBufferWriter<byte>, TMessage> write)
+            Action<IBufferWriter<byte>, TMessage> write
+        )
             where TMessage : struct
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(64);
@@ -613,11 +860,18 @@ namespace SignalFish.Client.Tests
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.Message));
             Assert.That(ev.Message, Is.EqualTo(kind));
 
-            Assert.That(PayloadDecodesTo(kind, ev.Data, message), Is.True,
-                "Written frame must decode back to an equal payload struct.");
+            Assert.That(
+                PayloadDecodesTo(kind, ev.Data, message),
+                Is.True,
+                "Written frame must decode back to an equal payload struct."
+            );
         }
 
-        private static bool PayloadDecodesTo(MessageKind kind, ReadOnlyMemory<byte> data, object expected)
+        private static bool PayloadDecodesTo(
+            MessageKind kind,
+            ReadOnlyMemory<byte> data,
+            object expected
+        )
         {
             switch (kind)
             {
@@ -637,8 +891,10 @@ namespace SignalFish.Client.Tests
                     return AuthorityRequestMessage.TryDecode(data, out AuthorityRequestMessage ar)
                         && ar.Equals((AuthorityRequestMessage)expected);
                 case MessageKind.ProvideConnectionInfo:
-                    return ProvideConnectionInfoMessage.TryDecode(data, out ProvideConnectionInfoMessage pci)
-                        && pci.Equals((ProvideConnectionInfoMessage)expected);
+                    return ProvideConnectionInfoMessage.TryDecode(
+                            data,
+                            out ProvideConnectionInfoMessage pci
+                        ) && pci.Equals((ProvideConnectionInfoMessage)expected);
                 case MessageKind.GameData:
                     return GameDataMessage.TryDecode(data, out GameDataMessage gd)
                         && gd.Equals((GameDataMessage)expected);
@@ -664,7 +920,11 @@ namespace SignalFish.Client.Tests
             }
         }
 
-        private static void WriteTo(IBufferWriter<byte> destination, MessageKind kind, object payload)
+        private static void WriteTo(
+            IBufferWriter<byte> destination,
+            MessageKind kind,
+            object payload
+        )
         {
             switch (kind)
             {
@@ -675,16 +935,25 @@ namespace SignalFish.Client.Tests
                     EnvelopeWriter.WriteJoinRoom(destination, (JoinRoomMessage)payload);
                     break;
                 case MessageKind.JoinAsSpectator:
-                    EnvelopeWriter.WriteJoinAsSpectator(destination, (JoinAsSpectatorMessage)payload);
+                    EnvelopeWriter.WriteJoinAsSpectator(
+                        destination,
+                        (JoinAsSpectatorMessage)payload
+                    );
                     break;
                 case MessageKind.Reconnect:
                     EnvelopeWriter.WriteReconnect(destination, (ReconnectMessage)payload);
                     break;
                 case MessageKind.AuthorityRequest:
-                    EnvelopeWriter.WriteAuthorityRequest(destination, (AuthorityRequestMessage)payload);
+                    EnvelopeWriter.WriteAuthorityRequest(
+                        destination,
+                        (AuthorityRequestMessage)payload
+                    );
                     break;
                 case MessageKind.ProvideConnectionInfo:
-                    EnvelopeWriter.WriteProvideConnectionInfo(destination, (ProvideConnectionInfoMessage)payload);
+                    EnvelopeWriter.WriteProvideConnectionInfo(
+                        destination,
+                        (ProvideConnectionInfoMessage)payload
+                    );
                     break;
                 case MessageKind.GameData:
                     EnvelopeWriter.WriteGameData(destination, (GameDataMessage)payload);
@@ -696,7 +965,10 @@ namespace SignalFish.Client.Tests
                     EnvelopeWriter.WriteSignal(destination, (SignalMessage)payload);
                     break;
                 case MessageKind.TransportStatus:
-                    EnvelopeWriter.WriteTransportStatus(destination, (TransportStatusMessage)payload);
+                    EnvelopeWriter.WriteTransportStatus(
+                        destination,
+                        (TransportStatusMessage)payload
+                    );
                     break;
                 default:
                     Assert.Fail($"No writer for kind {kind}.");
@@ -722,10 +994,14 @@ namespace SignalFish.Client.Tests
                         protocolVersion: OptionalUInt32(data, "protocol_version"),
                         supportedTransports: OptionalArray(data, "supported_transports"),
                         supportedTopologies: OptionalArray(data, "supported_topologies"),
-                        requestedCapabilities: OptionalArray(data, "requested_capabilities"));
+                        requestedCapabilities: OptionalArray(data, "requested_capabilities")
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.Authenticate, message,
-                        w => EnvelopeWriter.WriteAuthenticate(w, in message));
+                        wire,
+                        MessageKind.Authenticate,
+                        message,
+                        w => EnvelopeWriter.WriteAuthenticate(w, in message)
+                    );
                 }
 
                 case "JoinRoom":
@@ -733,10 +1009,14 @@ namespace SignalFish.Client.Tests
                     JoinRoomMessage message = new JoinRoomMessage(
                         data.GetProperty("game_name").GetString()!,
                         data.GetProperty("player_name").GetString()!,
-                        roomCode: OptionalString(data, "room_code"));
+                        roomCode: OptionalString(data, "room_code")
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.JoinRoom, message,
-                        w => EnvelopeWriter.WriteJoinRoom(w, in message));
+                        wire,
+                        MessageKind.JoinRoom,
+                        message,
+                        w => EnvelopeWriter.WriteJoinRoom(w, in message)
+                    );
                 }
 
                 case "GameData":
@@ -744,29 +1024,43 @@ namespace SignalFish.Client.Tests
                     uint? key = OptionalUInt32(data, "key");
                     GameDataMessage message = new GameDataMessage(
                         RawProperty(root, "data", "data"),
-                        key is not null ? GameDataClass.Latest : OptionalString(data, "class") == "volatile"
-                            ? GameDataClass.Volatile
+                        key is not null ? GameDataClass.Latest
+                            : OptionalString(data, "class") == "volatile" ? GameDataClass.Volatile
                             : GameDataClass.Reliable,
-                        key.GetValueOrDefault());
+                        key.GetValueOrDefault()
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.GameData, message,
-                        w => EnvelopeWriter.WriteGameData(w, in message));
+                        wire,
+                        MessageKind.GameData,
+                        message,
+                        w => EnvelopeWriter.WriteGameData(w, in message)
+                    );
                 }
 
                 case "AuthorityRequest":
                 {
-                    AuthorityRequestMessage message = new AuthorityRequestMessage(data.GetProperty("become_authority").GetBoolean());
+                    AuthorityRequestMessage message = new AuthorityRequestMessage(
+                        data.GetProperty("become_authority").GetBoolean()
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.AuthorityRequest, message,
-                        w => EnvelopeWriter.WriteAuthorityRequest(w, in message));
+                        wire,
+                        MessageKind.AuthorityRequest,
+                        message,
+                        w => EnvelopeWriter.WriteAuthorityRequest(w, in message)
+                    );
                 }
 
                 case "ProvideConnectionInfo":
                 {
-                    ProvideConnectionInfoMessage message = new ProvideConnectionInfoMessage(RawProperty(root, "data", "connection_info"));
+                    ProvideConnectionInfoMessage message = new ProvideConnectionInfoMessage(
+                        RawProperty(root, "data", "connection_info")
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.ProvideConnectionInfo, message,
-                        w => EnvelopeWriter.WriteProvideConnectionInfo(w, in message));
+                        wire,
+                        MessageKind.ProvideConnectionInfo,
+                        message,
+                        w => EnvelopeWriter.WriteProvideConnectionInfo(w, in message)
+                    );
                 }
 
                 case "Reconnect":
@@ -774,10 +1068,14 @@ namespace SignalFish.Client.Tests
                     ReconnectMessage message = new ReconnectMessage(
                         data.GetProperty("player_id").GetString()!,
                         data.GetProperty("room_id").GetString()!,
-                        data.GetProperty("auth_token").GetString()!);
+                        data.GetProperty("auth_token").GetString()!
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.Reconnect, message,
-                        w => EnvelopeWriter.WriteReconnect(w, in message));
+                        wire,
+                        MessageKind.Reconnect,
+                        message,
+                        w => EnvelopeWriter.WriteReconnect(w, in message)
+                    );
                 }
 
                 case "JoinAsSpectator":
@@ -785,10 +1083,14 @@ namespace SignalFish.Client.Tests
                     JoinAsSpectatorMessage message = new JoinAsSpectatorMessage(
                         data.GetProperty("game_name").GetString()!,
                         data.GetProperty("room_code").GetString()!,
-                        data.GetProperty("spectator_name").GetString()!);
+                        data.GetProperty("spectator_name").GetString()!
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.JoinAsSpectator, message,
-                        w => EnvelopeWriter.WriteJoinAsSpectator(w, in message));
+                        wire,
+                        MessageKind.JoinAsSpectator,
+                        message,
+                        w => EnvelopeWriter.WriteJoinAsSpectator(w, in message)
+                    );
                 }
 
                 case "RoomOperation":
@@ -799,14 +1101,22 @@ namespace SignalFish.Client.Tests
                         "LeaveRoom" => RoomOperationCommand.LeaveRoom(),
                         "RegenerateRoomCode" => RoomOperationCommand.RegenerateRoomCode(),
                         "KickPlayer" => RoomOperationCommand.KickPlayer(
-                            operation.GetProperty("data").GetProperty("player_id").GetString()!),
-                        null => throw new InvalidOperationException("Fixture command type missing."),
-                        string unexpected => throw new InvalidOperationException($"Unhandled fixture command: {unexpected}"),
+                            operation.GetProperty("data").GetProperty("player_id").GetString()!
+                        ),
+                        _ => throw new InvalidOperationException(
+                            $"Unhandled fixture command: {operation.GetProperty("type").GetString() ?? "<missing>"}"
+                        ),
                     };
-                    RoomOperationMessage message = new RoomOperationMessage(data.GetProperty("operation_id").GetString()!, command);
+                    RoomOperationMessage message = new RoomOperationMessage(
+                        data.GetProperty("operation_id").GetString()!,
+                        command
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.RoomOperation, message,
-                        w => EnvelopeWriter.WriteRoomOperation(w, in message));
+                        wire,
+                        MessageKind.RoomOperation,
+                        message,
+                        w => EnvelopeWriter.WriteRoomOperation(w, in message)
+                    );
                 }
 
                 case "Signal":
@@ -814,36 +1124,65 @@ namespace SignalFish.Client.Tests
                     SignalMessage message = new SignalMessage(
                         data.GetProperty("to").GetString()!,
                         data.GetProperty("generation").GetString()!,
-                        RawProperty(root, "data", "signal"));
+                        RawProperty(root, "data", "signal")
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.Signal, message,
-                        w => EnvelopeWriter.WriteSignal(w, in message));
+                        wire,
+                        MessageKind.Signal,
+                        message,
+                        w => EnvelopeWriter.WriteSignal(w, in message)
+                    );
                 }
 
                 case "TransportStatus":
                 {
                     TransportStatusMessage message = new TransportStatusMessage(
                         data.GetProperty("transport").GetString()!,
-                        data.GetProperty("connected").GetBoolean());
+                        data.GetProperty("connected").GetBoolean()
+                    );
                     return new FixtureMessage(
-                        wire, MessageKind.TransportStatus, message,
-                        w => EnvelopeWriter.WriteTransportStatus(w, in message));
+                        wire,
+                        MessageKind.TransportStatus,
+                        message,
+                        w => EnvelopeWriter.WriteTransportStatus(w, in message)
+                    );
                 }
 
                 case "PlayerReady":
                     return new FixtureMessage(
-                        wire, MessageKind.PlayerReady, wire, EnvelopeWriter.WritePlayerReady);
+                        wire,
+                        MessageKind.PlayerReady,
+                        wire,
+                        EnvelopeWriter.WritePlayerReady
+                    );
                 case "StartGame":
                     return new FixtureMessage(
-                        wire, MessageKind.StartGame, wire, EnvelopeWriter.WriteStartGame);
+                        wire,
+                        MessageKind.StartGame,
+                        wire,
+                        EnvelopeWriter.WriteStartGame
+                    );
                 case "LeaveRoom":
                     return new FixtureMessage(
-                        wire, MessageKind.LeaveRoom, wire, EnvelopeWriter.WriteLeaveRoom);
+                        wire,
+                        MessageKind.LeaveRoom,
+                        wire,
+                        EnvelopeWriter.WriteLeaveRoom
+                    );
                 case "LeaveSpectator":
                     return new FixtureMessage(
-                        wire, MessageKind.LeaveSpectator, wire, EnvelopeWriter.WriteLeaveSpectator);
+                        wire,
+                        MessageKind.LeaveSpectator,
+                        wire,
+                        EnvelopeWriter.WriteLeaveSpectator
+                    );
                 case "Ping":
-                    return new FixtureMessage(wire, MessageKind.Ping, wire, EnvelopeWriter.WritePing);
+                    return new FixtureMessage(
+                        wire,
+                        MessageKind.Ping,
+                        wire,
+                        EnvelopeWriter.WritePing
+                    );
                 default:
                     throw new InvalidOperationException($"Unhandled client fixture type: {type}");
             }
@@ -868,7 +1207,10 @@ namespace SignalFish.Client.Tests
 
         private static string[]? OptionalArray(JsonElement data, string name)
         {
-            if (data.ValueKind != JsonValueKind.Object || !data.TryGetProperty(name, out JsonElement e))
+            if (
+                data.ValueKind != JsonValueKind.Object
+                || !data.TryGetProperty(name, out JsonElement e)
+            )
             {
                 return null;
             }
@@ -917,10 +1259,7 @@ namespace SignalFish.Client.Tests
                     throw new InvalidOperationException("Advance without GetSpan.");
                 }
 
-                if (count > _current.Length)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(count));
-                }
+                ArgumentOutOfRangeException.ThrowIfGreaterThan(count, _current.Length);
 
                 _chunks[^1] = (_current, count);
             }

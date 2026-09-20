@@ -41,17 +41,37 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/lint-zero-dependencies.ps1
 
+      - name: Enforce the LINQ ban on the client library
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/lint-no-linq.ps1
+
+      - name: Check C# formatting (CSharpier)
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        run: |
+          dotnet tool restore
+          dotnet tool run csharpier -- check .
+
       - name: Restore
         run: dotnet restore
 
       - name: Build
         run: dotnet build --no-restore -c Release -warnaserror
 
-      - name: Test
+      # Coverage is collected (and reported) only on the Linux cells: the
+      # report generator runs on Linux only, so collecting on every cell
+      # paid instrumentation cost three extra times for data nobody read.
+      - name: Test (with coverage)
+        if: matrix.os == 'ubuntu-latest'
         run: >
           dotnet test --no-build -c Release -f ${{ matrix.framework }}
           --logger trx --results-directory TestResults
           --collect:"XPlat Code Coverage"
+
+      - name: Test
+        if: matrix.os == 'windows-latest'
+        run: >
+          dotnet test --no-build -c Release -f ${{ matrix.framework }}
+          --logger trx --results-directory TestResults
 
       - name: Generate coverage report
         if: runner.os == 'Linux'
