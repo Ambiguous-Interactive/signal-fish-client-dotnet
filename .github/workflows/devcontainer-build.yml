@@ -60,6 +60,10 @@ jobs:
         with:
           # Build the feature-augmented image, then exercise the real launch
           # path (MCP config sync + self-test) as the non-root remote user.
+          # This runCmd is the complete validation: the agentic CLIs are
+          # lifecycle-installed into the container (latest on every launch)
+          # and are intentionally NOT in the image, so every CLI check must
+          # run inside this container — self-test.sh covers them.
           imageName: signal-fish-devcontainer-ci
           push: never
           # Layer cache via the GitHub Actions cache backend: repeated PR
@@ -70,28 +74,3 @@ jobs:
           runCmd: |
             bash .devcontainer/scripts/post-start.sh
             bash .devcontainer/scripts/self-test.sh
-
-      - name: Smoke-check installed tools at runtime
-        run: |
-          set -euo pipefail
-          image="signal-fish-devcontainer-ci:latest"
-
-          # Every agentic CLI + the globally installed MCP stdio server must
-          # resolve on PATH in a login shell as the container user.
-          for tool in codex opencode nanocoder claude copilot gemini zai-mcp-server uvx node npm; do
-            version=$(docker run --rm "$image" bash -lc "command -v $tool >/dev/null && $tool --version >/dev/null 2>&1 && echo ok || echo MISSING")
-            if [ "$version" != "ok" ]; then
-              echo "ERROR: tool '$tool' is missing or broken in the image." >&2
-              exit 1
-            fi
-            echo "$tool: ok"
-          done
-
-          # The user-owned npm global prefix must exist in the image and be
-          # the configured prefix, so `npm install -g` never needs sudo.
-          prefix=$(docker run --rm "$image" bash -lc 'npm config get prefix')
-          if [ "$prefix" != "/home/vscode/.npm-global" ]; then
-            echo "ERROR: npm prefix is '$prefix', expected /home/vscode/.npm-global" >&2
-            exit 1
-          fi
-          echo "npm prefix: $prefix (user-owned, sudo-free)"
