@@ -27,7 +27,7 @@ namespace SignalFish.Client.Core
         /// <summary>Server-assigned room id.</summary>
         public Guid RoomId { get; }
 
-        /// <summary>Human-shareable room code.</summary>
+        /// <summary>Human-shareable room code; null in the absent membership.</summary>
         public string RoomCode { get; }
 
         /// <summary>True when a confirmed membership is present.</summary>

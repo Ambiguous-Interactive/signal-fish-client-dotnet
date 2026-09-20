@@ -11,21 +11,14 @@ namespace SignalFish.Client.Core
         /// <summary>Shared process-wide instance.</summary>
         public static readonly SystemClock Instance = new SystemClock();
 
-        private readonly long startTimestamp;
+        private readonly Stopwatch stopwatch = Stopwatch.StartNew();
 
-        private SystemClock()
-        {
-            this.startTimestamp = Stopwatch.GetTimestamp();
-        }
+        private SystemClock() { }
 
         /// <inheritdoc />
         public long ElapsedMilliseconds
         {
-            get
-            {
-                long delta = Stopwatch.GetTimestamp() - this.startTimestamp;
-                return delta * 1000L / Stopwatch.Frequency;
-            }
+            get { return this.stopwatch.ElapsedMilliseconds; }
         }
     }
 }

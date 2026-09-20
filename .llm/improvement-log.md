@@ -267,3 +267,23 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   CA2000/CA1031/CA5350 suppressions added to .editorconfig with rationale.
 - CI: `dotnet tool restore` deduped; Dependabot weekly; fuzz corpus persisted
   across scheduled runs - PR CI flat-to-lower, coverage unchanged.
+
+## 2026-09-20 (session 011)
+
+- What: M3.1/M3.2 polling core (clock abstraction + connection state
+  machine) landed red-green; 285 tests x 2 TFMs; adversarial review round
+  produced 3 majors, all fixed before ship.
+- Findings: (1) Success releases must be type-matched like failures - an
+  unconditional "clear fence on RoomJoined/SpectatorJoined/Reconnected"
+  lets a stray success swap membership mid-fence (violates fail-closed).
+  (2) Hand-rolled tick math overflowed at ~107 days of process uptime
+  (Linux Stopwatch.Frequency = 1e9); `Stopwatch.ElapsedMilliseconds` is
+  overflow-safe - never scale raw timestamps by hand. (3) Public state
+  mutators must defend their own invariants: ignore unauthenticated joins,
+  repeated authentications, and default(0) events. (4) Enum-as-state
+  inputs need an inert 0 member or `default` fabricates live events.
+- Actions: guards + type-matched releases in `SignalFishStateMachine`
+  pinned by new fence/phase/equality tables; `SessionEventKind.None`;
+  improvement folded into session-011 log. Issue debt: #21/#22 closed,
+  #7 progress noted.
+- CI: no workflow changes; PR CI flat, coverage strictly additive.

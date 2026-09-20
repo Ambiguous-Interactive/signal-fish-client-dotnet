@@ -8,41 +8,44 @@ namespace SignalFish.Client.Core
     /// </summary>
     public enum SessionEventKind
     {
+        /// <summary>Not a session fact (the default); applying it is a no-op.</summary>
+        None = 0,
+
         /// <summary>The transport handshake completed; the wire is open.</summary>
-        TransportReady = 0,
+        TransportReady = 1,
 
         /// <summary>Server confirmed authentication (carries the assigned player id).</summary>
-        Authenticated = 1,
+        Authenticated = 2,
 
         /// <summary>Confirmed player membership (carries the membership).</summary>
-        RoomJoined = 2,
+        RoomJoined = 3,
 
         /// <summary>Confirmed spectator membership (carries the membership).</summary>
-        SpectatorJoined = 3,
+        SpectatorJoined = 4,
 
         /// <summary>Confirmed player exit; connection stays open.</summary>
-        RoomLeft = 4,
+        RoomLeft = 5,
 
         /// <summary>Confirmed spectator exit; connection stays open.</summary>
-        SpectatorLeft = 5,
+        SpectatorLeft = 6,
 
         /// <summary>Typed join-player failure; releases only a pending JoinPlayer.</summary>
-        JoinRoomFailed = 6,
+        JoinRoomFailed = 7,
 
         /// <summary>Typed join-spectator failure; releases only a pending JoinSpectator.</summary>
-        JoinSpectatorFailed = 7,
+        JoinSpectatorFailed = 8,
 
         /// <summary>Typed reconnect failure; releases only a pending ReconnectPlayer.</summary>
-        ReconnectFailed = 8,
+        ReconnectFailed = 9,
 
         /// <summary>Membership reclaimed after reconnection (carries the membership).</summary>
-        Reconnected = 9,
+        Reconnected = 10,
 
         /// <summary>Generic server error envelope. Informational only: it never
         /// releases the fence (fail-closed) and never changes phase.</summary>
-        ServerError = 10,
+        ServerError = 11,
 
         /// <summary>Transport closed or failed; the session is terminal.</summary>
-        Disconnected = 11,
+        Disconnected = 12,
     }
 }

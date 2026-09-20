@@ -1,5 +1,6 @@
 namespace SignalFish.Client.Tests.Core
 {
+    using System;
     using NUnit.Framework;
     using SignalFish.Client.Core;
 
@@ -11,18 +12,32 @@ namespace SignalFish.Client.Tests.Core
     public class ClockTests
     {
         [Test]
-        public void SystemClock_ElapsedMilliseconds_NeverGoesBackwards()
+        public void SystemClock_ElapsedMilliseconds_AdvancesMonotonically()
         {
             long first = SystemClock.Instance.ElapsedMilliseconds;
             long last = first;
-            for (int sample = 0; sample < 32; sample++)
+            bool advanced = false;
+            for (int sample = 0; sample < 1 << 20; sample++)
             {
                 long current = SystemClock.Instance.ElapsedMilliseconds;
                 Assert.That(current, Is.GreaterThanOrEqualTo(last));
+                advanced |= current > first;
                 last = current;
+                if (advanced)
+                {
+                    break;
+                }
             }
 
-            Assert.That(last, Is.GreaterThanOrEqualTo(first));
+            Assert.That(advanced, Is.True, "clock never ticked");
+        }
+
+        [Test]
+        public void VirtualClock_RejectsBackwardsAdvance()
+        {
+            VirtualClock clock = new VirtualClock();
+            Assert.That(() => clock.Advance(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(clock.ElapsedMilliseconds, Is.EqualTo(0));
         }
 
         [Test]

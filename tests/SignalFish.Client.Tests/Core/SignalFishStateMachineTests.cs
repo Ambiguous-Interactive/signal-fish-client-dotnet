@@ -180,6 +180,18 @@ namespace SignalFish.Client.Tests.Core
                     AdmissionError.RoomOperationPending
                 ),
                 (
+                    "fenced+leaveRoom",
+                    Fenced(PendingRoomOperation.JoinPlayer),
+                    ClientCommand.LeaveRoom,
+                    AdmissionError.RoomOperationPending
+                ),
+                (
+                    "fenced+reconnect",
+                    Fenced(PendingRoomOperation.JoinPlayer),
+                    ClientCommand.Reconnect,
+                    AdmissionError.RoomOperationPending
+                ),
+                (
                     "fencedInRoom+joinRoom",
                     Fenced(PendingRoomOperation.LeavePlayer),
                     ClientCommand.JoinRoom,
@@ -252,6 +264,12 @@ namespace SignalFish.Client.Tests.Core
                     AdmissionError.WrongRoomRole
                 ),
                 (
+                    "spectator+startGame",
+                    InRoom(RoomRole.Spectator),
+                    ClientCommand.StartGame,
+                    AdmissionError.WrongRoomRole
+                ),
+                (
                     "spectator+gameData",
                     InRoom(RoomRole.Spectator),
                     ClientCommand.SendGameData,
@@ -268,6 +286,12 @@ namespace SignalFish.Client.Tests.Core
                     "terminal+joinRoom",
                     Terminal(),
                     ClientCommand.JoinRoom,
+                    AdmissionError.NotConnected
+                ),
+                (
+                    "terminal+leaveRoom",
+                    Terminal(),
+                    ClientCommand.LeaveRoom,
                     AdmissionError.NotConnected
                 ),
                 (
@@ -451,6 +475,115 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
+        public void Fence_MismatchedSuccess_IsIgnoredFailClosed()
+        {
+            SignalFishStateMachine leaving = InRoom(RoomRole.Player);
+            leaving.Arm(PendingRoomOperation.LeavePlayer);
+            leaving.Apply(
+                SessionEvent.Joined(
+                    SessionEventKind.SpectatorJoined,
+                    Membership(RoomRole.Spectator)
+                )
+            );
+            Assert.That(leaving.PendingOperation, Is.EqualTo(PendingRoomOperation.LeavePlayer));
+            Assert.That(leaving.Membership, Is.EqualTo(Membership(RoomRole.Player)));
+
+            SignalFishStateMachine reconnecting = Fenced(PendingRoomOperation.ReconnectPlayer);
+            reconnecting.Apply(
+                SessionEvent.Joined(SessionEventKind.RoomJoined, Membership(RoomRole.Player))
+            );
+            Assert.That(
+                reconnecting.PendingOperation,
+                Is.EqualTo(PendingRoomOperation.ReconnectPlayer)
+            );
+            Assert.That(reconnecting.Membership.IsPresent, Is.False);
+        }
+
+        [Test]
+        public void Apply_JoinConfirmedWithoutAuthentication_IsIgnored()
+        {
+            SignalFishStateMachine fresh = Fresh();
+            fresh.Apply(
+                SessionEvent.Joined(SessionEventKind.RoomJoined, Membership(RoomRole.Player))
+            );
+
+            Assert.That(fresh.Phase, Is.EqualTo(ConnectionPhase.Connecting));
+            Assert.That(fresh.Membership.IsPresent, Is.False);
+        }
+
+        [Test]
+        public void Apply_RepeatedAuthenticated_KeepsFirstAssignment()
+        {
+            Guid secondId = new Guid("c9bf9e57-1685-4c89-bafb-ff5af830be8a");
+            SignalFishStateMachine machine = Fresh();
+            machine.Apply(SessionEvent.Authenticated(PlayerId));
+            machine.Apply(SessionEvent.Authenticated(secondId));
+
+            Assert.That(machine.AuthenticatedPlayerId, Is.EqualTo(PlayerId));
+        }
+
+        [Test]
+        public void Apply_DefaultSessionEvent_IsInert()
+        {
+            SignalFishStateMachine machine = Fresh();
+            machine.Apply(default(SessionEvent));
+
+            Assert.That(machine.Phase, Is.EqualTo(ConnectionPhase.Connecting));
+        }
+
+        [Test]
+        public void Arm_None_IsMisuse()
+        {
+            SignalFishStateMachine machine = Fresh();
+            Assert.That(() => machine.Arm(PendingRoomOperation.None), Throws.ArgumentException);
+        }
+
+        [Test]
+        public void StructEquality_MembershipAndEvents_FieldWise()
+        {
+            RoomMembership membership = Membership(RoomRole.Player);
+            Assert.That(membership, Is.EqualTo(Membership(RoomRole.Player)));
+            Assert.That(membership, Is.Not.EqualTo(Membership(RoomRole.Spectator)));
+            Assert.That(
+                membership,
+                Is.Not.EqualTo(new RoomMembership(RoomRole.Player, PlayerId, RoomId, "abc123"))
+            );
+            Assert.That(
+                membership.GetHashCode(),
+                Is.EqualTo(Membership(RoomRole.Player).GetHashCode())
+            );
+            Assert.That(
+                default(RoomMembership).GetHashCode(),
+                Is.EqualTo(default(RoomMembership).GetHashCode())
+            );
+
+            SessionEvent join = SessionEvent.Joined(
+                SessionEventKind.RoomJoined,
+                Membership(RoomRole.Player)
+            );
+            Assert.That(
+                join,
+                Is.EqualTo(
+                    SessionEvent.Joined(SessionEventKind.RoomJoined, Membership(RoomRole.Player))
+                )
+            );
+            Assert.That(join, Is.Not.EqualTo(SessionEvent.From(SessionEventKind.RoomJoined)));
+            Assert.That(
+                join,
+                Is.Not.EqualTo(
+                    SessionEvent.Joined(
+                        SessionEventKind.SpectatorJoined,
+                        Membership(RoomRole.Player)
+                    )
+                )
+            );
+            Assert.That(
+                SessionEvent.Authenticated(PlayerId),
+                Is.Not.EqualTo(SessionEvent.Authenticated(Guid.Empty))
+            );
+        }
+
+        [Test]
         public void Terminal_AbsorbsAllLaterEvents()
         {
             SignalFishStateMachine machine = Fenced(PendingRoomOperation.JoinPlayer);
@@ -482,8 +615,10 @@ namespace SignalFish.Client.Tests.Core
                     machine.Admit(ClientCommand.Ping);
                     machine.Admit(ClientCommand.JoinRoom);
                     machine.Arm(PendingRoomOperation.JoinPlayer);
+                    machine.Admit(ClientCommand.JoinRoom);
                     machine.Apply(SessionEvent.Joined(SessionEventKind.RoomJoined, membership));
                     machine.Admit(ClientCommand.SendGameData);
+                    machine.Admit(ClientCommand.LeaveRoom);
                     machine.Apply(SessionEvent.From(SessionEventKind.ServerError));
                     machine.Apply(SessionEvent.From(SessionEventKind.RoomLeft));
                 }

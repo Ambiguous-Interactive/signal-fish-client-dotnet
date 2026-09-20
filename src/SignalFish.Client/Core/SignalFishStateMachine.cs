@@ -175,10 +175,20 @@ namespace SignalFish.Client.Core
         /// <summary>
         /// Arms the fence for a queued directed operation. Call only after
         /// <see cref="Admit"/> returned <see cref="AdmissionError.None"/> and
-        /// the send was enqueued.
+        /// the send was enqueued; <see cref="PendingRoomOperation.None"/> is
+        /// a misuse and throws. The fence is released by typed results or
+        /// teardown — never by re-arming.
         /// </summary>
         public void Arm(PendingRoomOperation operation)
         {
+            if (operation == PendingRoomOperation.None)
+            {
+                throw new ArgumentException(
+                    "Cannot arm a None fence; arm a directed operation.",
+                    nameof(operation)
+                );
+            }
+
             this.pendingOperation = operation;
         }
 
@@ -196,14 +206,36 @@ namespace SignalFish.Client.Core
                     this.transportReady = true;
                     break;
                 case SessionEventKind.Authenticated:
-                    this.authenticated = true;
-                    this.authenticatedPlayerId = sessionEvent.PlayerId;
+                    // Fail-closed: a repeated or conflicting authentication is
+                    // a protocol violation; the first assignment stands.
+                    if (!this.authenticated)
+                    {
+                        this.authenticated = true;
+                        this.authenticatedPlayerId = sessionEvent.PlayerId;
+                    }
+
                     break;
                 case SessionEventKind.RoomJoined:
                 case SessionEventKind.SpectatorJoined:
                 case SessionEventKind.Reconnected:
+                    // Fail-closed: ignore a membership the server could not
+                    // have confirmed — no authentication yet, or a success
+                    // kind that does not answer the fenced operation (a
+                    // protocol violation). Membership and fence stay put.
+                    PendingRoomOperation release = SuccessRelease(sessionEvent.Kind);
+                    if (
+                        !this.authenticated
+                        || (
+                            this.pendingOperation != PendingRoomOperation.None
+                            && this.pendingOperation != release
+                        )
+                    )
+                    {
+                        break;
+                    }
+
                     this.membership = sessionEvent.Membership;
-                    this.pendingOperation = PendingRoomOperation.None;
+                    this.ReleaseIfPending(release);
                     break;
                 case SessionEventKind.RoomLeft:
                 case SessionEventKind.SpectatorLeft:
@@ -225,6 +257,24 @@ namespace SignalFish.Client.Core
                 case SessionEventKind.Disconnected:
                     this.ClearSession();
                     break;
+                case SessionEventKind.None:
+                    // Not a session fact; ignored so default events are inert.
+                    break;
+            }
+        }
+
+        private static PendingRoomOperation SuccessRelease(SessionEventKind kind)
+        {
+            switch (kind)
+            {
+                case SessionEventKind.RoomJoined:
+                    return PendingRoomOperation.JoinPlayer;
+                case SessionEventKind.SpectatorJoined:
+                    return PendingRoomOperation.JoinSpectator;
+                case SessionEventKind.Reconnected:
+                    return PendingRoomOperation.ReconnectPlayer;
+                default:
+                    return PendingRoomOperation.None;
             }
         }
 

@@ -8,6 +8,10 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Connection core: injectable monotonic clock (`ISignalFishClock`) and a
+  connection state machine with Rust-client-parity phase tracking, room
+  membership (role/player/room/code as one invariant), and fail-closed
+  fencing of in-flight join/leave/reconnect operations.
 - Transport layer: `ITransport` abstraction with a `ClientWebSocket`
   implementation. Typed close reporting for every server close code
   (4000-4007, 1009), a pre-connect sizing probe of the server's

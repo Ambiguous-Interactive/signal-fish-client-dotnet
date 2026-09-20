@@ -1,5 +1,6 @@
 namespace SignalFish.Client.Tests.Core
 {
+    using System;
     using SignalFish.Client.Core;
 
     /// <summary>
@@ -17,6 +18,14 @@ namespace SignalFish.Client.Tests.Core
 
         public void Advance(long milliseconds)
         {
+            if (milliseconds < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(milliseconds),
+                    "The clock is monotonic; advance forwards only."
+                );
+            }
+
             this.elapsedMilliseconds += milliseconds;
         }
     }
