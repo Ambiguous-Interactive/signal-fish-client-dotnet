@@ -33,7 +33,7 @@
 param(
     # Upstream commit the vendored corpus must match. Bump via -Sync after
     # reviewing the upstream diff between the old and new pins.
-    [string]$PinnedCommit = 'eaae1ca3b16887f0f652bb11de135995929e8c23',
+    [string]$PinnedCommit = '07a6fd087ea924034dfec126cf9acb8357858aa9',
 
     # Repository root. Defaults to the parent of the scripts directory.
     [string]$RepoRoot,
@@ -203,9 +203,10 @@ $fileTable
 ## Coverage gaps (at this pin)
 
 The corpus is verbatim upstream and covers only what the server publishes.
-The mandatory v2 floor also includes ``GameStarting``, ``RoomLeft``, and the
-``*Failed`` family, which have no upstream wire samples yet. Request them
-upstream; never hand-vendor replacements.
+At pin ``07a6fd08`` (server 0.9.2) the full mandatory v2 floor has wire
+samples, including ``GameStarting``, ``RoomLeft``, and the ``*Failed``
+family. If a future floor message lacks a sample here, request it upstream;
+never hand-vendor replacements.
 "@
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($provenancePath, "$provenance`n", $utf8NoBom)

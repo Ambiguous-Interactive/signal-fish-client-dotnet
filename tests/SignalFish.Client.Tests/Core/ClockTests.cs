@@ -36,7 +36,10 @@ namespace SignalFish.Client.Tests.Core
         public void VirtualClock_RejectsBackwardsAdvance()
         {
             VirtualClock clock = new VirtualClock();
-            Assert.That(() => clock.Advance(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(
+                (Action)(() => clock.Advance(-1)),
+                Throws.TypeOf<ArgumentOutOfRangeException>()
+            );
             Assert.That(clock.ElapsedMilliseconds, Is.EqualTo(0));
         }
 

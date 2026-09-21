@@ -235,51 +235,7 @@ namespace SignalFish.Client.Protocol
             writer.WriteBytes(EnvelopeOpen);
             writer.WriteBytes(TypeNames.JoinRoom);
             writer.WriteBytes(EnvelopeDataOpen);
-
-            bool first = true;
-            writer.WriteMemberSeparator(ref first);
-            writer.WriteKey(FieldNames.GameName);
-            writer.WriteString(message.GameName);
-
-            writer.WriteMemberSeparator(ref first);
-            writer.WriteKey(FieldNames.PlayerName);
-            writer.WriteString(message.PlayerName);
-
-            if (message.RoomCode is not null)
-            {
-                writer.WriteMemberSeparator(ref first);
-                writer.WriteKey(FieldNames.RoomCode);
-                writer.WriteString(message.RoomCode);
-            }
-
-            if (message.MaxPlayers is not null)
-            {
-                writer.WriteMemberSeparator(ref first);
-                writer.WriteKey(FieldNames.MaxPlayers);
-                writer.WriteUInt32(message.MaxPlayers.GetValueOrDefault());
-            }
-
-            if (message.SupportsAuthority is not null)
-            {
-                writer.WriteMemberSeparator(ref first);
-                writer.WriteKey(FieldNames.SupportsAuthority);
-                writer.WriteBoolean(message.SupportsAuthority.GetValueOrDefault());
-            }
-
-            if (message.RelayTransport is not null)
-            {
-                writer.WriteMemberSeparator(ref first);
-                writer.WriteKey(FieldNames.RelayTransport);
-                writer.WriteString(message.RelayTransport);
-            }
-
-            if (message.Password is not null)
-            {
-                writer.WriteMemberSeparator(ref first);
-                writer.WriteKey(FieldNames.Password);
-                writer.WriteString(message.Password);
-            }
-
+            WriteJoinRoomFields(ref writer, in message);
             CloseData(ref writer);
         }
 
@@ -877,35 +833,53 @@ namespace SignalFish.Client.Protocol
         {
             writer.WriteKey(FieldNames.GameName);
             writer.WriteString(message.GameName);
+
+            writer.WriteBytes(CommaSpace);
+            writer.WriteKey(FieldNames.RoomCode);
+            if (message.RoomCode is not null)
+            {
+                writer.WriteString(message.RoomCode);
+            }
+            else
+            {
+                writer.WriteNull();
+            }
+
             writer.WriteBytes(CommaSpace);
             writer.WriteKey(FieldNames.PlayerName);
             writer.WriteString(message.PlayerName);
-            if (message.RoomCode is not null)
-            {
-                writer.WriteBytes(CommaSpace);
-                writer.WriteKey(FieldNames.RoomCode);
-                writer.WriteString(message.RoomCode);
-            }
 
+            writer.WriteBytes(CommaSpace);
+            writer.WriteKey(FieldNames.MaxPlayers);
             if (message.MaxPlayers is not null)
             {
-                writer.WriteBytes(CommaSpace);
-                writer.WriteKey(FieldNames.MaxPlayers);
                 writer.WriteUInt32(message.MaxPlayers.GetValueOrDefault());
             }
-
-            if (message.SupportsAuthority is not null)
+            else
             {
-                writer.WriteBytes(CommaSpace);
-                writer.WriteKey(FieldNames.SupportsAuthority);
-                writer.WriteBoolean(message.SupportsAuthority.GetValueOrDefault());
+                writer.WriteNull();
             }
 
+            writer.WriteBytes(CommaSpace);
+            writer.WriteKey(FieldNames.SupportsAuthority);
+            if (message.SupportsAuthority is not null)
+            {
+                writer.WriteBoolean(message.SupportsAuthority.GetValueOrDefault());
+            }
+            else
+            {
+                writer.WriteNull();
+            }
+
+            writer.WriteBytes(CommaSpace);
+            writer.WriteKey(FieldNames.RelayTransport);
             if (message.RelayTransport is not null)
             {
-                writer.WriteBytes(CommaSpace);
-                writer.WriteKey(FieldNames.RelayTransport);
                 writer.WriteString(message.RelayTransport);
+            }
+            else
+            {
+                writer.WriteNull();
             }
 
             if (message.Password is not null)

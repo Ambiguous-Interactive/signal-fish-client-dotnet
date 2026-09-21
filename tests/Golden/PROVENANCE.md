@@ -7,21 +7,22 @@ or fix upstream.
 
 - Source: <https://github.com/Ambiguous-Interactive/signal-fish-server>
 - Upstream path: `.llm/code-samples/protocol/`
-- Pinned commit: `eaae1ca3b16887f0f652bb11de135995929e8c23`
-- Last synced: 2026-09-19 (UTC)
+- Pinned commit: `07a6fd087ea924034dfec126cf9acb8357858aa9`
+- Last synced: 2026-09-21 (UTC)
 
 ## Files
 
 | File | Lines |
 | --- | --- |
-| `v2-client-messages.jsonl` | 12 |
-| `v2-server-messages.jsonl` | 10 |
+| `v2-client-messages.jsonl` | 13 |
+| `v2-server-messages.jsonl` | 24 |
 | `v3-client-messages.jsonl` | 9 |
 | `v3-server-messages.jsonl` | 16 |
 
 ## Coverage gaps (at this pin)
 
 The corpus is verbatim upstream and covers only what the server publishes.
-The mandatory v2 floor also includes `GameStarting`, `RoomLeft`, and the
-`*Failed` family, which have no upstream wire samples yet. Request them
-upstream; never hand-vendor replacements.
+At pin `07a6fd08` (server 0.9.2) the full mandatory v2 floor has wire
+samples, including `GameStarting`, `RoomLeft`, and the `*Failed`
+family. If a future floor message lacks a sample here, request it upstream;
+never hand-vendor replacements.

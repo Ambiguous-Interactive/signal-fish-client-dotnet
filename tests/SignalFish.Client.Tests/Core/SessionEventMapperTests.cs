@@ -89,7 +89,7 @@ namespace SignalFish.Client.Tests.Core
                     SessionEvent.From(SessionEventKind.ReconnectionFailed)
                 ),
                 (
-                    GoldenFixtures.ReadLine("v2-server-messages.jsonl", 9),
+                    GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "Error"),
                     SessionEvent.From(SessionEventKind.ServerError)
                 ),
             };
@@ -106,13 +106,19 @@ namespace SignalFish.Client.Tests.Core
         {
             string[] wires =
             {
-                GoldenFixtures.ReadLine("v2-server-messages.jsonl", 2), // ProtocolInfo
-                GoldenFixtures.ReadLine("v2-server-messages.jsonl", 4), // PlayerJoined
-                GoldenFixtures.ReadLine("v2-server-messages.jsonl", 5), // PlayerLeft
-                GoldenFixtures.ReadLine("v2-server-messages.jsonl", 7), // LobbyStateChanged
-                GoldenFixtures.ReadLine("v2-server-messages.jsonl", 8), // AuthorityResponse
-                GoldenFixtures.ReadLine("v2-server-messages.jsonl", 10), // Pong
-                RoomJoinedFrame.Replace("RoomJoined", "GameStarting", StringComparison.Ordinal),
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "ProtocolInfo"),
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "PlayerJoined"),
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "PlayerLeft"),
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "GameData"),
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "LobbyStateChanged"),
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "AuthorityResponse"),
+                GoldenFixtures.ReadFirstLineOfType(
+                    "v2-server-messages.jsonl",
+                    "AuthenticationError"
+                ),
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "AuthorityChanged"),
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "GameStarting"),
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "Pong"),
             };
 
             foreach (string wire in wires)
@@ -213,7 +219,7 @@ namespace SignalFish.Client.Tests.Core
                 @"{""type"":""RoomJoinFailed"",""data"":{""reason"":""Room is full""}}",
                 @"{""type"":""SpectatorJoinFailed"",""data"":{""reason"":""spectators not allowed""}}",
                 @"{""type"":""ReconnectionFailed"",""data"":{""reason"":""window expired"",""error_code"":""RECONNECTION_EXPIRED""}}",
-                GoldenFixtures.ReadLine("v2-server-messages.jsonl", 9), // Error
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "Error"),
                 @"{""type"":""LobbyStateChanged"",""data"":{""lobby_state"":""lobby"",""all_ready"":false}}",
 
                 // Unknown types are excluded: they take the documented

@@ -21,22 +21,25 @@ namespace SignalFish.Client.Tests.Transport
         private static readonly string[] PingTextSent = { "{\"type\":\"Ping\"}" };
 
         [Test]
-        public void Connect_SecondCall_IsMisuse()
+        public async Task Connect_SecondCall_IsMisuse()
         {
             FakeTransport transport = new FakeTransport();
-            Assert.That(async () => await transport.ConnectAsync(FakeUri), Throws.Nothing);
-            Assert.That(
-                async () => await transport.ConnectAsync(FakeUri),
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.ConnectAsync(FakeUri)),
+                Throws.Nothing
+            );
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.ConnectAsync(FakeUri)),
                 Throws.InvalidOperationException
             );
         }
 
         [Test]
-        public void Send_BeforeConnect_IsMisuse()
+        public async Task Send_BeforeConnect_IsMisuse()
         {
             FakeTransport transport = new FakeTransport();
-            Assert.That(
-                async () => await transport.SendAsync(PingFrame),
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.SendAsync(PingFrame)),
                 Throws.Exception.InstanceOf<InvalidOperationException>()
             );
         }
@@ -88,8 +91,7 @@ namespace SignalFish.Client.Tests.Transport
             Assert.That(close.Close.Kind, Is.EqualTo(TransportCloseKind.Kicked));
 
             TransportClosedException thrown = Assert.ThrowsAsync<TransportClosedException>(
-                async () =>
-                    await transport.ReceiveAsync()
+                (Func<Task>)(async () => await transport.ReceiveAsync())
             );
             Assert.That(thrown, Is.Not.Null);
             Assert.That(thrown.Close.Code, Is.EqualTo(4007));
@@ -109,8 +111,7 @@ namespace SignalFish.Client.Tests.Transport
             Assert.That(close.Close.Kind, Is.EqualTo(TransportCloseKind.Abnormal));
 
             TransportClosedException thrown = Assert.ThrowsAsync<TransportClosedException>(
-                async () =>
-                    await transport.ReceiveAsync()
+                (Func<Task>)(async () => await transport.ReceiveAsync())
             );
             Assert.That(thrown, Is.Not.Null);
         }
@@ -123,8 +124,7 @@ namespace SignalFish.Client.Tests.Transport
             transport.EnqueueClose(4000);
 
             TransportClosedException thrown = Assert.ThrowsAsync<TransportClosedException>(
-                async () =>
-                    await transport.SendAsync(Encoding.UTF8.GetBytes("{}"))
+                (Func<Task>)(async () => await transport.SendAsync(Encoding.UTF8.GetBytes("{}")))
             );
             Assert.That(thrown, Is.Not.Null);
             Assert.That(thrown.Close.Kind, Is.EqualTo(TransportCloseKind.ServerShutdown));
@@ -144,9 +144,12 @@ namespace SignalFish.Client.Tests.Transport
                 concurrentDisposes[i] = transport.DisposeAsync().AsTask();
             }
 
-            Assert.That(async () => await Task.WhenAll(concurrentDisposes), Throws.Nothing);
-            Assert.That(
-                async () => await transport.ReceiveAsync(),
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await Task.WhenAll(concurrentDisposes)),
+                Throws.Nothing
+            );
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.ReceiveAsync()),
                 Throws.TypeOf<ObjectDisposedException>()
             );
         }
