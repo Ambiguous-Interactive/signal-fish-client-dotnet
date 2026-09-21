@@ -62,12 +62,8 @@ jobs:
           --api-key ${{ secrets.GITHUB_TOKEN }}
           --skip-duplicate
 
-      - name: Publish symbol package
-        run: >
-          dotnet nuget push "dist/*.snupkg"
-          --source https://nuget.pkg.github.com/Ambiguous-Interactive/index.json
-          --api-key ${{ secrets.GITHUB_TOKEN }}
-          --skip-duplicate
+      # The .snupkg rides only on the GitHub Release: GitHub Packages has
+      # no NuGet symbol-publish endpoint, so pushing it there fails.
 
       - name: Create GitHub release with package assets
         env:

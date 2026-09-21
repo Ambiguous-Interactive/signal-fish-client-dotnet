@@ -20,7 +20,10 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs, but never cancel main pushes: an in-flight
+  # Pages deploy aborted mid-flight would fail the github-pages environment
+  # instead of serving the new site.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # ──────────────────────────────────────────────────────────────
