@@ -292,7 +292,11 @@ namespace SignalFish.Client.FuzzTests
                 ? cursor.JsonSeed()
                 : TrimJsonWhitespace(cursor.RawSlice());
 
-            GameDataClass classification = (GameDataClass)(cursor.Byte() % 3u);
+            // Sample the valid classes only (1..3): the default (0) is the
+            // non-valid None sentinel and the writer refuses it, so mapping
+            // the raw byte modulo the valid range keeps the classified-
+            // delivery paths (reliable/latest/volatile) uniformly reachable.
+            GameDataClass classification = (GameDataClass)(1u + (cursor.Byte() % 3u));
             uint key = cursor.OptionalUint() ?? 0u;
             return new GameDataMessage(payload, classification, key);
         }

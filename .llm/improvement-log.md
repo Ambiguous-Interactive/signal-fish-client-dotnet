@@ -37,6 +37,18 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   field renames, `.editorconfig` qualification/naming rules (IDE-side),
   lint script + hook + CI step, rules 17-18 in context.md, enum-default
   pattern in [api-design](./skills/api-design/SKILL.md). 287 tests x 2 TFMs.
+- Bugbot round 2 (own fallout, red-green proven): the sentinel insertion
+  silently renumbered `GameDataClass`, so the fuzz writer generator's
+  `(GameDataClass)(byte % 3)` sampled `None` a third of the time and never
+  `Volatile`; a seeded payload then hit the new writer refusal and the
+  lane crashed (standalone seed replay: exit 134 pre-fix, 0 post-fix).
+  Findings: (1) numeric enum sampling/iteration is ordinal-coupled — every
+  sentinel insertion must re-check generators, ordinal loops, and guards
+  added in the same change (sweep-table row added to address-pr-feedback;
+  generator rule + standalone seed-replay technique added to create-test).
+  (2) the standalone fuzz host (`SIGNALFISH_FUZZ_TARGET=... dotnet <dll>
+  seed.bin`) gives a seconds-scale deterministic red-green for generator
+  bugs without the instrumented driver.
 - Open: none.
 
 ## 2026-09-20 - session 010: transport (M2) + loopback WS test server

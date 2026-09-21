@@ -94,6 +94,21 @@ LINQ-ban, and zero-dep lints green; all automation self-tests green.
   session-011 entry added properly (newest-first, correct format).
 - 287 tests × net8.0 + net10.0 green; all lints + self-tests green.
 
+## Reviewer round 3 (Bugbot on the sweep commit): fuzz generator ordinal coupling
+
+- The enum sentinel insertion renumbered `GameDataClass`; the fuzz writer
+  generator's `(GameDataClass)(byte % 3)` then sampled the new `None`
+  sentinel a third of the time (hitting the writer's refusal → "refused a
+  valid JSON seed" crash) and never sampled `Volatile`.
+- Red-green via standalone seed replay (no driver): crafted 5-byte seed
+  `[02 00 00 00 01]` (case GameData, seeded payload, class pick 0) —
+  pre-fix exit 134 (SIGABRT), post-fix exit 0; Latest/Volatile seeds
+  roundtrip cleanly.
+- Sweep: the only other enum-ordinal sites are safe (`MessageKind` numbering
+  unchanged; `DefinedKinds()` filters `!= default`; perf benchmarks use
+  named members). Knowledge: create-test skill (generator rule + seed
+  replay), address-pr-feedback sweep-table row, improvement-log updated.
+
 ## CI
 
 No workflow changes. Net-zero CI time; coverage strictly additive (265 → 287

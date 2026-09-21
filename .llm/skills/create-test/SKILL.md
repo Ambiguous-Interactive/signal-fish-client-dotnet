@@ -81,6 +81,17 @@ server; the client adapts. Resync only from the pinned server commit.
   invalid UTF-8.
 - **FsCheck** properties cover roundtrip stability (decode(encode(x)) == x
   for representative structs) and malformed-input totality.
+- **Generators must sample enums by meaning, not by raw ordinal.** Mapping
+  bytes to enums with `value % N` silently changes meaning when a sentinel
+  is inserted at 0 (it samples the sentinel and drops the last member) —
+  use `1u + (byte % N)` over the valid range, and re-check every numeric
+  enum construction after any sentinel insertion.
+- **Deterministic red-green without the driver**: the fuzz host runs
+  standalone with a seed file —
+  `SIGNALFISH_FUZZ_TARGET=writer dotnet <FuzzTests.dll> seed.bin`
+  (crash exits non-zero, ~134). Craft the seed from the cursor's
+  consumption order; a hand-built 5-byte file can prove a generator bug
+  red-green in seconds instead of a 15-minute instrumented run.
 - When a fuzz/property run finds a real bug, graduate it into a golden
   fixture + regression test before fixing.
 - Long fuzz runs belong to scheduled CI, not the unit test suite — keep
