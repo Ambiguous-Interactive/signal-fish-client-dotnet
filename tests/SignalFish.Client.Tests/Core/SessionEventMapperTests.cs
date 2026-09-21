@@ -16,8 +16,6 @@ namespace SignalFish.Client.Tests.Core
     [TestFixture]
     public class SessionEventMapperTests
     {
-        private static readonly Guid PlayerId = new Guid("0f8fad5b-d9cb-469f-a165-70867728950e");
-        private static readonly Guid RoomId = new Guid("7c9e6679-7425-40de-944b-e07fc1f90ae7");
         private const string RoomCode = "ABC123";
 
         /*
@@ -42,6 +40,17 @@ namespace SignalFish.Client.Tests.Core
             @"{""type"":""Reconnected"",""data"":{""room_id"":""7c9e6679-7425-40de-944b-e07fc1f90ae7"","
             + @"""room_code"":""ABC123"",""player_id"":""0f8fad5b-d9cb-469f-a165-70867728950e"","
             + @"""missed_events"":[]}}";
+
+        private static readonly Guid PlayerId = new Guid("0f8fad5b-d9cb-469f-a165-70867728950e");
+        private static readonly Guid RoomId = new Guid("7c9e6679-7425-40de-944b-e07fc1f90ae7");
+
+        private static readonly string[] GuidVariants =
+        {
+            "0f8fad5b-d9cb-469f-a165-70867728950e",
+            "00000000-0000-0000-0000-000000000000",
+            "FFFFFFFF-7425-40de-944b-E07FC1F90AE7",
+            "deadbeef-dead-beef-dead-beefdeadbeef",
+        };
 
         [Test]
         public void TryMapSessionFactFramesMapToTypedEvents()
@@ -199,14 +208,6 @@ namespace SignalFish.Client.Tests.Core
                 Assert.That(TryMapWire(wire, out _), Is.False, badId);
             }
         }
-
-        private static readonly string[] GuidVariants =
-        {
-            "0f8fad5b-d9cb-469f-a165-70867728950e",
-            "00000000-0000-0000-0000-000000000000",
-            "FFFFFFFF-7425-40de-944b-E07FC1F90AE7",
-            "deadbeef-dead-beef-dead-beefdeadbeef",
-        };
 
         [Test]
         public void HotPathTryMapSteadyStateAllocatesNothing()

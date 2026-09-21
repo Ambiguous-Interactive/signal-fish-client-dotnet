@@ -5,17 +5,17 @@ namespace SignalFish.Client.Core
     /// <summary>A single state-machine input. Struct: applying events never allocates.</summary>
     public readonly struct SessionEvent : IEquatable<SessionEvent>
     {
-        private SessionEvent(SessionEventKind kind, RoomMembership membership)
-        {
-            Kind = kind;
-            Membership = membership;
-        }
-
         /// <summary>The session fact that happened.</summary>
         public SessionEventKind Kind { get; }
 
         /// <summary>Confirmed membership; meaningful only for join/reconnect events.</summary>
         public RoomMembership Membership { get; }
+
+        private SessionEvent(SessionEventKind kind, RoomMembership membership)
+        {
+            Kind = kind;
+            Membership = membership;
+        }
 
         /// <summary>Creates an event with no payload (liveness, failures, teardown).</summary>
         public static SessionEvent From(SessionEventKind kind)

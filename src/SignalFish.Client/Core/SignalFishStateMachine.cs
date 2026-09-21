@@ -12,19 +12,6 @@ namespace SignalFish.Client.Core
     /// </summary>
     public sealed class SignalFishStateMachine
     {
-        private bool _connected;
-        private bool _transportReady;
-        private bool _authenticated;
-        private RoomMembership _membership;
-        private PendingRoomOperation _pendingOperation;
-        private bool _terminal;
-
-        /// <summary>Creates the machine in the connecting phase (constructed-live, Rust parity).</summary>
-        public SignalFishStateMachine()
-        {
-            _connected = true;
-        }
-
         /// <summary>Derived phase: membership &gt; authenticated &gt; transport-ready &gt; connecting.</summary>
         public ConnectionPhase Phase
         {
@@ -84,67 +71,17 @@ namespace SignalFish.Client.Core
             get { return _pendingOperation; }
         }
 
-        /// <summary>
-        /// Decides whether <paramref name="command"/> may be sent now.
-        /// Returns true when admitted; otherwise false with
-        /// <paramref name="error"/> describing the refusal (assigned just
-        /// before return). Pure: arming is a separate step so a failed
-        /// enqueue never wedges the fence.
-        /// </summary>
-        public bool TryAdmit(ClientCommand command, out AdmissionError error)
+        private bool _connected;
+        private bool _transportReady;
+        private bool _authenticated;
+        private RoomMembership _membership;
+        private PendingRoomOperation _pendingOperation;
+        private bool _terminal;
+
+        /// <summary>Creates the machine in the connecting phase (constructed-live, Rust parity).</summary>
+        public SignalFishStateMachine()
         {
-            error = Admit(command);
-            return error == default(AdmissionError);
-        }
-
-        private AdmissionError Admit(ClientCommand command)
-        {
-            if (!_connected)
-            {
-                return AdmissionError.NotConnected;
-            }
-
-            if (command == ClientCommand.Ping)
-            {
-                return default;
-            }
-
-            if (IsDirected(command) && !_authenticated)
-            {
-                return AdmissionError.NotAuthenticated;
-            }
-
-            if (_pendingOperation != default(PendingRoomOperation))
-            {
-                return AdmissionError.RoomOperationPending;
-            }
-
-            switch (command)
-            {
-                case ClientCommand.JoinRoom:
-                case ClientCommand.JoinAsSpectator:
-                case ClientCommand.Reconnect:
-                    return _membership.IsPresent ? AdmissionError.AlreadyInRoom : default;
-                case ClientCommand.LeaveRoom:
-                case ClientCommand.LeaveSpectator:
-                    return AdmitRoomScoped(command);
-                case ClientCommand.SetReady:
-                case ClientCommand.StartGame:
-                case ClientCommand.SendGameData:
-                    if (!_membership.IsPresent)
-                    {
-                        return AdmissionError.NotInRoom;
-                    }
-
-                    return _membership.Role == RoomRole.Player
-                        ? default
-                        : AdmissionError.WrongRoomRole;
-                default:
-                    throw new ArgumentException(
-                        "Undefined client command value: " + (byte)command,
-                        nameof(command)
-                    );
-            }
+            _connected = true;
         }
 
         /// <summary>
@@ -169,6 +106,19 @@ namespace SignalFish.Client.Core
                 default:
                     return null;
             }
+        }
+
+        /// <summary>
+        /// Decides whether <paramref name="command"/> may be sent now.
+        /// Returns true when admitted; otherwise false with
+        /// <paramref name="error"/> describing the refusal (assigned just
+        /// before return). Pure: arming is a separate step so a failed
+        /// enqueue never wedges the fence.
+        /// </summary>
+        public bool TryAdmit(ClientCommand command, out AdmissionError error)
+        {
+            error = Admit(command);
+            return error == default(AdmissionError);
         }
 
         /// <summary>
@@ -276,6 +226,56 @@ namespace SignalFish.Client.Core
                         ignored so default events stay inert.
                     */
                     break;
+            }
+        }
+
+        private AdmissionError Admit(ClientCommand command)
+        {
+            if (!_connected)
+            {
+                return AdmissionError.NotConnected;
+            }
+
+            if (command == ClientCommand.Ping)
+            {
+                return default;
+            }
+
+            if (IsDirected(command) && !_authenticated)
+            {
+                return AdmissionError.NotAuthenticated;
+            }
+
+            if (_pendingOperation != default(PendingRoomOperation))
+            {
+                return AdmissionError.RoomOperationPending;
+            }
+
+            switch (command)
+            {
+                case ClientCommand.JoinRoom:
+                case ClientCommand.JoinAsSpectator:
+                case ClientCommand.Reconnect:
+                    return _membership.IsPresent ? AdmissionError.AlreadyInRoom : default;
+                case ClientCommand.LeaveRoom:
+                case ClientCommand.LeaveSpectator:
+                    return AdmitRoomScoped(command);
+                case ClientCommand.SetReady:
+                case ClientCommand.StartGame:
+                case ClientCommand.SendGameData:
+                    if (!_membership.IsPresent)
+                    {
+                        return AdmissionError.NotInRoom;
+                    }
+
+                    return _membership.Role == RoomRole.Player
+                        ? default
+                        : AdmissionError.WrongRoomRole;
+                default:
+                    throw new ArgumentException(
+                        "Undefined client command value: " + (byte)command,
+                        nameof(command)
+                    );
             }
         }
 

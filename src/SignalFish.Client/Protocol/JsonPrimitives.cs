@@ -70,6 +70,26 @@ namespace SignalFish.Client.Protocol
         /// <summary>Nesting depth of root-level member values (the root object is level 1).</summary>
         private const int RootMemberDepth = 2;
 
+        private static readonly byte[] TrueLiteral = { (byte)'t', (byte)'r', (byte)'u', (byte)'e' };
+        private static readonly byte[] FalseLiteral =
+        {
+            (byte)'f',
+            (byte)'a',
+            (byte)'l',
+            (byte)'s',
+            (byte)'e',
+        };
+        private static readonly byte[] NullLiteral = { (byte)'n', (byte)'u', (byte)'l', (byte)'l' };
+
+        /// <summary>Number of bytes consumed so far (the error offset source).</summary>
+        internal int Position => _pos;
+
+        /// <summary>True when all input has been consumed.</summary>
+        internal bool IsEof => _pos >= _buf.Length;
+
+        /// <summary>The byte at the current position, or 0 at end of input.</summary>
+        internal byte Peek => _pos < _buf.Length ? _buf[_pos] : (byte)0;
+
         private readonly ReadOnlySpan<byte> _buf;
         private int _pos;
 
@@ -78,12 +98,6 @@ namespace SignalFish.Client.Protocol
             _buf = buffer;
             _pos = 0;
         }
-
-        /// <summary>Number of bytes consumed so far (the error offset source).</summary>
-        internal int Position => _pos;
-
-        /// <summary>True when all input has been consumed.</summary>
-        internal bool IsEof => _pos >= _buf.Length;
 
         /// <summary>Skips JSON whitespace (space, tab, LF, CR).</summary>
         internal void SkipWhitespace()
@@ -99,9 +113,6 @@ namespace SignalFish.Client.Protocol
                 _pos++;
             }
         }
-
-        /// <summary>The byte at the current position, or 0 at end of input.</summary>
-        internal byte Peek => _pos < _buf.Length ? _buf[_pos] : (byte)0;
 
         /// <summary>
         /// Consumes the next byte when it equals <paramref name="expected"/>.
@@ -251,7 +262,6 @@ namespace SignalFish.Client.Protocol
         }
 
         // --- Payload member walk --------------------------------------------
-
         /// <summary>
         /// Begins a payload object walk: consumes <c>{</c> and any leading
         /// whitespace. Returns <see cref="JsonMemberState.Member"/> when a
@@ -524,37 +534,6 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <summary>
-        /// Reads one big-endian hex byte (two characters) at
-        /// <paramref name="index"/>; -1 when either character is not hex.
-        /// </summary>
-        private static int Hex(ReadOnlySpan<byte> text, int index)
-        {
-            int high = HexNibble(text[index]);
-            int low = HexNibble(text[index + 1]);
-            return (high | low) < 0 ? -1 : (high << 4) | low;
-        }
-
-        private static int HexNibble(byte b)
-        {
-            if ((byte)(b - (byte)'0') <= 9)
-            {
-                return b - (byte)'0';
-            }
-
-            if ((byte)(b - (byte)'a') <= 5)
-            {
-                return b - (byte)'a' + 10;
-            }
-
-            if ((byte)(b - (byte)'A') <= 5)
-            {
-                return b - (byte)'A' + 10;
-            }
-
-            return -1;
-        }
-
-        /// <summary>
         /// Returns a scanned value as a verbatim JSON object slice of
         /// <paramref name="data"/> (no re-encode; passthrough contract).
         /// </summary>
@@ -653,8 +632,86 @@ namespace SignalFish.Client.Protocol
             return true;
         }
 
-        // --- Shared escape-aware text helpers --------------------------------
+        internal static bool TryReadGuidArray(
+            ReadOnlyMemory<byte> data,
+            Range valueRaw,
+            out IReadOnlyList<Guid>? values
+        )
+        {
+            values = null;
+            (int Offset, int Length) s = valueRaw.GetOffsetAndLength(data.Length);
+            if (s.Length < 2 || data.Span[s.Offset] != (byte)'[')
+            {
+                return false;
+            }
 
+            JsonScanner scanner = new JsonScanner(data.Span.Slice(s.Offset, s.Length));
+            scanner.SkipWhitespace();
+            if (scanner.Expect((byte)'[') != default(DecodeError))
+            {
+                return false;
+            }
+
+            List<Guid> list = new List<Guid>();
+            scanner.SkipWhitespace();
+            if (scanner.Peek == (byte)']')
+            {
+                scanner._pos++;
+            }
+            else
+            {
+                while (true)
+                {
+                    scanner.SkipWhitespace();
+                    if (
+                        scanner.ScanValueRaw(2, JsonScanner.MaxDepth, out Range element)
+                        != default(DecodeError)
+                    )
+                    {
+                        return false;
+                    }
+
+                    (int EOffset, int ELength) e = element.GetOffsetAndLength(s.Length);
+                    if (
+                        !scanner.TryReadGuid(
+                            new Range(e.EOffset, e.EOffset + e.ELength),
+                            out Guid value
+                        )
+                    )
+                    {
+                        return false;
+                    }
+
+                    list.Add(value);
+                    scanner.SkipWhitespace();
+                    byte next = scanner.Peek;
+                    if (next == (byte)',')
+                    {
+                        scanner._pos++;
+                        continue;
+                    }
+
+                    if (next == (byte)']')
+                    {
+                        scanner._pos++;
+                        break;
+                    }
+
+                    return false;
+                }
+            }
+
+            scanner.SkipWhitespace();
+            if (!scanner.IsEof)
+            {
+                return false;
+            }
+
+            values = list;
+            return true;
+        }
+
+        // --- Shared escape-aware text helpers --------------------------------
         /// <summary>
         /// Compares a scanned key (quotes stripped) against an ASCII wire
         /// name. Known names are plain ASCII, so only escapes that resolve to
@@ -741,6 +798,184 @@ namespace SignalFish.Client.Protocol
 
             written += AppendUtf8Segment(inner.Slice(segmentStart), chars.Slice(written));
             return chars.Slice(0, written).ToString();
+        }
+
+        /// <summary>
+        /// Validates and consumes a JSON array at the current position and
+        /// returns its raw byte range (brackets included).
+        /// </summary>
+        internal DecodeError ScanArrayRaw(int depth, int maxDepth, out Range raw)
+        {
+            raw = default;
+            int start = _pos;
+            DecodeError err = Expect((byte)'[');
+            if (err != default(DecodeError))
+            {
+                return err;
+            }
+
+            SkipWhitespace();
+            if (_pos < _buf.Length && _buf[_pos] == (byte)']')
+            {
+                _pos++;
+                raw = start.._pos;
+                return default(DecodeError);
+            }
+
+            while (true)
+            {
+                SkipWhitespace();
+                err = ScanValue(depth + 1, maxDepth);
+                if (err != default(DecodeError))
+                {
+                    return err;
+                }
+
+                SkipWhitespace();
+                if (_pos >= _buf.Length)
+                {
+                    return DecodeError.Truncated;
+                }
+
+                switch (_buf[_pos])
+                {
+                    case (byte)',':
+                        _pos++;
+                        break;
+                    case (byte)']':
+                        _pos++;
+                        raw = start.._pos;
+                        return default(DecodeError);
+                    default:
+                        return DecodeError.InvalidToken;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Validates and consumes a JSON object at the current position and
+        /// returns its raw byte range (braces included).
+        /// </summary>
+        internal DecodeError ScanObject(int depth, int maxDepth, out Range raw)
+        {
+            raw = default;
+            int start = _pos;
+            DecodeError err = Expect((byte)'{');
+            if (err != default(DecodeError))
+            {
+                return err;
+            }
+
+            SkipWhitespace();
+            if (_pos < _buf.Length && _buf[_pos] == (byte)'}')
+            {
+                _pos++;
+                raw = start.._pos;
+                return default(DecodeError);
+            }
+
+            while (true)
+            {
+                // Member key.
+                err = ScanStringRaw(out _, out _);
+                if (err != default(DecodeError))
+                {
+                    return err;
+                }
+
+                SkipWhitespace();
+                err = Expect((byte)':');
+                if (err != default(DecodeError))
+                {
+                    return err;
+                }
+
+                SkipWhitespace();
+                err = ScanValue(depth + 1, maxDepth);
+                if (err != default(DecodeError))
+                {
+                    return err;
+                }
+
+                SkipWhitespace();
+                if (_pos >= _buf.Length)
+                {
+                    return DecodeError.Truncated;
+                }
+
+                switch (_buf[_pos])
+                {
+                    case (byte)',':
+                        _pos++;
+                        SkipWhitespace();
+                        break;
+                    case (byte)'}':
+                        _pos++;
+                        raw = start.._pos;
+                        return default(DecodeError);
+                    default:
+                        return DecodeError.InvalidToken;
+                }
+            }
+        }
+
+        internal DecodeError ScanLiteral(string word)
+        {
+            // Byte-exact compare; all JSON literals are ASCII.
+            for (int i = 0; i < word.Length; i++)
+            {
+                if (_pos >= _buf.Length)
+                {
+                    return DecodeError.Truncated;
+                }
+
+                if (_buf[_pos] != (byte)word[i])
+                {
+                    return DecodeError.InvalidToken;
+                }
+
+                _pos++;
+            }
+
+            return default(DecodeError);
+        }
+
+        internal static bool IsDigit(byte b) => b >= (byte)'0' && b <= (byte)'9';
+
+        internal static bool IsHex(byte b) =>
+            (b >= (byte)'0' && b <= (byte)'9')
+            || (b >= (byte)'a' && b <= (byte)'f')
+            || (b >= (byte)'A' && b <= (byte)'F');
+
+        /// <summary>
+        /// Reads one big-endian hex byte (two characters) at
+        /// <paramref name="index"/>; -1 when either character is not hex.
+        /// </summary>
+        private static int Hex(ReadOnlySpan<byte> text, int index)
+        {
+            int high = HexNibble(text[index]);
+            int low = HexNibble(text[index + 1]);
+            return (high | low) < 0 ? -1 : (high << 4) | low;
+        }
+
+        private static int HexNibble(byte b)
+        {
+            if ((byte)(b - (byte)'0') <= 9)
+            {
+                return b - (byte)'0';
+            }
+
+            if ((byte)(b - (byte)'a') <= 5)
+            {
+                return b - (byte)'a' + 10;
+            }
+
+            if ((byte)(b - (byte)'A') <= 5)
+            {
+                return b - (byte)'A' + 10;
+            }
+
+            return -1;
         }
 
         /// <summary>UTF-8 decodes a validated raw segment into <paramref name="dest"/>.</summary>
@@ -871,136 +1106,6 @@ namespace SignalFish.Client.Protocol
             return value;
         }
 
-        private static readonly byte[] TrueLiteral = { (byte)'t', (byte)'r', (byte)'u', (byte)'e' };
-        private static readonly byte[] FalseLiteral =
-        {
-            (byte)'f',
-            (byte)'a',
-            (byte)'l',
-            (byte)'s',
-            (byte)'e',
-        };
-        private static readonly byte[] NullLiteral = { (byte)'n', (byte)'u', (byte)'l', (byte)'l' };
-
-        /// <summary>
-        /// Validates and consumes a JSON array at the current position and
-        /// returns its raw byte range (brackets included).
-        /// </summary>
-        internal DecodeError ScanArrayRaw(int depth, int maxDepth, out Range raw)
-        {
-            raw = default;
-            int start = _pos;
-            DecodeError err = Expect((byte)'[');
-            if (err != default(DecodeError))
-            {
-                return err;
-            }
-
-            SkipWhitespace();
-            if (_pos < _buf.Length && _buf[_pos] == (byte)']')
-            {
-                _pos++;
-                raw = start.._pos;
-                return default(DecodeError);
-            }
-
-            while (true)
-            {
-                SkipWhitespace();
-                err = ScanValue(depth + 1, maxDepth);
-                if (err != default(DecodeError))
-                {
-                    return err;
-                }
-
-                SkipWhitespace();
-                if (_pos >= _buf.Length)
-                {
-                    return DecodeError.Truncated;
-                }
-
-                switch (_buf[_pos])
-                {
-                    case (byte)',':
-                        _pos++;
-                        break;
-                    case (byte)']':
-                        _pos++;
-                        raw = start.._pos;
-                        return default(DecodeError);
-                    default:
-                        return DecodeError.InvalidToken;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Validates and consumes a JSON object at the current position and
-        /// returns its raw byte range (braces included).
-        /// </summary>
-        internal DecodeError ScanObject(int depth, int maxDepth, out Range raw)
-        {
-            raw = default;
-            int start = _pos;
-            DecodeError err = Expect((byte)'{');
-            if (err != default(DecodeError))
-            {
-                return err;
-            }
-
-            SkipWhitespace();
-            if (_pos < _buf.Length && _buf[_pos] == (byte)'}')
-            {
-                _pos++;
-                raw = start.._pos;
-                return default(DecodeError);
-            }
-
-            while (true)
-            {
-                // Member key.
-                err = ScanStringRaw(out _, out _);
-                if (err != default(DecodeError))
-                {
-                    return err;
-                }
-
-                SkipWhitespace();
-                err = Expect((byte)':');
-                if (err != default(DecodeError))
-                {
-                    return err;
-                }
-
-                SkipWhitespace();
-                err = ScanValue(depth + 1, maxDepth);
-                if (err != default(DecodeError))
-                {
-                    return err;
-                }
-
-                SkipWhitespace();
-                if (_pos >= _buf.Length)
-                {
-                    return DecodeError.Truncated;
-                }
-
-                switch (_buf[_pos])
-                {
-                    case (byte)',':
-                        _pos++;
-                        SkipWhitespace();
-                        break;
-                    case (byte)'}':
-                        _pos++;
-                        raw = start.._pos;
-                        return default(DecodeError);
-                    default:
-                        return DecodeError.InvalidToken;
-                }
-            }
-        }
-
         /// <summary>
         /// Consumes an escape sequence positioned just after the backslash.
         /// </summary>
@@ -1046,27 +1151,6 @@ namespace SignalFish.Client.Protocol
                 default:
                     return DecodeError.InvalidToken;
             }
-        }
-
-        internal DecodeError ScanLiteral(string word)
-        {
-            // Byte-exact compare; all JSON literals are ASCII.
-            for (int i = 0; i < word.Length; i++)
-            {
-                if (_pos >= _buf.Length)
-                {
-                    return DecodeError.Truncated;
-                }
-
-                if (_buf[_pos] != (byte)word[i])
-                {
-                    return DecodeError.InvalidToken;
-                }
-
-                _pos++;
-            }
-
-            return default(DecodeError);
         }
 
         private DecodeError ScanNumber()
@@ -1219,13 +1303,6 @@ namespace SignalFish.Client.Protocol
 
             return required + 1;
         }
-
-        internal static bool IsDigit(byte b) => b >= (byte)'0' && b <= (byte)'9';
-
-        internal static bool IsHex(byte b) =>
-            (b >= (byte)'0' && b <= (byte)'9')
-            || (b >= (byte)'a' && b <= (byte)'f')
-            || (b >= (byte)'A' && b <= (byte)'F');
     }
 
     /// <summary>
@@ -1240,6 +1317,18 @@ namespace SignalFish.Client.Protocol
     internal ref struct JsonWriter
     {
         private static readonly byte[] CommaSpace = { (byte)',', (byte)' ' };
+
+        private static readonly byte[] ColonSpace = { (byte)':', (byte)' ' };
+        private static readonly byte[] TrueLiteral = { (byte)'t', (byte)'r', (byte)'u', (byte)'e' };
+        private static readonly byte[] FalseLiteral =
+        {
+            (byte)'f',
+            (byte)'a',
+            (byte)'l',
+            (byte)'s',
+            (byte)'e',
+        };
+        private static readonly byte[] NullLiteral = { (byte)'n', (byte)'u', (byte)'l', (byte)'l' };
 
         private readonly IBufferWriter<byte> _writer;
         private Span<byte> _span;
@@ -1446,18 +1535,6 @@ namespace SignalFish.Client.Protocol
             _pos = 0;
             _span = default;
         }
-
-        private static readonly byte[] ColonSpace = { (byte)':', (byte)' ' };
-        private static readonly byte[] TrueLiteral = { (byte)'t', (byte)'r', (byte)'u', (byte)'e' };
-        private static readonly byte[] FalseLiteral =
-        {
-            (byte)'f',
-            (byte)'a',
-            (byte)'l',
-            (byte)'s',
-            (byte)'e',
-        };
-        private static readonly byte[] NullLiteral = { (byte)'n', (byte)'u', (byte)'l', (byte)'l' };
 
         private static bool NeedsEscape(byte b) => b < 0x20 || b == (byte)'"' || b == (byte)'\\';
 

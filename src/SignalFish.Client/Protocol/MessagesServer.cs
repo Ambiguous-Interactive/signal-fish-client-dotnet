@@ -19,12 +19,24 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the human-shareable room code (required).</summary>
         public string RoomCode { get; }
 
+        /// <summary>
+        /// Gets the room-state snapshot the frame carried (default when
+        /// absent). Advisory state: excluded from equality.
+        /// </summary>
+        public RoomSnapshot Snapshot { get; }
+
         /// <summary>Initializes a new <see cref="RoomJoinedMessage"/> payload.</summary>
-        public RoomJoinedMessage(Guid playerId, Guid roomId, string roomCode)
+        public RoomJoinedMessage(
+            Guid playerId,
+            Guid roomId,
+            string roomCode,
+            RoomSnapshot? snapshot = null
+        )
         {
             PlayerId = playerId;
             RoomId = roomId;
             RoomCode = roomCode;
+            Snapshot = snapshot ?? default;
         }
 
         /// <inheritdoc />
@@ -116,7 +128,11 @@ namespace SignalFish.Client.Protocol
                 return false;
             }
 
-            message = new RoomJoinedMessage(playerId, roomId, roomCode);
+            if (!RoomSnapshot.TryDecode(data, out RoomSnapshot snapshot))
+            {
+                return false;
+            }
+            message = new RoomJoinedMessage(playerId, roomId, roomCode, snapshot);
             return true;
         }
     }
@@ -138,12 +154,24 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the human-shareable room code (required).</summary>
         public string RoomCode { get; }
 
+        /// <summary>
+        /// Gets the room-state snapshot the frame carried (default when
+        /// absent). Advisory state: excluded from equality.
+        /// </summary>
+        public RoomSnapshot Snapshot { get; }
+
         /// <summary>Initializes a new <see cref="SpectatorJoinedMessage"/> payload.</summary>
-        public SpectatorJoinedMessage(Guid spectatorId, Guid roomId, string roomCode)
+        public SpectatorJoinedMessage(
+            Guid spectatorId,
+            Guid roomId,
+            string roomCode,
+            RoomSnapshot? snapshot = null
+        )
         {
             SpectatorId = spectatorId;
             RoomId = roomId;
             RoomCode = roomCode;
+            Snapshot = snapshot ?? default;
         }
 
         /// <inheritdoc />
@@ -244,7 +272,11 @@ namespace SignalFish.Client.Protocol
                 return false;
             }
 
-            message = new SpectatorJoinedMessage(spectatorId, roomId, roomCode);
+            if (!RoomSnapshot.TryDecode(data, out RoomSnapshot snapshot))
+            {
+                return false;
+            }
+            message = new SpectatorJoinedMessage(spectatorId, roomId, roomCode, snapshot);
             return true;
         }
     }

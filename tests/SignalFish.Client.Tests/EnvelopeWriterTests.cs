@@ -17,6 +17,14 @@ namespace SignalFish.Client.Tests
     /// </summary>
     public sealed class FixtureMessage
     {
+        internal string Wire { get; }
+
+        internal MessageKind Kind { get; }
+
+        internal object Payload { get; }
+
+        internal Action<IBufferWriter<byte>> Write { get; }
+
         internal FixtureMessage(
             string wire,
             MessageKind kind,
@@ -29,14 +37,6 @@ namespace SignalFish.Client.Tests
             Payload = payload;
             Write = write;
         }
-
-        internal string Wire { get; }
-
-        internal MessageKind Kind { get; }
-
-        internal object Payload { get; }
-
-        internal Action<IBufferWriter<byte>> Write { get; }
     }
 
     /// <summary>
@@ -48,6 +48,57 @@ namespace SignalFish.Client.Tests
     [TestFixture]
     public class EnvelopeWriterTests
     {
+        /// <summary>
+        /// An <see cref="IBufferWriter{T}"/> that hands out bounded spans so
+        /// every multi-byte write must split across segments.
+        /// </summary>
+        private sealed class ChunkedBufferWriter : IBufferWriter<byte>
+        {
+            private readonly List<(byte[] Buffer, int Used)> _chunks = new List<(byte[], int)>();
+            private readonly int _chunkSize;
+            private byte[]? _current;
+
+            internal ChunkedBufferWriter(int chunkSize)
+            {
+                _chunkSize = chunkSize;
+            }
+
+            public void Advance(int count)
+            {
+                if (_current is null)
+                {
+                    throw new InvalidOperationException("Advance without GetSpan.");
+                }
+
+                ArgumentOutOfRangeException.ThrowIfGreaterThan(count, _current.Length);
+
+                _chunks[^1] = (_current, count);
+            }
+
+            public Memory<byte> GetMemory(int sizeHint) => throw new NotSupportedException();
+
+            public Span<byte> GetSpan(int sizeHint)
+            {
+                _current = new byte[Math.Max(sizeHint, _chunkSize)];
+                _chunks.Add((_current, 0));
+                return _current;
+            }
+
+            internal byte[] ToArray()
+            {
+                int total = _chunks.Sum(c => c.Used);
+                byte[] result = new byte[total];
+                int offset = 0;
+                foreach ((byte[] buffer, int used) in _chunks)
+                {
+                    Buffer.BlockCopy(buffer, 0, result, offset, used);
+                    offset += used;
+                }
+
+                return result;
+            }
+        }
+
         private static readonly string[] ClientFixtureFiles =
         {
             "v2-client-messages.jsonl",
@@ -60,31 +111,7 @@ namespace SignalFish.Client.Tests
 
         private static readonly string[] CapabilityNames = { "room_operation_ids" };
 
-        internal static IEnumerable<TestCaseData> ClientFixtureMessages()
-        {
-            foreach (string fileName in ClientFixtureFiles)
-            {
-                string[] lines = File.ReadAllLines(
-                    Path.Combine(GoldenFixtures.GoldenDirectory, fileName)
-                );
-                for (int i = 0; i < lines.Length; i++)
-                {
-                    FixtureMessage message = BuildFromFixture(lines[i]);
-                    yield return new TestCaseData(message).SetArgDisplayNames(
-                        $"{fileName}:{i + 1}",
-                        message.Kind.ToString()
-                    );
-                }
-            }
-        }
-
-        internal static List<FixtureMessage> BuildAllClientFixtureMessages()
-        {
-            return ClientFixtureMessages().Select(c => (FixtureMessage)c.Arguments![0]!).ToList();
-        }
-
         // --- Golden fixture corpus: byte-identical + roundtrip ----------------
-
         [Test, TestCaseSource(nameof(ClientFixtureMessages))]
         public void WriteFixtureLineReproducesByteIdenticalFrame(FixtureMessage fixture)
         {
@@ -134,7 +161,6 @@ namespace SignalFish.Client.Tests
         }
 
         // --- Envelope shape ----------------------------------------------------
-
         [Test]
         public void WritePayloadlessCommandsOmitDataMemberEntirely()
         {
@@ -218,7 +244,6 @@ namespace SignalFish.Client.Tests
         }
 
         // --- Non-fixture field combinations (roundtrip-pinned) ------------------
-
         [Test]
         public void WriteJoinRoomCreationFormRoundTrips()
         {
@@ -450,7 +475,6 @@ namespace SignalFish.Client.Tests
         }
 
         // --- String escaping ----------------------------------------------------
-
         [TestCase("quote\"inside", "quote\\\"inside")]
         [TestCase("back\\slash", "back\\\\slash")]
         [TestCase("line\nbreak", "line\\nbreak")]
@@ -512,7 +536,6 @@ namespace SignalFish.Client.Tests
         }
 
         // --- Buffer growth across segments ---------------------------------------
-
         [TestCase(1)]
         [TestCase(3)]
         [TestCase(17)]
@@ -576,7 +599,6 @@ namespace SignalFish.Client.Tests
         }
 
         // --- Encode misuse is a programmer error ---------------------------------
-
         [Test]
         public void WriteMissingRequiredFieldsThrowsArgumentException()
         {
@@ -718,7 +740,6 @@ namespace SignalFish.Client.Tests
         }
 
         // --- Payload decode robustness --------------------------------------------
-
         [TestCase("not an object")]
         [TestCase("[\"array\"]")]
         [TestCase("{\"game_name\": 5, \"player_name\": \"p\"}")] // wrong-typed field
@@ -871,7 +892,6 @@ namespace SignalFish.Client.Tests
         }
 
         // --- Allocation gate --------------------------------------------------------
-
         [Test]
         public void WriteSteadyStateFullCorpusAllocatesNothing()
         {
@@ -914,8 +934,30 @@ namespace SignalFish.Client.Tests
             );
         }
 
-        // --- Helpers -----------------------------------------------------------------
+        internal static IEnumerable<TestCaseData> ClientFixtureMessages()
+        {
+            foreach (string fileName in ClientFixtureFiles)
+            {
+                string[] lines = File.ReadAllLines(
+                    Path.Combine(GoldenFixtures.GoldenDirectory, fileName)
+                );
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    FixtureMessage message = BuildFromFixture(lines[i]);
+                    yield return new TestCaseData(message).SetArgDisplayNames(
+                        $"{fileName}:{i + 1}",
+                        message.Kind.ToString()
+                    );
+                }
+            }
+        }
 
+        internal static List<FixtureMessage> BuildAllClientFixtureMessages()
+        {
+            return ClientFixtureMessages().Select(c => (FixtureMessage)c.Arguments![0]!).ToList();
+        }
+
+        // --- Helpers -----------------------------------------------------------------
         private static byte[] Written(MessageKind kind, object payload)
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(64);
@@ -1330,57 +1372,6 @@ namespace SignalFish.Client.Tests
             }
 
             return -1;
-        }
-
-        /// <summary>
-        /// An <see cref="IBufferWriter{T}"/> that hands out bounded spans so
-        /// every multi-byte write must split across segments.
-        /// </summary>
-        private sealed class ChunkedBufferWriter : IBufferWriter<byte>
-        {
-            private readonly List<(byte[] Buffer, int Used)> _chunks = new List<(byte[], int)>();
-            private readonly int _chunkSize;
-            private byte[]? _current;
-
-            internal ChunkedBufferWriter(int chunkSize)
-            {
-                _chunkSize = chunkSize;
-            }
-
-            public void Advance(int count)
-            {
-                if (_current is null)
-                {
-                    throw new InvalidOperationException("Advance without GetSpan.");
-                }
-
-                ArgumentOutOfRangeException.ThrowIfGreaterThan(count, _current.Length);
-
-                _chunks[^1] = (_current, count);
-            }
-
-            public Memory<byte> GetMemory(int sizeHint) => throw new NotSupportedException();
-
-            public Span<byte> GetSpan(int sizeHint)
-            {
-                _current = new byte[Math.Max(sizeHint, _chunkSize)];
-                _chunks.Add((_current, 0));
-                return _current;
-            }
-
-            internal byte[] ToArray()
-            {
-                int total = _chunks.Sum(c => c.Used);
-                byte[] result = new byte[total];
-                int offset = 0;
-                foreach ((byte[] buffer, int used) in _chunks)
-                {
-                    Buffer.BlockCopy(buffer, 0, result, offset, used);
-                    offset += used;
-                }
-
-                return result;
-            }
         }
     }
 }

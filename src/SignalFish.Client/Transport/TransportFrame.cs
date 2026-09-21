@@ -11,29 +11,6 @@ namespace SignalFish.Client.Transport
     /// </summary>
     public readonly struct TransportFrame : IEquatable<TransportFrame>
     {
-        /// <summary>Initializes a data frame.</summary>
-        public TransportFrame(ReadOnlyMemory<byte> payload, bool isText)
-        {
-            Payload = payload;
-            IsText = isText;
-            IsClose = false;
-            Close = default;
-        }
-
-        /// <summary>Initializes the terminal close frame.</summary>
-        public static TransportFrame FromClose(TransportClose close)
-        {
-            return new TransportFrame(close);
-        }
-
-        private TransportFrame(TransportClose close)
-        {
-            Payload = ReadOnlyMemory<byte>.Empty;
-            IsText = false;
-            IsClose = true;
-            Close = close;
-        }
-
         /// <summary>
         /// The frame payload (exact-size copy, caller-owned). Empty for the
         /// close frame.
@@ -51,6 +28,29 @@ namespace SignalFish.Client.Transport
 
         /// <summary>The close descriptor; meaningful only when <see cref="IsClose"/>.</summary>
         public TransportClose Close { get; }
+
+        /// <summary>Initializes a data frame.</summary>
+        public TransportFrame(ReadOnlyMemory<byte> payload, bool isText)
+        {
+            Payload = payload;
+            IsText = isText;
+            IsClose = false;
+            Close = default;
+        }
+
+        private TransportFrame(TransportClose close)
+        {
+            Payload = ReadOnlyMemory<byte>.Empty;
+            IsText = false;
+            IsClose = true;
+            Close = close;
+        }
+
+        /// <summary>Initializes the terminal close frame.</summary>
+        public static TransportFrame FromClose(TransportClose close)
+        {
+            return new TransportFrame(close);
+        }
 
         /// <summary>Content equality (payload bytes compared element-wise).</summary>
         public bool Equals(TransportFrame other)

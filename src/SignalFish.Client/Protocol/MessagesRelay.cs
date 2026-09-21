@@ -35,6 +35,15 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     public readonly struct GameDataMessage : IEquatable<GameDataMessage>
     {
+        /// <summary>Gets the game-data JSON value, as UTF-8 bytes (relayed verbatim).</summary>
+        public ReadOnlyMemory<byte> Payload => _payload;
+
+        /// <summary>Gets the v3 delivery classification.</summary>
+        public GameDataClass Class { get; }
+
+        /// <summary>Gets the coalescing key; meaningful only for <see cref="GameDataClass.Latest"/>.</summary>
+        public uint Key { get; }
+
         private readonly ReadOnlyMemory<byte> _payload;
 
         /// <summary>
@@ -70,15 +79,6 @@ namespace SignalFish.Client.Protocol
             */
             Key = classification == GameDataClass.Latest ? key : 0;
         }
-
-        /// <summary>Gets the game-data JSON value, as UTF-8 bytes (relayed verbatim).</summary>
-        public ReadOnlyMemory<byte> Payload => _payload;
-
-        /// <summary>Gets the v3 delivery classification.</summary>
-        public GameDataClass Class { get; }
-
-        /// <summary>Gets the coalescing key; meaningful only for <see cref="GameDataClass.Latest"/>.</summary>
-        public uint Key { get; }
 
         /// <inheritdoc />
         public bool Equals(GameDataMessage other) =>

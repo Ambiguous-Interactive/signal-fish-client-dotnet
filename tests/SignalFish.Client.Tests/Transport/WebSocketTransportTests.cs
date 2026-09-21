@@ -18,19 +18,6 @@ namespace SignalFish.Client.Tests.Transport
     [TestFixture]
     public class WebSocketTransportTests
     {
-        private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
-
-        private static CancellationToken TestToken()
-        {
-            CancellationTokenSource cts = new CancellationTokenSource(TestTimeout);
-            return cts.Token;
-        }
-
-        private static Uri ServerUri(int port)
-        {
-            return new Uri(FormattableString.Invariant($"ws://127.0.0.1:{port}/v2/ws"));
-        }
-
         public static readonly TestCaseData[] CloseCodeCases =
         {
             new TestCaseData(4000, TransportCloseKind.ServerShutdown),
@@ -44,6 +31,8 @@ namespace SignalFish.Client.Tests.Transport
             new TestCaseData(1009, TransportCloseKind.MessageTooBig),
             new TestCaseData(4999, TransportCloseKind.Unknown),
         };
+
+        private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
         [TestCaseSource(nameof(CloseCodeCases))]
         public async Task ReceiveServerCloseMapsCodeToKind(
@@ -252,39 +241,6 @@ namespace SignalFish.Client.Tests.Transport
             }
         }
 
-        private static async Task<TestWsConnection?> WaitForConnectionOrNullAsync(
-            TestWsServer server
-        )
-        {
-            CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            try
-            {
-                return await server.WaitForConnectionAsync(cts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                return null;
-            }
-        }
-
-        private static async Task WaitForProbeArrivalAsync(TestWsServer server)
-        {
-            for (int attempt = 0; attempt < 200; attempt++)
-            {
-                foreach (string path in server.HttpRequestPaths.ToArray())
-                {
-                    if (path.EndsWith("/client-config", StringComparison.Ordinal))
-                    {
-                        return;
-                    }
-                }
-
-                await Task.Delay(10);
-            }
-
-            Assert.Fail("The client-config probe never reached the server.");
-        }
-
         [Test]
         public async Task ConnectProbeFailureStillConnects()
         {
@@ -370,6 +326,50 @@ namespace SignalFish.Client.Tests.Transport
                 (Func<Task>)(async () => await transport.DisposeAsync()),
                 Throws.Nothing
             );
+        }
+
+        private static CancellationToken TestToken()
+        {
+            CancellationTokenSource cts = new CancellationTokenSource(TestTimeout);
+            return cts.Token;
+        }
+
+        private static Uri ServerUri(int port)
+        {
+            return new Uri(FormattableString.Invariant($"ws://127.0.0.1:{port}/v2/ws"));
+        }
+
+        private static async Task<TestWsConnection?> WaitForConnectionOrNullAsync(
+            TestWsServer server
+        )
+        {
+            CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            try
+            {
+                return await server.WaitForConnectionAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+        }
+
+        private static async Task WaitForProbeArrivalAsync(TestWsServer server)
+        {
+            for (int attempt = 0; attempt < 200; attempt++)
+            {
+                foreach (string path in server.HttpRequestPaths.ToArray())
+                {
+                    if (path.EndsWith("/client-config", StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+                }
+
+                await Task.Delay(10);
+            }
+
+            Assert.Fail("The client-config probe never reached the server.");
         }
     }
 }

@@ -3,6 +3,141 @@ namespace SignalFish.Client.Protocol
     using System;
 
     /// <summary>
+    /// Payload of the inbound <c>Reconnected</c> frame (S→C): a prior
+    /// membership reclaimed on a fresh, re-authenticated connection, plus
+    /// the room-state snapshot. The v2 <c>missed_events</c> marker is
+    /// tolerated as unknown; replay semantics never rely on it.
+    /// </summary>
+    public readonly struct ReconnectedMessage : IEquatable<ReconnectedMessage>
+    {
+        /// <summary>Gets the player identity reclaimed by the server (required).</summary>
+        public Guid PlayerId { get; }
+
+        /// <summary>Gets the server-assigned room identity (required).</summary>
+        public Guid RoomId { get; }
+
+        /// <summary>Gets the human-shareable room code (required).</summary>
+        public string RoomCode { get; }
+
+        /// <summary>
+        /// Gets the room-state snapshot the frame carried (default when
+        /// absent). Advisory state: excluded from equality.
+        /// </summary>
+        public RoomSnapshot Snapshot { get; }
+
+        /// <summary>Initializes a new <see cref="ReconnectedMessage"/> payload.</summary>
+        public ReconnectedMessage(
+            Guid playerId,
+            Guid roomId,
+            string roomCode,
+            RoomSnapshot? snapshot = null
+        )
+        {
+            PlayerId = playerId;
+            RoomId = roomId;
+            RoomCode = roomCode;
+            Snapshot = snapshot ?? default;
+        }
+
+        /// <inheritdoc />
+        public bool Equals(ReconnectedMessage other) =>
+            PlayerId == other.PlayerId
+            && RoomId == other.RoomId
+            && AuthenticateMessage.NullableStringEquals(RoomCode, other.RoomCode);
+
+        /// <inheritdoc />
+        public override bool Equals(object? obj) =>
+            obj is ReconnectedMessage other && Equals(other);
+
+        /// <inheritdoc />
+        public override int GetHashCode()
+        {
+            HashCode hash = default;
+            hash.Add(PlayerId);
+            hash.Add(RoomId);
+            hash.Add(RoomCode);
+            return hash.ToHashCode();
+        }
+
+        /// <inheritdoc />
+        public static bool operator ==(ReconnectedMessage left, ReconnectedMessage right) =>
+            left.Equals(right);
+
+        /// <inheritdoc />
+        public static bool operator !=(ReconnectedMessage left, ReconnectedMessage right) =>
+            !left.Equals(right);
+
+        /// <summary>
+        /// Decodes the <c>data</c> object of a <c>Reconnected</c> envelope
+        /// (the <see cref="EnvelopeEvent.Data"/> slice). Unknown fields are
+        /// skipped; a repeated session-critical key is rejected
+        /// (fail-closed). Returns <see langword="false"/> for malformed
+        /// input or a missing session-critical field.
+        /// </summary>
+        internal static bool TryDecode(ReadOnlyMemory<byte> data, out ReconnectedMessage message)
+        {
+            message = default;
+            JsonScanner scanner = new JsonScanner(data.Span);
+            JsonMemberState state = scanner.BeginObject();
+
+            Guid playerId = default;
+            Guid roomId = default;
+            string? roomCode = null;
+            bool playerSeen = false;
+            bool roomSeen = false;
+
+            while (state == JsonMemberState.Member)
+            {
+                state = scanner.ScanMember(out Range keyRaw, out Range valueRaw);
+                if (state != JsonMemberState.Member)
+                {
+                    return false;
+                }
+
+                if (scanner.KeyIs(keyRaw, "player_id"))
+                {
+                    if (playerSeen || !scanner.TryReadGuid(valueRaw, out playerId))
+                    {
+                        return false;
+                    }
+
+                    playerSeen = true;
+                }
+                else if (scanner.KeyIs(keyRaw, "room_id"))
+                {
+                    if (roomSeen || !scanner.TryReadGuid(valueRaw, out roomId))
+                    {
+                        return false;
+                    }
+
+                    roomSeen = true;
+                }
+                else if (scanner.KeyIs(keyRaw, "room_code"))
+                {
+                    if (roomCode is not null || !scanner.TryReadString(valueRaw, out roomCode))
+                    {
+                        return false;
+                    }
+                }
+
+                state = scanner.EndMember();
+            }
+
+            if (state != JsonMemberState.EndObject || !playerSeen || !roomSeen || roomCode is null)
+            {
+                return false;
+            }
+
+            if (!RoomSnapshot.TryDecode(data, out RoomSnapshot snapshot))
+            {
+                return false;
+            }
+            message = new ReconnectedMessage(playerId, roomId, roomCode, snapshot);
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Payload of the outbound <c>JoinAsSpectator</c> message (C→S): join a
     /// room as a read-only observer. All of <see cref="GameName"/>,
     /// <see cref="RoomCode"/>, and <see cref="SpectatorName"/> are required;
@@ -168,12 +303,24 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the reconnection token from <c>RoomJoined</c>/<c>Reconnected</c> (required).</summary>
         public string AuthToken { get; }
 
+        /// <summary>
+        /// Gets the room-state snapshot the frame carried (default when
+        /// absent). Advisory state: excluded from equality.
+        /// </summary>
+        public RoomSnapshot Snapshot { get; }
+
         /// <summary>Initializes a new <see cref="ReconnectMessage"/> payload.</summary>
-        public ReconnectMessage(string playerId, string roomId, string authToken)
+        public ReconnectMessage(
+            string playerId,
+            string roomId,
+            string authToken,
+            RoomSnapshot? snapshot = null
+        )
         {
             PlayerId = playerId;
             RoomId = roomId;
             AuthToken = authToken;
+            Snapshot = snapshot ?? default;
         }
 
         /// <inheritdoc />
@@ -262,7 +409,11 @@ namespace SignalFish.Client.Protocol
                 return false;
             }
 
-            message = new ReconnectMessage(playerId, roomId, authToken);
+            if (!RoomSnapshot.TryDecode(data, out RoomSnapshot snapshot))
+            {
+                return false;
+            }
+            message = new ReconnectMessage(playerId, roomId, authToken, snapshot);
             return true;
         }
     }

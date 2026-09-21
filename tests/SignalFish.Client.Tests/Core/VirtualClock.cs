@@ -9,12 +9,12 @@ namespace SignalFish.Client.Tests.Core
     /// </summary>
     public sealed class VirtualClock : ISignalFishClock
     {
-        private long _elapsedMilliseconds;
-
         public long ElapsedMilliseconds
         {
             get { return _elapsedMilliseconds; }
         }
+
+        private long _elapsedMilliseconds;
 
         public void Advance(long milliseconds)
         {

@@ -4,14 +4,41 @@ namespace SignalFish.Client.Core
 
     /// <summary>
     /// Maps decoded server envelopes to session facts — the single wire
-    /// (Protocol) to session (Core) bridge both drivers consume. Pure and
-    /// allocation-free: decoding the membership subset scans the frame in
-    /// place; every non-session message maps to <c>false</c> so gameplay
-    /// events stay with the event surface (M3.4). Unknown wire types never
-    /// map (forward compatibility).
+    /// (Protocol) to session (Core) bridge both drivers consume. Pure:
+    /// every non-session message maps to <c>false</c> so gameplay events
+    /// stay with the event surface. Payload-less and failure facts map
+    /// without allocating; join/reconnect facts are the cold path (the
+    /// membership decode materializes its strings). Unknown wire types
+    /// never map (forward compatibility).
     /// </summary>
     internal static class SessionEventMapper
     {
+        /// <summary>
+        /// Returns true when <paramref name="kind"/> is a session-fact
+        /// message: a kind <see cref="TryMap"/> routes. A routed kind whose
+        /// mapping failed therefore means malformed session-critical
+        /// fields — a protocol violation, not forward-compatible noise.
+        /// </summary>
+        internal static bool IsSessionFact(MessageKind kind)
+        {
+            switch (kind)
+            {
+                case MessageKind.Authenticated:
+                case MessageKind.RoomJoined:
+                case MessageKind.SpectatorJoined:
+                case MessageKind.Reconnected:
+                case MessageKind.RoomLeft:
+                case MessageKind.SpectatorLeft:
+                case MessageKind.RoomJoinFailed:
+                case MessageKind.SpectatorJoinFailed:
+                case MessageKind.ReconnectionFailed:
+                case MessageKind.Error:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         /// <summary>
         /// Maps one decoded envelope to its session fact. Returns true when
         /// <paramref name="envelope"/> is a session fact, with

@@ -10,6 +10,9 @@ namespace SignalFish.Client.Transport
     /// </summary>
     public sealed class TransportClosedException : InvalidOperationException
     {
+        /// <summary>The close that terminated the transport (default when not close-driven).</summary>
+        public TransportClose Close { get; }
+
         /// <summary>Initializes the exception for a specific close.</summary>
         public TransportClosedException(TransportClose close)
             : base(FormattableString.Invariant($"The transport is closed ({close})."))
@@ -44,8 +47,5 @@ namespace SignalFish.Client.Transport
         {
             Close = default;
         }
-
-        /// <summary>The close that terminated the transport (default when not close-driven).</summary>
-        public TransportClose Close { get; }
     }
 }

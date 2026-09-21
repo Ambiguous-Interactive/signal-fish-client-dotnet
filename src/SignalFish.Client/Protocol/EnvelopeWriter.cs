@@ -21,12 +21,6 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     public static class EnvelopeWriter
     {
-        private static readonly byte[] EnvelopeOpen = Encoding.ASCII.GetBytes("{\"type\": \"");
-        private static readonly byte[] EnvelopeClosePlain = Encoding.ASCII.GetBytes("\"}");
-        private static readonly byte[] EnvelopeDataOpen = Encoding.ASCII.GetBytes(
-            "\", \"data\": {"
-        );
-
         private static class TypeNames
         {
             internal static readonly byte[] Authenticate = Encoding.ASCII.GetBytes("Authenticate");
@@ -115,8 +109,32 @@ namespace SignalFish.Client.Protocol
             internal static readonly byte[] Type = Encoding.ASCII.GetBytes("type");
         }
 
-        // --- v2 lifecycle -----------------------------------------------------
+        private static readonly byte[] EnvelopeOpen = Encoding.ASCII.GetBytes("{\"type\": \"");
+        private static readonly byte[] EnvelopeClosePlain = Encoding.ASCII.GetBytes("\"}");
+        private static readonly byte[] EnvelopeDataOpen = Encoding.ASCII.GetBytes(
+            "\", \"data\": {"
+        );
 
+        // --- Shared helpers -----------------------------------------------------
+        private static readonly byte[] CommaSpace = { (byte)',', (byte)' ' };
+        private static readonly byte[] JsonObjectOpen = { (byte)'{' };
+        private static readonly byte[] JsonObjectClose = { (byte)'}' };
+        private static readonly byte[] KickPlayerType = Encoding.ASCII.GetBytes("KickPlayer");
+        private static readonly byte[] RegenerateRoomCodeType = Encoding.ASCII.GetBytes(
+            "RegenerateRoomCode"
+        );
+
+        private static readonly byte[] SetRoomAccessType = Encoding.ASCII.GetBytes("SetRoomAccess");
+        private static readonly byte[] BanPlayerType = Encoding.ASCII.GetBytes("BanPlayer");
+        private static readonly byte[] UnbanPlayerType = Encoding.ASCII.GetBytes("UnbanPlayer");
+        private static readonly byte[] TransferAuthorityType = Encoding.ASCII.GetBytes(
+            "TransferAuthority"
+        );
+
+        private static readonly byte[] LatestClassToken = Encoding.ASCII.GetBytes("latest");
+        private static readonly byte[] VolatileClassToken = Encoding.ASCII.GetBytes("volatile");
+
+        // --- v2 lifecycle -----------------------------------------------------
         /// <summary>Writes an <c>Authenticate</c> frame.</summary>
         public static void WriteAuthenticate(
             IBufferWriter<byte> destination,
@@ -361,7 +379,6 @@ namespace SignalFish.Client.Protocol
         }
 
         // --- Payloadless commands ---------------------------------------------
-
         /// <summary>Writes a <c>PlayerReady</c> frame (no payload).</summary>
         public static void WritePlayerReady(IBufferWriter<byte> destination)
         {
@@ -393,7 +410,6 @@ namespace SignalFish.Client.Protocol
         }
 
         // --- Relay -------------------------------------------------------------
-
         /// <summary>
         /// Writes a <c>GameData</c> frame. The reliable (relay-floor) class
         /// reproduces the v2 wire form with no delivery metadata;
@@ -453,7 +469,6 @@ namespace SignalFish.Client.Protocol
         }
 
         // --- v3 -----------------------------------------------------------------
-
         /// <summary>
         /// Writes a <c>RoomOperation</c> frame wrapping one room command
         /// with its correlation UUID.
@@ -546,24 +561,6 @@ namespace SignalFish.Client.Protocol
 
             CloseData(ref writer);
         }
-
-        // --- Shared helpers -----------------------------------------------------
-
-        private static readonly byte[] CommaSpace = { (byte)',', (byte)' ' };
-        private static readonly byte[] JsonObjectOpen = { (byte)'{' };
-        private static readonly byte[] JsonObjectClose = { (byte)'}' };
-        private static readonly byte[] KickPlayerType = Encoding.ASCII.GetBytes("KickPlayer");
-        private static readonly byte[] RegenerateRoomCodeType = Encoding.ASCII.GetBytes(
-            "RegenerateRoomCode"
-        );
-        private static readonly byte[] SetRoomAccessType = Encoding.ASCII.GetBytes("SetRoomAccess");
-        private static readonly byte[] BanPlayerType = Encoding.ASCII.GetBytes("BanPlayer");
-        private static readonly byte[] UnbanPlayerType = Encoding.ASCII.GetBytes("UnbanPlayer");
-        private static readonly byte[] TransferAuthorityType = Encoding.ASCII.GetBytes(
-            "TransferAuthority"
-        );
-        private static readonly byte[] LatestClassToken = Encoding.ASCII.GetBytes("latest");
-        private static readonly byte[] VolatileClassToken = Encoding.ASCII.GetBytes("volatile");
 
         private static void WritePayloadless(IBufferWriter<byte> destination, byte[] typeName)
         {

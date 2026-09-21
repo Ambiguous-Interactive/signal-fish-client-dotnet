@@ -10,14 +10,6 @@ namespace SignalFish.Client.Core
     /// </summary>
     public readonly struct RoomMembership : IEquatable<RoomMembership>
     {
-        public RoomMembership(RoomRole role, Guid playerId, Guid roomId, string? roomCode)
-        {
-            Role = role;
-            PlayerId = playerId;
-            RoomId = roomId;
-            RoomCode = roomCode;
-        }
-
         /// <summary>Confirmed role. Zero only in the absent membership.</summary>
         public RoomRole Role { get; }
 
@@ -34,6 +26,14 @@ namespace SignalFish.Client.Core
         public bool IsPresent
         {
             get { return Role is RoomRole.Player or RoomRole.Spectator; }
+        }
+
+        public RoomMembership(RoomRole role, Guid playerId, Guid roomId, string? roomCode)
+        {
+            Role = role;
+            PlayerId = playerId;
+            RoomId = roomId;
+            RoomCode = roomCode;
         }
 
         public static bool operator ==(RoomMembership left, RoomMembership right)

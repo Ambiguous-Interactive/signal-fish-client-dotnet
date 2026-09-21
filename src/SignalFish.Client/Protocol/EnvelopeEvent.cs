@@ -14,29 +14,6 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     public readonly struct EnvelopeEvent
     {
-        private readonly ReadOnlyMemory<byte> _raw;
-        private readonly ReadOnlyMemory<byte> _data;
-        private readonly string? _typeText;
-
-        internal EnvelopeEvent(
-            EnvelopeEventKind kind,
-            MessageKind message,
-            ReadOnlyMemory<byte> raw,
-            ReadOnlyMemory<byte> data,
-            string? typeText,
-            DecodeError error,
-            int errorOffset
-        )
-        {
-            Kind = kind;
-            Message = message;
-            _raw = raw;
-            _data = data;
-            _typeText = typeText;
-            Error = error;
-            ErrorOffset = errorOffset;
-        }
-
         /// <summary>What kind of event this is.</summary>
         public EnvelopeEventKind Kind { get; }
 
@@ -76,5 +53,28 @@ namespace SignalFish.Client.Protocol
         /// detected; 0 when there was no failure.
         /// </summary>
         public int ErrorOffset { get; }
+
+        private readonly ReadOnlyMemory<byte> _raw;
+        private readonly ReadOnlyMemory<byte> _data;
+        private readonly string? _typeText;
+
+        internal EnvelopeEvent(
+            EnvelopeEventKind kind,
+            MessageKind message,
+            ReadOnlyMemory<byte> raw,
+            ReadOnlyMemory<byte> data,
+            string? typeText,
+            DecodeError error,
+            int errorOffset
+        )
+        {
+            Kind = kind;
+            Message = message;
+            _raw = raw;
+            _data = data;
+            _typeText = typeText;
+            Error = error;
+            ErrorOffset = errorOffset;
+        }
     }
 }
