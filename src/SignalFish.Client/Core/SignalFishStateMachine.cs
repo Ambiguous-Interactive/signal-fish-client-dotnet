@@ -205,9 +205,9 @@ namespace SignalFish.Client.Core
                     _transportReady = true;
                     break;
                 case SessionEventKind.Authenticated:
-                    // Fail-closed: a repeated authentication is a protocol
-                    // violation; the flag stands (the v2 wire carries no
-                    // identity here — membership confirms the player).
+                    // Idempotent: the v2 Authenticated payload carries no
+                    // identity, so a repeat has nothing to conflict with;
+                    // the player identity is confirmed with the membership.
                     _authenticated = true;
                     break;
                 case SessionEventKind.RoomJoined:

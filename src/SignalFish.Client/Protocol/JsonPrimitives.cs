@@ -439,9 +439,10 @@ namespace SignalFish.Client.Protocol
 
         /// <summary>
         /// Reads a scanned value that must be a hyphenated UUID string
-        /// (<c>8-4-4-4-12</c> hex). Allocation-free: the text form is parsed
-        /// big-endian per field, matching <see cref="Guid.Parse"/> exactly.
-        /// Escaped strings are rejected (UUID text never needs escapes).
+        /// (<c>8-4-4-4-12</c> hex, the canonical wire form). Allocation-free:
+        /// the value matches <see cref="Guid.Parse"/> for that form (the
+        /// N/braces forms are rejected). Escaped strings are rejected (UUID
+        /// text never needs escapes).
         /// </summary>
         internal bool TryReadGuid(Range valueRaw, out Guid value)
         {

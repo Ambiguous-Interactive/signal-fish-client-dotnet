@@ -23,8 +23,9 @@ rounds (#28 merged green; #29 RCA'd). ~1 hour session shape.
   session-critical subsets (player/spectator/room ids + room code) with
   unknown-field tolerance; required fields enforced via seen flags.
 - **`SessionEventMapper`**: the single Protocol→Core bridge;
-  `TryMap(EnvelopeEvent, out SessionEvent)` covers all 13 session-fact
-  kinds; non-session messages (gameplay, lobby, liveness) are refused so
+  `TryMap(EnvelopeEvent, out SessionEvent)` covers all 10 wire-mappable
+  session-fact kinds (`TransportReady`/`Disconnected` are transport-sourced);
+  non-session messages (gameplay, lobby, liveness) are refused so
   they stay with the M3.4 event surface; unknown types never map.
 - **Wire-truth fixes (red-green)**: `SessionEvent.Authenticated()` is
   payload-less (the v2 `Authenticated` message carries no player id — the

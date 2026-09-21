@@ -54,29 +54,40 @@ namespace SignalFish.Client.Tests
         [Test]
         public void Table_RouteRoundtrip_EveryDefinedKind()
         {
-            for (int value = 1; ; value++)
+            int definedCount = 0;
+            foreach (MessageKind kind in Enum.GetValues<MessageKind>())
             {
-                string? wireName = MessageKindNames.ToWireName((MessageKind)value);
-                if (wireName is null)
+                if (kind == default(MessageKind))
                 {
-                    Assert.That(
-                        value > 1,
-                        Is.True,
-                        "the routing table must define at least one kind"
-                    );
-                    break;
+                    continue;
                 }
 
+                definedCount++;
+                string? wireName = MessageKindNames.ToWireName(kind);
+                Assert.That(wireName, Is.Not.Null, $"defined kind must have a wire name: {kind}");
                 Assert.That(
                     MessageKindNames.TryRoute(
-                        Encoding.ASCII.GetBytes(wireName),
-                        out MessageKind kind
+                        Encoding.ASCII.GetBytes(wireName!),
+                        out MessageKind routed
                     ),
                     Is.True,
                     "defined kind must route: " + wireName
                 );
-                Assert.That((int)kind, Is.EqualTo(value), wireName);
+                Assert.That(routed, Is.EqualTo(kind), wireName);
             }
+
+            // Enum and table must be in exact lockstep: a missing table
+            // entry strands a kind as unroutable; an extra one phantom-routes.
+            int routedCount = 0;
+            for (int value = 1; value <= 255; value++)
+            {
+                if (MessageKindNames.ToWireName((MessageKind)value) is not null)
+                {
+                    routedCount++;
+                }
+            }
+
+            Assert.That(routedCount, Is.EqualTo(definedCount));
         }
 
         [Test]

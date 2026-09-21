@@ -20,9 +20,10 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   family was unroutable). (2) `Guid.Parse` parity for hand-rolled UUID text
   decode has three trap classes: field big-endianity (first three groups
   are MSB-first but serialize little-endian into the binary Guid), group
-  boundaries (8-4-4-4-12, hyphens at 8/13/18/23 — the third hex group sits
-  at 19, not 18), and the -1 error sentinel aliasing an all-FFFF field
-  (validate each pair, never OR combined signed ints). (3) required-field
+  boundaries (8-4-4-4-12, hyphens at 8/13/18/23 — the group after the
+  third hyphen starts at 19, not 18), and the -1 error sentinel aliasing
+  an all-FFFF field (validate each pair, never OR combined signed ints).
+  (3) required-field
   enforcement needs per-field seen flags — `default(Guid)` is a valid
   value, absence is not. (4) 0 B allocation gates must scope by path:
   join mapping legitimately allocates the membership's room-code string

@@ -132,6 +132,17 @@ namespace SignalFish.Client.Tests.Core
                 ),
                 Is.False
             );
+            // A repeated session-critical key is rejected (fail-closed), not
+            // last-wins.
+            Assert.That(
+                TryMapWire(
+                    @"{""type"":""RoomJoined"",""data"":{""room_id"":""7c9e6679-7425-40de-944b-e07fc1f90ae7"","
+                        + @"""room_id"":""0f8fad5b-d9cb-469f-a165-70867728950e"",""room_code"":""ABC123"","
+                        + @"""player_id"":""0f8fad5b-d9cb-469f-a165-70867728950e""}}",
+                    out _
+                ),
+                Is.False
+            );
             // Payload is not an object.
             Assert.That(TryMapWire(@"{""type"":""RoomJoined""}", out _), Is.False);
             // Unknown wire type: forward-compatible UnknownMessage event.
@@ -215,6 +226,12 @@ namespace SignalFish.Client.Tests.Core
             }
 
             Assert.That(TryMapWire(RoomJoinedFrame, out _), Is.True, "warmup must map");
+            // Warm every measured frame once so static/one-time costs land
+            // outside the measured passes.
+            foreach (string wire in wires)
+            {
+                TryMapWire(wire, out _);
+            }
 
             long minDelta = long.MaxValue;
             for (int pass = 0; pass < 4; pass++)

@@ -57,8 +57,10 @@ namespace SignalFish.Client.Protocol
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>RoomJoined</c> envelope
         /// (the <see cref="EnvelopeEvent.Data"/> slice). Unknown fields are
-        /// skipped. Returns <see langword="false"/> for malformed input or a
-        /// missing session-critical field.
+        /// skipped; a repeated session-critical key is rejected (fail-closed,
+        /// matching the envelope layer's first-wins posture). Returns
+        /// <see langword="false"/> for malformed input or a missing
+        /// session-critical field.
         /// </summary>
         internal static bool TryDecode(ReadOnlyMemory<byte> data, out RoomJoinedMessage message)
         {
@@ -82,7 +84,7 @@ namespace SignalFish.Client.Protocol
 
                 if (scanner.KeyIs(keyRaw, "player_id"))
                 {
-                    if (!scanner.TryReadGuid(valueRaw, out playerId))
+                    if (playerSeen || !scanner.TryReadGuid(valueRaw, out playerId))
                     {
                         return false;
                     }
@@ -91,7 +93,7 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "room_id"))
                 {
-                    if (!scanner.TryReadGuid(valueRaw, out roomId))
+                    if (roomSeen || !scanner.TryReadGuid(valueRaw, out roomId))
                     {
                         return false;
                     }
@@ -100,7 +102,7 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "room_code"))
                 {
-                    if (!scanner.TryReadString(valueRaw, out roomCode))
+                    if (roomCode is not null || !scanner.TryReadString(valueRaw, out roomCode))
                     {
                         return false;
                     }
@@ -175,8 +177,10 @@ namespace SignalFish.Client.Protocol
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>SpectatorJoined</c>
         /// envelope (the <see cref="EnvelopeEvent.Data"/> slice). Unknown
-        /// fields are skipped. Returns <see langword="false"/> for malformed
-        /// input or a missing session-critical field.
+        /// fields are skipped; a repeated session-critical key is rejected
+        /// (fail-closed, matching the envelope layer's first-wins posture).
+        /// Returns <see langword="false"/> for malformed input or a missing
+        /// session-critical field.
         /// </summary>
         internal static bool TryDecode(
             ReadOnlyMemory<byte> data,
@@ -203,7 +207,7 @@ namespace SignalFish.Client.Protocol
 
                 if (scanner.KeyIs(keyRaw, "spectator_id"))
                 {
-                    if (!scanner.TryReadGuid(valueRaw, out spectatorId))
+                    if (spectatorSeen || !scanner.TryReadGuid(valueRaw, out spectatorId))
                     {
                         return false;
                     }
@@ -212,7 +216,7 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "room_id"))
                 {
-                    if (!scanner.TryReadGuid(valueRaw, out roomId))
+                    if (roomSeen || !scanner.TryReadGuid(valueRaw, out roomId))
                     {
                         return false;
                     }
@@ -221,7 +225,7 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "room_code"))
                 {
-                    if (!scanner.TryReadString(valueRaw, out roomCode))
+                    if (roomCode is not null || !scanner.TryReadString(valueRaw, out roomCode))
                     {
                         return false;
                     }
