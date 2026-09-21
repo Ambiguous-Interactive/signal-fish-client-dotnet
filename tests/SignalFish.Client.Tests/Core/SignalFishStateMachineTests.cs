@@ -26,7 +26,7 @@ namespace SignalFish.Client.Tests.Core
                     SessionEvent.From(SessionEventKind.TransportReady),
                     ConnectionPhase.TransportReady
                 ),
-                (SessionEvent.Authenticated(PlayerId), ConnectionPhase.Authenticated),
+                (SessionEvent.Authenticated(), ConnectionPhase.Authenticated),
                 (
                     SessionEvent.Joined(SessionEventKind.RoomJoined, Membership(RoomRole.Player)),
                     ConnectionPhase.InRoom
@@ -79,13 +79,15 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Authenticated_StoresAssignedPlayerId()
+        public void Authenticated_IsSessionFactWithoutIdentity()
         {
             SignalFishStateMachine machine = new SignalFishStateMachine();
-            machine.Apply(SessionEvent.Authenticated(PlayerId));
+            machine.Apply(SessionEvent.Authenticated());
 
             Assert.That(machine.IsAuthenticated, Is.True);
-            Assert.That(machine.AuthenticatedPlayerId, Is.EqualTo(PlayerId));
+            // The v2 Authenticated payload carries no player id; the identity
+            // is confirmed with the membership at join/reconnect time.
+            Assert.That(machine.Membership.IsPresent, Is.False);
         }
 
         [Test]
@@ -372,7 +374,7 @@ namespace SignalFish.Client.Tests.Core
                 (
                     "joinFailed",
                     PendingRoomOperation.JoinPlayer,
-                    SessionEvent.From(SessionEventKind.JoinRoomFailed),
+                    SessionEvent.From(SessionEventKind.RoomJoinFailed),
                     default(PendingRoomOperation),
                     false
                 ),
@@ -386,7 +388,7 @@ namespace SignalFish.Client.Tests.Core
                 (
                     "wrongKindFailureKeepsFence",
                     PendingRoomOperation.JoinPlayer,
-                    SessionEvent.From(SessionEventKind.JoinSpectatorFailed),
+                    SessionEvent.From(SessionEventKind.SpectatorJoinFailed),
                     PendingRoomOperation.JoinPlayer,
                     false
                 ),
@@ -403,7 +405,7 @@ namespace SignalFish.Client.Tests.Core
                 (
                     "spectatorFailed",
                     PendingRoomOperation.JoinSpectator,
-                    SessionEvent.From(SessionEventKind.JoinSpectatorFailed),
+                    SessionEvent.From(SessionEventKind.SpectatorJoinFailed),
                     default(PendingRoomOperation),
                     false
                 ),
@@ -438,7 +440,7 @@ namespace SignalFish.Client.Tests.Core
                 (
                     "reconnectFailed",
                     PendingRoomOperation.ReconnectPlayer,
-                    SessionEvent.From(SessionEventKind.ReconnectFailed),
+                    SessionEvent.From(SessionEventKind.ReconnectionFailed),
                     default(PendingRoomOperation),
                     false
                 ),
@@ -546,14 +548,14 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Apply_RepeatedAuthenticated_KeepsFirstAssignment()
+        public void Apply_RepeatedAuthenticated_StaysAuthenticated()
         {
-            Guid secondId = new Guid("c9bf9e57-1685-4c89-bafb-ff5af830be8a");
             SignalFishStateMachine machine = Fresh();
-            machine.Apply(SessionEvent.Authenticated(PlayerId));
-            machine.Apply(SessionEvent.Authenticated(secondId));
+            machine.Apply(SessionEvent.Authenticated());
+            machine.Apply(SessionEvent.Authenticated());
 
-            Assert.That(machine.AuthenticatedPlayerId, Is.EqualTo(PlayerId));
+            Assert.That(machine.IsAuthenticated, Is.True);
+            Assert.That(machine.Phase, Is.EqualTo(ConnectionPhase.Authenticated));
         }
 
         [Test]
@@ -611,10 +613,7 @@ namespace SignalFish.Client.Tests.Core
                     )
                 )
             );
-            Assert.That(
-                SessionEvent.Authenticated(PlayerId),
-                Is.Not.EqualTo(SessionEvent.Authenticated(Guid.Empty))
-            );
+            Assert.That(SessionEvent.Authenticated(), Is.Not.EqualTo(default(SessionEvent)));
         }
 
         [Test]
@@ -623,7 +622,7 @@ namespace SignalFish.Client.Tests.Core
             SignalFishStateMachine machine = Fenced(PendingRoomOperation.JoinPlayer);
             machine.Apply(SessionEvent.From(SessionEventKind.Disconnected));
             machine.Apply(SessionEvent.From(SessionEventKind.TransportReady));
-            machine.Apply(SessionEvent.Authenticated(PlayerId));
+            machine.Apply(SessionEvent.Authenticated());
             machine.Apply(
                 SessionEvent.Joined(SessionEventKind.RoomJoined, Membership(RoomRole.Player))
             );
@@ -684,7 +683,7 @@ namespace SignalFish.Client.Tests.Core
         {
             SignalFishStateMachine machine = Fresh();
             machine.Apply(SessionEvent.From(SessionEventKind.TransportReady));
-            machine.Apply(SessionEvent.Authenticated(PlayerId));
+            machine.Apply(SessionEvent.Authenticated());
             return machine;
         }
 

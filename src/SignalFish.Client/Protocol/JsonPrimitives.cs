@@ -438,6 +438,116 @@ namespace SignalFish.Client.Protocol
         }
 
         /// <summary>
+        /// Reads a scanned value that must be a hyphenated UUID string
+        /// (<c>8-4-4-4-12</c> hex). Allocation-free: the text form is parsed
+        /// big-endian per field, matching <see cref="Guid.Parse"/> exactly.
+        /// Escaped strings are rejected (UUID text never needs escapes).
+        /// </summary>
+        internal bool TryReadGuid(Range valueRaw, out Guid value)
+        {
+            value = default;
+            (int Offset, int Length) s = valueRaw.GetOffsetAndLength(_buf.Length);
+            if (s.Length != 38 || _buf[s.Offset] != (byte)'"' || _buf[s.Offset + 37] != (byte)'"')
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> text = _buf.Slice(s.Offset + 1, 36);
+            if (
+                text.IndexOf((byte)'\\') >= 0
+                || text[8] != (byte)'-'
+                || text[13] != (byte)'-'
+                || text[18] != (byte)'-'
+                || text[23] != (byte)'-'
+            )
+            {
+                return false;
+            }
+
+            // Printed groups are big-endian: the first group's first pair is
+            // the integer's most significant byte. Each pair is validated
+            // before combining (an all-FFFF field would otherwise alias the
+            // -1 error sentinel).
+            int a0 = Hex(text, 0);
+            int a1 = Hex(text, 2);
+            int a2 = Hex(text, 4);
+            int a3 = Hex(text, 6);
+            int b0 = Hex(text, 9);
+            int b1 = Hex(text, 11);
+            int c0 = Hex(text, 14);
+            int c1 = Hex(text, 16);
+            if ((a0 | a1 | a2 | a3 | b0 | b1 | c0 | c1) < 0)
+            {
+                return false;
+            }
+
+            int a = (a0 << 24) | (a1 << 16) | (a2 << 8) | a3;
+            int b = (b0 << 8) | b1;
+            int c = (c0 << 8) | c1;
+
+            Span<byte> bytes = stackalloc byte[16];
+
+            // Guid's binary layout is the little-endian RFC 4122 encoding:
+            // the first three fields serialize least significant byte first.
+            bytes[0] = (byte)a;
+            bytes[1] = (byte)(a >> 8);
+            bytes[2] = (byte)(a >> 16);
+            bytes[3] = (byte)(a >> 24);
+            bytes[4] = (byte)b;
+            bytes[5] = (byte)(b >> 8);
+            bytes[6] = (byte)c;
+            bytes[7] = (byte)(c >> 8);
+
+            // The trailing 8 bytes print as the last three groups
+            // (4-4-12 hex), big-endian, MSB first.
+            for (int i = 0; i < 8; i++)
+            {
+                int index = i < 2 ? 19 + (i * 2) : 24 + ((i - 2) * 2);
+                int pair = Hex(text, index);
+                if (pair < 0)
+                {
+                    return false;
+                }
+
+                bytes[8 + i] = (byte)pair;
+            }
+
+            value = new Guid(bytes);
+            return true;
+        }
+
+        /// <summary>
+        /// Reads one big-endian hex byte (two characters) at
+        /// <paramref name="index"/>; -1 when either character is not hex.
+        /// </summary>
+        private static int Hex(ReadOnlySpan<byte> text, int index)
+        {
+            int high = HexNibble(text[index]);
+            int low = HexNibble(text[index + 1]);
+            return (high | low) < 0 ? -1 : (high << 4) | low;
+        }
+
+        private static int HexNibble(byte b)
+        {
+            if ((byte)(b - (byte)'0') <= 9)
+            {
+                return b - (byte)'0';
+            }
+
+            if ((byte)(b - (byte)'a') <= 5)
+            {
+                return b - (byte)'a' + 10;
+            }
+
+            if ((byte)(b - (byte)'A') <= 5)
+            {
+                return b - (byte)'A' + 10;
+            }
+
+            return -1;
+        }
+
+        /// <summary>
         /// Returns a scanned value as a verbatim JSON object slice of
         /// <paramref name="data"/> (no re-encode; passthrough contract).
         /// </summary>

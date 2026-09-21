@@ -115,5 +115,35 @@ namespace SignalFish.Client.Protocol
 
         /// <summary><c>GoingAway</c> (S→C, v3): server draining notice with a deadline.</summary>
         GoingAway,
+
+        /// <summary><c>AuthenticationError</c> (S→C): required error + error_code.</summary>
+        AuthenticationError,
+
+        /// <summary><c>AuthorityChanged</c> (S→C): authority grant/vacate broadcast.</summary>
+        AuthorityChanged,
+
+        /// <summary><c>NewSpectatorJoined</c> (S→C): spectator fan-out announcement.</summary>
+        NewSpectatorJoined,
+
+        /// <summary><c>PlayerReconnected</c> (S→C): player liveness restored.</summary>
+        PlayerReconnected,
+
+        /// <summary><c>ReconnectionFailed</c> (S→C): typed reconnect refusal; error_code required.</summary>
+        ReconnectionFailed,
+
+        /// <summary><c>RoomJoinFailed</c> (S→C): typed player-join refusal.</summary>
+        RoomJoinFailed,
+
+        /// <summary><c>SpectatorDisconnected</c> (S→C): spectator fan-out removal.</summary>
+        SpectatorDisconnected,
+
+        /// <summary><c>SpectatorJoinFailed</c> (S→C): typed spectator-join refusal.</summary>
+        SpectatorJoinFailed,
+
+        /// <summary><c>SpectatorJoined</c> (S→C): spectator membership established.</summary>
+        SpectatorJoined,
+
+        /// <summary><c>SpectatorLeft</c> (S→C): spectator membership ended.</summary>
+        SpectatorLeft,
     }
 }

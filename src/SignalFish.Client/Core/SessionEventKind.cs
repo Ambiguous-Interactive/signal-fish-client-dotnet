@@ -19,7 +19,9 @@ namespace SignalFish.Client.Core
         /// <summary>The transport handshake completed; the wire is open.</summary>
         TransportReady = 1,
 
-        /// <summary>Server confirmed authentication (carries the assigned player id).</summary>
+        /// <summary>Server confirmed authentication. The v2 wire carries no
+        /// player id here — the identity is confirmed with the membership at
+        /// join/reconnect time.</summary>
         Authenticated = 2,
 
         /// <summary>Confirmed player membership (carries the membership).</summary>
@@ -34,14 +36,14 @@ namespace SignalFish.Client.Core
         /// <summary>Confirmed spectator exit; connection stays open.</summary>
         SpectatorLeft = 6,
 
-        /// <summary>Typed join-player failure; releases only a pending JoinPlayer.</summary>
-        JoinRoomFailed = 7,
+        /// <summary>Typed player-join failure; releases only a pending JoinPlayer.</summary>
+        RoomJoinFailed = 7,
 
-        /// <summary>Typed join-spectator failure; releases only a pending JoinSpectator.</summary>
-        JoinSpectatorFailed = 8,
+        /// <summary>Typed spectator-join failure; releases only a pending JoinSpectator.</summary>
+        SpectatorJoinFailed = 8,
 
         /// <summary>Typed reconnect failure; releases only a pending ReconnectPlayer.</summary>
-        ReconnectFailed = 9,
+        ReconnectionFailed = 9,
 
         /// <summary>Membership reclaimed after reconnection (carries the membership).</summary>
         Reconnected = 10,
