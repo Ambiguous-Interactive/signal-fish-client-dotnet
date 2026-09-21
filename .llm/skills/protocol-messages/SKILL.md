@@ -32,7 +32,7 @@ The protocol is JSON over WebSocket. Every frame is an envelope:
 | `StartGame` / `GameStarting` | C→S / S→C | Authority-gated |
 | `GameData` | both | The relay payload; relayed reliably over the socket |
 | `LeaveRoom` / `RoomLeft` | both | |
-| `Ping` / `Pong` | both | Heartbeat; mandatory to avoid idle timeout |
+| `Ping` / `Pong` | C→S / S→C | Client heartbeat; server replies; avoids idle timeout |
 | `Error` | S→C | Always handle; see [error-handling](../error-handling/SKILL.md) |
 
 Optional v2: `AuthorityRequest`/`AuthorityResponse`, `JoinAsSpectator`,
