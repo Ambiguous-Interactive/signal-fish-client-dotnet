@@ -46,7 +46,7 @@ namespace SignalFish.Client.Tests.Transport
         };
 
         [TestCaseSource(nameof(CloseCodeCases))]
-        public async Task Receive_ServerClose_MapsCodeToKind(
+        public async Task ReceiveServerCloseMapsCodeToKind(
             int wireCode,
             TransportCloseKind expectedKind
         )
@@ -74,7 +74,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Connect_ProbesClientConfig_BeforeUpgrade()
+        public async Task ConnectProbesClientConfigBeforeUpgrade()
         {
             await using TestWsServer server = TestWsServer.Start(
                 "{\"max_outbound_message_size\":8388608}"
@@ -87,7 +87,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Receive_SupportsTextAndBinaryFrames()
+        public async Task ReceiveSupportsTextAndBinaryFrames()
         {
             await using TestWsServer server = TestWsServer.Start(
                 "{\"max_outbound_message_size\":8388608}"
@@ -110,7 +110,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Send_FramesReachTheServerVerbatim()
+        public async Task SendFramesReachTheServerVerbatim()
         {
             await using TestWsServer server = TestWsServer.Start(
                 "{\"max_outbound_message_size\":8388608}"
@@ -131,7 +131,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Send_OverOutboundCap_IsRejectedClientSide()
+        public async Task SendOverOutboundCapIsRejectedClientSide()
         {
             await using TestWsServer server = TestWsServer.Start(
                 "{\"max_outbound_message_size\":8388608}"
@@ -151,7 +151,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Receive_ProbedMaxReceiveBytes_IsEnforced()
+        public async Task ReceiveProbedMaxReceiveBytesIsEnforced()
         {
             await using TestWsServer server = TestWsServer.Start(
                 "{\"max_outbound_message_size\":16}"
@@ -169,7 +169,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Receive_ProbedCap_AtTheBoundary_IsDelivered()
+        public async Task ReceiveProbedCapAtTheBoundaryIsDelivered()
         {
             await using TestWsServer server = TestWsServer.Start(
                 "{\"max_outbound_message_size\":5000}"
@@ -187,7 +187,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Receive_ProbedCap_ExceedingAcrossBufferBuckets_Closes1009()
+        public async Task ReceiveProbedCapExceedingAcrossBufferBucketsCloses1009()
         {
             await using TestWsServer server = TestWsServer.Start(
                 "{\"max_outbound_message_size\":5000}"
@@ -195,8 +195,10 @@ namespace SignalFish.Client.Tests.Transport
             WebSocketTransport transport = new WebSocketTransport();
             await transport.ConnectAsync(ServerUri(server.Port), TestToken());
 
-            // 5000 grows the receive buffer via a Rent call whose bucket
-            // (8192) exceeds the probed cap; 5001 must still be refused.
+            /*
+                5000 grows the receive buffer via a Rent call whose bucket
+                (8192) exceeds the probed cap; 5001 must still be refused.
+            */
             TestWsConnection connection = await server.WaitForConnectionAsync(TestToken());
             await connection.SendBinaryAsync(new byte[5001]);
 
@@ -207,7 +209,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Dispose_DuringConnect_CleansUpAndThrows()
+        public async Task DisposeDuringConnectCleansUpAndThrows()
         {
             await using TestWsServer server = TestWsServer.Start(
                 "{\"max_outbound_message_size\":8388608}"
@@ -231,9 +233,11 @@ namespace SignalFish.Client.Tests.Transport
                 Throws.Nothing
             );
 
-            // Either no socket reached the wire (expected) or the one that
-            // did was torn down promptly. A leaked socket would keep this
-            // connection open and the read would hang until its timeout.
+            /*
+                Either no socket reached the wire (expected) or the one that
+                did was torn down promptly. A leaked socket would keep this
+                connection open and the read would hang until its timeout.
+            */
             TestWsConnection? connection = await WaitForConnectionOrNullAsync(server);
             if (connection != null)
             {
@@ -282,7 +286,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Connect_ProbeFailure_StillConnects()
+        public async Task ConnectProbeFailureStillConnects()
         {
             await using TestWsServer server = TestWsServer.Start(null);
             WebSocketTransport transport = new WebSocketTransport();
@@ -299,7 +303,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Receive_IsSingleReader()
+        public async Task ReceiveIsSingleReader()
         {
             await using TestWsServer server = TestWsServer.Start(null);
             WebSocketTransport transport = new WebSocketTransport();
@@ -319,7 +323,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Dispose_DuringPendingReceive_SurfacesCloseExactlyOnce()
+        public async Task DisposeDuringPendingReceiveSurfacesCloseExactlyOnce()
         {
             await using TestWsServer server = TestWsServer.Start(null);
             WebSocketTransport transport = new WebSocketTransport();
@@ -344,7 +348,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Receive_AfterDispose_ThrowsObjectDisposed()
+        public async Task ReceiveAfterDisposeThrowsObjectDisposed()
         {
             await using TestWsServer server = TestWsServer.Start(null);
             WebSocketTransport transport = new WebSocketTransport();

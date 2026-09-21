@@ -92,7 +92,7 @@ namespace SignalFish.Client.Tests
         // --- Allocation gate --------------------------------------------------------
 
         [Test]
-        public void Decode_SteadyStateFullCorpus_AllocatesNothing()
+        public void DecodeSteadyStateFullCorpusAllocatesNothing()
         {
             List<byte[]> corpus = new List<byte[]>();
             foreach (string fileName in GoldenFixtures.PinnedFixtureFiles)
@@ -109,10 +109,12 @@ namespace SignalFish.Client.Tests
 
             foreach (byte[] wire in corpus)
             {
-                // Named guard: UnknownMessage/DecodeFailed paths allocate a
-                // type string by design. If an upstream fixture sync adds
-                // such a line, this fails here - with a clear reason - long
-                // before the allocation gate below sees it.
+                /*
+                    Named guard: UnknownMessage/DecodeFailed paths allocate a
+                    type string by design. If an upstream fixture sync adds
+                    such a line, this fails here - with a clear reason - long
+                    before the allocation gate below sees it.
+                */
                 EnvelopeEvent warmup = EnvelopeReader.Decode(wire);
                 Assert.That(
                     warmup.Kind,
@@ -126,10 +128,12 @@ namespace SignalFish.Client.Tests
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            // Minimum delta across passes: a real regression allocates on
-            // every pass, while one-time JIT/OSR bookkeeping (a few bytes,
-            // observed under code-coverage instrumentation) inflates only
-            // the first measured pass.
+            /*
+                Minimum delta across passes: a real regression allocates on
+                every pass, while one-time JIT/OSR bookkeeping (a few bytes,
+                observed under code-coverage instrumentation) inflates only
+                the first measured pass.
+            */
             long minDelta = long.MaxValue;
             for (int pass = 0; pass < 8; pass++)
             {
@@ -151,7 +155,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test, TestCaseSource(typeof(GoldenFixtures), nameof(GoldenFixtures.AllEnvelopeLines))]
-        public void Decode_FixtureLine_RoutesToTypedMessageEvent(
+        public void DecodeFixtureLineRoutesToTypedMessageEvent(
             string fileName,
             int lineNumber,
             string expectedType
@@ -161,9 +165,11 @@ namespace SignalFish.Client.Tests
 
             EnvelopeEvent ev = EnvelopeReader.Decode(bytes);
 
-            // Enum member names are exactly the wire type names, so this
-            // asserts the routed kind directly — the ToWireName round-trip
-            // below alone would be permutation-invariant to table corruption.
+            /*
+                Enum member names are exactly the wire type names, so this
+                asserts the routed kind directly — the ToWireName round-trip
+                below alone would be permutation-invariant to table corruption.
+            */
             Assert.That(
                 Enum.TryParse(expectedType, out MessageKind expectedKind),
                 Is.True,
@@ -192,7 +198,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test, TestCaseSource(typeof(GoldenFixtures), nameof(GoldenFixtures.PinnedFixtureFiles))]
-        public void Decode_Fixtures_DataSlice_CoversPayloadObjectExactly(string fileName)
+        public void DecodeFixturesDataSliceCoversPayloadObjectExactly(string fileName)
         {
             string[] lines = File.ReadAllLines(
                 Path.Combine(GoldenFixtures.GoldenDirectory, fileName)
@@ -237,7 +243,7 @@ namespace SignalFish.Client.Tests
         [TestCase("{\"type\":\"FutureThing\",\"data\":{\"x\":1}}", "FutureThing")]
         [TestCase("{\"type\":\"Future\",\"data\":{}}", "Future")]
         [TestCase("{\"type\":\"Fu\\u0074ure\"}", "Future")]
-        public void Decode_UnknownType_EmitsUnknownMessageWithoutThrowing(
+        public void DecodeUnknownTypeEmitsUnknownMessageWithoutThrowing(
             string wire,
             string expectedType
         )
@@ -250,11 +256,13 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_TypeValueWithEscapes_NeverRoutesToKnownKind()
+        public void DecodeTypeValueWithEscapesNeverRoutesToKnownKind()
         {
-            // Byte-exact routing policy: an escaped (but semantically equal)
-            // type value degrades to UnknownMessage with the decoded text,
-            // never to a known kind.
+            /*
+                Byte-exact routing policy: an escaped (but semantically equal)
+                type value degrades to UnknownMessage with the decoded text,
+                never to a known kind.
+            */
             EnvelopeEvent ev = EnvelopeReader.Decode(
                 Encoding.UTF8.GetBytes("{\"type\":\"P\\u0069ng\"}")
             );
@@ -264,7 +272,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_EscapedMemberKey_RoutesLikePlainKey()
+        public void DecodeEscapedMemberKeyRoutesLikePlainKey()
         {
             EnvelopeEvent ev = EnvelopeReader.Decode(
                 Encoding.UTF8.GetBytes("{\"\\u0074ype\":\"Ping\"}")
@@ -281,7 +289,7 @@ namespace SignalFish.Client.Tests
         [TestCase("{\"data\":{},\"type\":\"Ping\"}")] // member order is not significant
         [TestCase("  {  \"type\"  :  \"Pong\"  }  ")] // insignificant whitespace
         [TestCase("{\"type\":\"Pong\",\"data\":null}")] // null data tolerated as absent
-        public void Decode_AdditiveWireShapes_AreTolerated(string wire)
+        public void DecodeAdditiveWireShapesAreTolerated(string wire)
         {
             EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
 
@@ -289,7 +297,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_DuplicateTypeMember_FirstOccurrenceWins()
+        public void DecodeDuplicateTypeMemberFirstOccurrenceWins()
         {
             EnvelopeEvent ev = EnvelopeReader.Decode(
                 Encoding.UTF8.GetBytes("{\"type\":\"Ping\",\"type\":\"Pong\"}")
@@ -302,13 +310,15 @@ namespace SignalFish.Client.Tests
         [TestCase(61, EnvelopeEventKind.Message)]
         [TestCase(62, EnvelopeEventKind.Message)]
         [TestCase(63, EnvelopeEventKind.DecodeFailed)]
-        public void Decode_DataPayloadNesting_EnforcesDepthBound(
+        public void DecodeDataPayloadNestingEnforcesDepthBound(
             int arrayDepth,
             EnvelopeEventKind expectedKind
         )
         {
-            // Root(1) + data(2) + array levels: level k is scanned at depth
-            // 2+k, so the bound accepts 62 array levels and rejects 63.
+            /*
+                Root(1) + data(2) + array levels: level k is scanned at depth
+                2+k, so the bound accepts 62 array levels and rejects 63.
+            */
             string wire =
                 "{\"type\":\"Ping\",\"data\":{\"x\":"
                 + new string('[', arrayDepth)
@@ -327,13 +337,15 @@ namespace SignalFish.Client.Tests
         [TestCase(62, EnvelopeEventKind.Message)]
         [TestCase(63, EnvelopeEventKind.Message)]
         [TestCase(64, EnvelopeEventKind.DecodeFailed)]
-        public void Decode_RootMemberNesting_EnforcesDepthBound(
+        public void DecodeRootMemberNestingEnforcesDepthBound(
             int arrayDepth,
             EnvelopeEventKind expectedKind
         )
         {
-            // Root(1) + direct array levels: level k is scanned at depth
-            // 1+k, so the bound accepts 63 array levels and rejects 64.
+            /*
+                Root(1) + direct array levels: level k is scanned at depth
+                1+k, so the bound accepts 63 array levels and rejects 64.
+            */
             string wire =
                 "{\"type\":\"Ping\",\"x\":"
                 + new string('[', arrayDepth)
@@ -352,7 +364,7 @@ namespace SignalFish.Client.Tests
         // --- Malformed input: bounded DecodeFailed, never a throw -----------
 
         [Test]
-        public void Decode_EmptyType_FailsAtTheTypeStringOffset()
+        public void DecodeEmptyTypeFailsAtTheTypeStringOffset()
         {
             EnvelopeEvent ev = EnvelopeReader.Decode(Encoding.UTF8.GetBytes("{\"type\":\"\"}"));
 
@@ -366,7 +378,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test, TestCaseSource(nameof(MalformedCorpus))]
-        public void Decode_MalformedInput_YieldsBoundedDecodeFailedEvent(
+        public void DecodeMalformedInputYieldsBoundedDecodeFailedEvent(
             string name,
             byte[] wire,
             DecodeError expectedError
@@ -674,8 +686,10 @@ namespace SignalFish.Client.Tests
                 WithBytes(0xFF),
                 DecodeError.InvalidToken
             ).SetArgDisplayNames("utf8 FF lead", "wire", DecodeError.InvalidToken.ToString());
-            // Sequence truncated by end of frame: rejected at the lead byte
-            // (strictness decision: any malformed UTF-8 is InvalidToken).
+            /*
+                Sequence truncated by end of frame: rejected at the lead byte
+                (strictness decision: any malformed UTF-8 is InvalidToken).
+            */
             byte[] truncatedAtEof = Encoding.UTF8.GetBytes("{\"type\":\"Ping\",\"x\":\"");
             byte[] withTruncatedSeq = new byte[truncatedAtEof.Length + 2];
             truncatedAtEof.CopyTo(withTruncatedSeq, 0);

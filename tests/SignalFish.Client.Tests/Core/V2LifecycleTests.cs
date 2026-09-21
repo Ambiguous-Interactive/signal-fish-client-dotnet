@@ -22,7 +22,7 @@ namespace SignalFish.Client.Tests.Core
         private const string RoomCode = "ABC123";
 
         [Test]
-        public void PlayerLifecycle_FullV2Loop_ReachesCleanExit()
+        public void PlayerLifecycleFullV2LoopReachesCleanExit()
         {
             SignalFishStateMachine machine = new SignalFishStateMachine();
 
@@ -57,8 +57,10 @@ namespace SignalFish.Client.Tests.Core
             Assert.That(TryAdmit(machine, ClientCommand.SetReady), Is.True);
             Assert.That(TryAdmit(machine, ClientCommand.StartGame), Is.True);
 
-            // Gameplay frames are not session facts: they are refused and
-            // phase and membership hold.
+            /*
+                Gameplay frames are not session facts: they are refused and
+                phase and membership hold.
+            */
             RefuseWire(machine, @"{""type"":""GameStarting"",""data"":{""peer_connections"":[]}}");
             Assert.That(machine.Phase, Is.EqualTo(ConnectionPhase.InRoom));
             RefuseWire(
@@ -117,7 +119,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void SpectatorLifecycle_JoinObserveLeave_HoldsSpectatorRole()
+        public void SpectatorLifecycleJoinObserveLeaveHoldsSpectatorRole()
         {
             SignalFishStateMachine machine = new SignalFishStateMachine();
             machine.Apply(SessionEvent.From(SessionEventKind.TransportReady));

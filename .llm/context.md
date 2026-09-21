@@ -126,6 +126,17 @@ the outcome in [improvement-log.md](./improvement-log.md) (see rule 15).
     `this.` ban is enforced by `scripts/lint-no-this-qualification.ps1`
     (IDE0003 is not enforced at build time by Roslyn — the lint script is
     the gate, wired into hook + CI).
+19. **Test method names are PascalCase with no underscores** (sibling-repo
+    convention): scenario and expectation read as one name
+    (`DecodeExplicitNullOptionalsDecodeAsAbsent`); NUnit display names use
+    dot notation (`TestName = "Input.Null.Throws"`). Enforced by
+    `scripts/lint-test-names.ps1` (hook + CI).
+20. **C# comments come in exactly two forms**: a comment spanning more than
+    one line is ONE `/* ... */` block; a single-line comment is
+    `// text` (`///` XML docs are API documentation and are exempt). Aim
+    for zero comments on non-public code — naming and structure carry the
+    meaning; keep only non-obvious *why*. Enforced by
+    `scripts/lint-comment-form.ps1` (hook + CI).
 
 ## Protocol Essentials
 
@@ -162,7 +173,7 @@ guidance.
 | Constants | PascalCase | `DefaultPort` |
 | `this.` qualification | banned | `_count`, never `this._count` |
 | Files | one public type per file, name = type | `ITransport.cs` |
-| Tests | `<Type>Tests` / `Method_Scenario_Expectation` | `ClientTests.JoinRoom_WithoutCode_CreatesRoom` |
+| Tests | `<Type>Tests` / PascalCase, no underscores | `ClientTests.JoinRoomWithoutCodeCreatesRoom` |
 | Skills | lowercase verb-noun kebab-case | `create-test` |
 
 ## Agent-Specific Rules

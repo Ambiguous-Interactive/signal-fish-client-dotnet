@@ -213,9 +213,11 @@ namespace SignalFish.Client.FuzzTests
                     {
                         if (seededPayload)
                         {
-                            // Seed payloads are valid JSON by construction;
-                            // refusing one is a writer regression, not a
-                            // documented misuse.
+                            /*
+                                Seed payloads are valid JSON by construction;
+                                refusing one is a writer regression, not a
+                                documented misuse.
+                            */
                             throw new InvalidOperationException(
                                 "Writer refused a valid JSON seed payload."
                             );
@@ -280,22 +282,26 @@ namespace SignalFish.Client.FuzzTests
 
         private static GameDataMessage BuildGameData(ref FuzzCursor cursor, out bool seededPayload)
         {
-            // Half the inputs start from a valid JSON seed so the fuzzer can
-            // explore the classified-delivery paths without first having to
-            // synthesize valid JSON; the rest mutate raw bytes (the writer
-            // must refuse those with its documented ArgumentException).
-            // Whitespace is trimmed: the writer emits the payload verbatim
-            // while the reader slices the bare value token (JSON whitespace
-            // is insignificant), so padded payloads cannot roundtrip bytes.
+            /*
+                Half the inputs start from a valid JSON seed so the fuzzer can
+                explore the classified-delivery paths without first having to
+                synthesize valid JSON; the rest mutate raw bytes (the writer
+                must refuse those with its documented ArgumentException).
+                Whitespace is trimmed: the writer emits the payload verbatim
+                while the reader slices the bare value token (JSON whitespace
+                is insignificant), so padded payloads cannot roundtrip bytes.
+            */
             seededPayload = (cursor.Byte() & 1) == 0;
             ReadOnlyMemory<byte> payload = seededPayload
                 ? cursor.JsonSeed()
                 : TrimJsonWhitespace(cursor.RawSlice());
 
-            // Sample the valid classes only (1..3): the default (0) is the
-            // non-valid None sentinel and the writer refuses it, so mapping
-            // the raw byte modulo the valid range keeps the classified-
-            // delivery paths (reliable/latest/volatile) uniformly reachable.
+            /*
+                Sample the valid classes only (1..3): the default (0) is the
+                non-valid None sentinel and the writer refuses it, so mapping
+                the raw byte modulo the valid range keeps the classified-
+                delivery paths (reliable/latest/volatile) uniformly reachable.
+            */
             GameDataClass classification = (GameDataClass)(1u + (cursor.Byte() % 3u));
             uint key = cursor.OptionalUint() ?? 0u;
             return new GameDataMessage(payload, classification, key);
@@ -330,8 +336,10 @@ namespace SignalFish.Client.FuzzTests
             }
             catch (ArgumentException)
             {
-                // Documented misuse: missing required fields or a verbatim
-                // payload that is not valid JSON. A refusal is correct.
+                /*
+                    Documented misuse: missing required fields or a verbatim
+                    payload that is not valid JSON. A refusal is correct.
+                */
                 return false;
             }
         }
@@ -357,9 +365,11 @@ namespace SignalFish.Client.FuzzTests
                 );
             }
 
-            // A message whose payload is entirely optional encodes with no
-            // data member at all; TryDecode's contract covers data objects,
-            // so an empty slice leaves nothing to roundtrip.
+            /*
+                A message whose payload is entirely optional encodes with no
+                data member at all; TryDecode's contract covers data objects,
+                so an empty slice leaves nothing to roundtrip.
+            */
             if (decoded.Data.IsEmpty)
             {
                 return;

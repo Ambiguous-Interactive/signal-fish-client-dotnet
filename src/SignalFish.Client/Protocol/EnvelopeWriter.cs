@@ -415,8 +415,10 @@ namespace SignalFish.Client.Protocol
 
             if (message.Class == default(GameDataClass))
             {
-                // default(GameDataMessage) carries no delivery class; refuse
-                // it instead of silently encoding the relay floor.
+                /*
+                    default(GameDataMessage) carries no delivery class; refuse
+                    it instead of silently encoding the relay floor.
+                */
                 throw new ArgumentException(
                     "GameData class is unset; construct GameDataMessage with an explicit delivery class.",
                     nameof(message)

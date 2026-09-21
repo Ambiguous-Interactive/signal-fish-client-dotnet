@@ -86,7 +86,7 @@ namespace SignalFish.Client.Tests
         // --- Golden fixture corpus: byte-identical + roundtrip ----------------
 
         [Test, TestCaseSource(nameof(ClientFixtureMessages))]
-        public void Write_FixtureLine_ReproducesByteIdenticalFrame(FixtureMessage fixture)
+        public void WriteFixtureLineReproducesByteIdenticalFrame(FixtureMessage fixture)
         {
             byte[] expected = Encoding.UTF8.GetBytes(fixture.Wire);
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(expected.Length + 16);
@@ -101,7 +101,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test, TestCaseSource(nameof(ClientFixtureMessages))]
-        public void Write_FixtureLine_RoundTripsThroughReaderToEqualPayload(FixtureMessage fixture)
+        public void WriteFixtureLineRoundTripsThroughReaderToEqualPayload(FixtureMessage fixture)
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(64);
             fixture.Write(buffer);
@@ -118,7 +118,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test, TestCaseSource(nameof(ClientFixtureMessages))]
-        public void Write_FixtureLine_StaysWithinEnvelopeShape(FixtureMessage fixture)
+        public void WriteFixtureLineStaysWithinEnvelopeShape(FixtureMessage fixture)
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(64);
             fixture.Write(buffer);
@@ -136,7 +136,7 @@ namespace SignalFish.Client.Tests
         // --- Envelope shape ----------------------------------------------------
 
         [Test]
-        public void Write_PayloadlessCommands_OmitDataMemberEntirely()
+        public void WritePayloadlessCommandsOmitDataMemberEntirely()
         {
             foreach (
                 (Action<IBufferWriter<byte>> write, string type) in new[]
@@ -161,7 +161,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_MinimalAuthenticate_EmitsOnlyAppId()
+        public void WriteMinimalAuthenticateEmitsOnlyAppId()
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(64);
             EnvelopeWriter.WriteAuthenticate(buffer, new AuthenticateMessage(appId: "my-game"));
@@ -173,7 +173,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_EmptyCapabilityArrays_EmitEmptyJsonArrays()
+        public void WriteEmptyCapabilityArraysEmitEmptyJsonArrays()
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(128);
             EnvelopeWriter.WriteAuthenticate(
@@ -194,7 +194,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_ReliableGameData_MatchesLegacyV2WireForm()
+        public void WriteReliableGameDataMatchesLegacyV2WireForm()
         {
             ArrayBufferWriter<byte> reliable = new ArrayBufferWriter<byte>(64);
             EnvelopeWriter.WriteGameData(
@@ -220,7 +220,7 @@ namespace SignalFish.Client.Tests
         // --- Non-fixture field combinations (roundtrip-pinned) ------------------
 
         [Test]
-        public void Write_JoinRoom_CreationForm_RoundTrips()
+        public void WriteJoinRoomCreationFormRoundTrips()
         {
             JoinRoomMessage message = new JoinRoomMessage(
                 "my-game",
@@ -244,7 +244,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_JoinRoom_AllOptionalFields_ByteExact()
+        public void WriteJoinRoomAllOptionalFieldsByteExact()
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(128);
             EnvelopeWriter.WriteJoinRoom(
@@ -269,7 +269,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_JoinRoom_WithPassword_RoundTrips()
+        public void WriteJoinRoomWithPasswordRoundTrips()
         {
             JoinRoomMessage message = new JoinRoomMessage(
                 "my-game",
@@ -286,7 +286,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_JoinAsSpectator_WithPassword_RoundTrips()
+        public void WriteJoinAsSpectatorWithPasswordRoundTrips()
         {
             JoinAsSpectatorMessage message = new JoinAsSpectatorMessage(
                 "my-game",
@@ -311,7 +311,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_RoomOperation_SetRoomAccess_BothPolarities_RoundTrip()
+        public void WriteRoomOperationSetRoomAccessBothPolaritiesRoundTrip()
         {
             RoomOperationMessage seal = new RoomOperationMessage(
                 "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -342,10 +342,12 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_RoomOperation_ModerationCommands_ByteExact()
+        public void WriteRoomOperationModerationCommandsByteExact()
         {
-            // The nested operation shapes have no golden fixtures upstream,
-            // so their canonical field order is pinned here byte-exactly.
+            /*
+                The nested operation shapes have no golden fixtures upstream,
+                so their canonical field order is pinned here byte-exactly.
+            */
             foreach (
                 (RoomOperationCommand command, string operationJson) in new[]
                 {
@@ -403,7 +405,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_RoomOperation_LegacyLifecycleCommands_RoundTrip()
+        public void WriteRoomOperationLegacyLifecycleCommandsRoundTrip()
         {
             RoomOperationMessage join = new RoomOperationMessage(
                 "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -458,7 +460,7 @@ namespace SignalFish.Client.Tests
         [TestCase("form\ffeed", "form\\ffeed")]
         [TestCase("ctrl\u0001char", "ctrl\\u0001char")]
         [TestCase("del\u007Fchar", "del\u007Fchar")]
-        public void Write_StringEscapes_ControlAndQuoteCharacters(string value, string escapedJson)
+        public void WriteStringEscapesControlAndQuoteCharacters(string value, string escapedJson)
         {
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(128);
             EnvelopeWriter.WriteJoinRoom(buffer, new JoinRoomMessage(value, value));
@@ -481,7 +483,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_NonAsciiString_PassesUtf8ThroughAndRoundTrips()
+        public void WriteNonAsciiStringPassesUtf8ThroughAndRoundTrips()
         {
             const string value = "Åke ☃ 你好";
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(128);
@@ -514,7 +516,7 @@ namespace SignalFish.Client.Tests
         [TestCase(1)]
         [TestCase(3)]
         [TestCase(17)]
-        public void Write_SmallBufferSegments_MatchesSingleSegmentOutput(int chunkSize)
+        public void WriteSmallBufferSegmentsMatchesSingleSegmentOutput(int chunkSize)
         {
             AuthenticateMessage message = new AuthenticateMessage(
                 appId: "mb_app_abc123",
@@ -540,10 +542,12 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_LongNonAsciiString_DoesNotOverflowAndRoundTrips()
+        public void WriteLongNonAsciiStringDoesNotOverflowAndRoundTrips()
         {
-            // Stackalloc-per-iteration in the writer would overflow the
-            // stack (uncatchable) on inputs of this scale.
+            /*
+                Stackalloc-per-iteration in the writer would overflow the
+                stack (uncatchable) on inputs of this scale.
+            */
             string value = new string('é', 100_000) + new string('☃', 25_000);
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(64);
             EnvelopeWriter.WriteJoinRoom(buffer, new JoinRoomMessage(value, "p"));
@@ -554,7 +558,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void GameData_NonLatestKey_IsNormalizedAway()
+        public void GameDataNonLatestKeyIsNormalizedAway()
         {
             byte[] payloadBytes = Encoding.UTF8.GetBytes("{}");
             GameDataMessage payload = new GameDataMessage(
@@ -574,7 +578,7 @@ namespace SignalFish.Client.Tests
         // --- Encode misuse is a programmer error ---------------------------------
 
         [Test]
-        public void Write_MissingRequiredFields_ThrowsArgumentException()
+        public void WriteMissingRequiredFieldsThrowsArgumentException()
         {
             Assert.That(
                 (Action)(
@@ -643,7 +647,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_InvalidVerbatimPayloads_ThrowArgumentException()
+        public void WriteInvalidVerbatimPayloadsThrowArgumentException()
         {
             Assert.That(
                 (Action)(
@@ -700,7 +704,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Write_NullDestination_ThrowsArgumentNullException()
+        public void WriteNullDestinationThrowsArgumentNullException()
         {
             JoinRoomMessage message = new JoinRoomMessage("g", "p");
             Assert.That(
@@ -721,7 +725,7 @@ namespace SignalFish.Client.Tests
         [TestCase("{\"player_name\": \"p\"}")] // missing required field
         [TestCase("{\"game_name\": \"g\"")] // truncated
         [TestCase("{\"game_name\": \"g\", \"player_name\": \"p\",,}")] // malformed separator
-        public void Decode_MalformedPayload_ReturnsFalseWithoutThrowing(string payload)
+        public void DecodeMalformedPayloadReturnsFalseWithoutThrowing(string payload)
         {
             Assert.That(
                 JoinRoomMessage.TryDecode(Encoding.UTF8.GetBytes(payload), out _),
@@ -730,7 +734,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_EscapedMemberKeys_MatchPlainWireNames()
+        public void DecodeEscapedMemberKeysMatchPlainWireNames()
         {
             // The envelope routes keys escape-aware; payload decode must agree.
             Assert.That(
@@ -745,10 +749,12 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_ExplicitNullOptionals_DecodeAsAbsent()
+        public void DecodeExplicitNullOptionalsDecodeAsAbsent()
         {
-            // Canonical wire form: absent optionals are explicit nulls
-            // (upstream JoinRoom samples; password is [string, 'null']).
+            /*
+                Canonical wire form: absent optionals are explicit nulls
+                (upstream JoinRoom samples; password is [string, 'null']).
+            */
             Assert.That(
                 JoinRoomMessage.TryDecode(
                     Encoding.UTF8.GetBytes(
@@ -791,7 +797,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_UnknownPayloadFields_AreSkipped()
+        public void DecodeUnknownPayloadFieldsAreSkipped()
         {
             Assert.That(
                 ReconnectMessage.TryDecode(
@@ -806,7 +812,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_GameDataExplicitReliable_NormalizesKeyAway()
+        public void DecodeGameDataExplicitReliableNormalizesKeyAway()
         {
             Assert.That(
                 GameDataMessage.TryDecode(
@@ -826,7 +832,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_GameDataUnknownClassToken_ReturnsFalse()
+        public void DecodeGameDataUnknownClassTokenReturnsFalse()
         {
             Assert.That(
                 GameDataMessage.TryDecode(
@@ -838,7 +844,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_RoomOperation_UnknownCommandType_ReturnsFalse()
+        public void DecodeRoomOperationUnknownCommandTypeReturnsFalse()
         {
             Assert.That(
                 RoomOperationMessage.TryDecode(
@@ -852,7 +858,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Decode_EmptyAuthenticateObject_DecodesToDefault()
+        public void DecodeEmptyAuthenticateObjectDecodesToDefault()
         {
             Assert.That(
                 AuthenticateMessage.TryDecode(
@@ -867,7 +873,7 @@ namespace SignalFish.Client.Tests
         // --- Allocation gate --------------------------------------------------------
 
         [Test]
-        public void Write_SteadyStateFullCorpus_AllocatesNothing()
+        public void WriteSteadyStateFullCorpusAllocatesNothing()
         {
             List<FixtureMessage> fixtures = BuildAllClientFixtureMessages();
             ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(64 * 1024);
@@ -882,10 +888,12 @@ namespace SignalFish.Client.Tests
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            // Minimum delta across passes: a real regression allocates on
-            // every pass, while one-time JIT/OSR bookkeeping (a few bytes,
-            // observed under code-coverage instrumentation) inflates only
-            // the first measured pass.
+            /*
+                Minimum delta across passes: a real regression allocates on
+                every pass, while one-time JIT/OSR bookkeeping (a few bytes,
+                observed under code-coverage instrumentation) inflates only
+                the first measured pass.
+            */
             long minDelta = long.MaxValue;
             for (int pass = 0; pass < 4; pass++)
             {

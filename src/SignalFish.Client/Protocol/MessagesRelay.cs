@@ -64,8 +64,10 @@ namespace SignalFish.Client.Protocol
             _payload = payload;
             Class = classification;
 
-            // The key is only meaningful alongside `class: "latest"`, so
-            // illegal class/key pairings stay unrepresentable.
+            /*
+                The key is only meaningful alongside `class: "latest"`, so
+                illegal class/key pairings stay unrepresentable.
+            */
             Key = classification == GameDataClass.Latest ? key : 0;
         }
 

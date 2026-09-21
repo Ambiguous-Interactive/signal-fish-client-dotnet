@@ -465,10 +465,12 @@ namespace SignalFish.Client.Protocol
                 return false;
             }
 
-            // Printed groups are big-endian: the first group's first pair is
-            // the integer's most significant byte. Each pair is validated
-            // before combining (an all-FFFF field would otherwise alias the
-            // -1 error sentinel).
+            /*
+                Printed groups are big-endian: the first group's first pair is
+                the integer's most significant byte. Each pair is validated
+                before combining (an all-FFFF field would otherwise alias the
+                -1 error sentinel).
+            */
             int a0 = Hex(text, 0);
             int a1 = Hex(text, 2);
             int a2 = Hex(text, 4);
@@ -488,8 +490,10 @@ namespace SignalFish.Client.Protocol
 
             Span<byte> bytes = stackalloc byte[16];
 
-            // Guid's binary layout is the little-endian RFC 4122 encoding:
-            // the first three fields serialize least significant byte first.
+            /*
+                Guid's binary layout is the little-endian RFC 4122 encoding:
+                the first three fields serialize least significant byte first.
+            */
             bytes[0] = (byte)a;
             bytes[1] = (byte)(a >> 8);
             bytes[2] = (byte)(a >> 16);
@@ -499,8 +503,10 @@ namespace SignalFish.Client.Protocol
             bytes[6] = (byte)c;
             bytes[7] = (byte)(c >> 8);
 
-            // The trailing 8 bytes print as the last three groups
-            // (4-4-12 hex), big-endian, MSB first.
+            /*
+                The trailing 8 bytes print as the last three groups
+                (4-4-12 hex), big-endian, MSB first.
+            */
             for (int i = 0; i < 8; i++)
             {
                 int index = i < 2 ? 19 + (i * 2) : 24 + ((i - 2) * 2);
@@ -1304,9 +1310,11 @@ namespace SignalFish.Client.Protocol
         {
             WriteByte((byte)'"');
 
-            // One scratch slot for the whole loop — stackalloc inside the
-            // loop would allocate a fresh frame region per iteration and
-            // overflow the stack on long non-ASCII strings.
+            /*
+                One scratch slot for the whole loop — stackalloc inside the
+                loop would allocate a fresh frame region per iteration and
+                overflow the stack on long non-ASCII strings.
+            */
             Span<char> scratch = stackalloc char[2];
             int i = 0;
             while (i < value.Length)
