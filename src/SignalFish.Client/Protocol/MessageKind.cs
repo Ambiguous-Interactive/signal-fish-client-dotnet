@@ -59,10 +59,10 @@ namespace SignalFish.Client.Protocol
         /// <summary><c>NewPeer</c> (S→C, v3): mesh peer discovery with initiation flag.</summary>
         NewPeer,
 
-        /// <summary><c>Ping</c> (both): application-level heartbeat request.</summary>
+        /// <summary><c>Ping</c> (C→S): application-level heartbeat; the server replies <c>Pong</c>.</summary>
         Ping,
 
-        /// <summary><c>Pong</c> (both): application-level heartbeat reply.</summary>
+        /// <summary><c>Pong</c> (S→C): the server's heartbeat reply to a client <c>Ping</c>.</summary>
         Pong,
 
         /// <summary><c>PlayerJoined</c> (S→C): a player joined the room.</summary>

@@ -20,7 +20,10 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs, but never cancel main pushes: an in-flight
+  # Pages deploy aborted mid-flight would fail the github-pages environment
+  # instead of serving the new site.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # ──────────────────────────────────────────────────────────────
@@ -86,6 +89,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   # MkDocs build — prove the docs pipeline end to end. The real
   # site (mkdocs-material, full page set) lands in M7.5.
+  # On main pushes the built site is also staged for Pages.
   # ──────────────────────────────────────────────────────────────
   mkdocs-build:
     name: MkDocs Build
@@ -107,3 +111,30 @@ jobs:
 
       - name: Build docs
         run: mkdocs build --strict --site-dir site
+
+      - name: Stage site for Pages
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  # ──────────────────────────────────────────────────────────────
+  # Pages deploy — main pushes only (issue #40); PR checks stay
+  # exactly as they were.
+  # ──────────────────────────────────────────────────────────────
+  deploy-pages:
+    name: Deploy Pages
+    if: github.event_name == 'push'
+    needs: mkdocs-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
