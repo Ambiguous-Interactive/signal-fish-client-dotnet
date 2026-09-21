@@ -54,7 +54,7 @@ namespace SignalFish.Client.Tests
         public void DefaultServerUri_EmptyHost_Throws(string? host)
         {
             Assert.That(
-                () => SignalFishClientInfo.DefaultServerUri(host!),
+                (Action)(() => SignalFishClientInfo.DefaultServerUri(host!)),
                 Throws.ArgumentException
             );
         }

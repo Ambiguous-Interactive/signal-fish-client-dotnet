@@ -35,6 +35,28 @@ namespace SignalFish.Client.Tests
             return lines[lineNumber - 1];
         }
 
+        /// <summary>
+        /// First corpus line in the file whose envelope carries the given
+        /// wire type; selects samples by meaning so tests survive upstream
+        /// line reordering.
+        /// </summary>
+        internal static string ReadFirstLineOfType(string fileName, string wireType)
+        {
+            string[] lines = File.ReadAllLines(Path.Combine(GoldenDirectory, fileName));
+            foreach (string line in lines)
+            {
+                if (
+                    JsonDocument.Parse(line).RootElement.GetProperty("type").GetString() == wireType
+                )
+                {
+                    return line;
+                }
+            }
+
+            Assert.Fail($"Fixture {fileName} has no wire sample of type {wireType}.");
+            return string.Empty;
+        }
+
         /// <summary>Every (file, line number, wire type) triple in the pinned corpus.</summary>
         internal static IEnumerable<TestCaseData> AllEnvelopeLines()
         {
@@ -351,7 +373,7 @@ namespace SignalFish.Client.Tests
         )
         {
             EnvelopeEvent ev = default;
-            Assert.DoesNotThrow(() => ev = EnvelopeReader.Decode(wire), name);
+            Assert.That((Action)(() => ev = EnvelopeReader.Decode(wire)), Throws.Nothing, name);
 
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.DecodeFailed), name);
             Assert.That(ev.Error, Is.EqualTo(expectedError), name);

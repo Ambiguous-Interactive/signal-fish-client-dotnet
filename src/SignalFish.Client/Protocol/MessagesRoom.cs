@@ -389,39 +389,65 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "room_code"))
                 {
-                    if (!scanner.TryReadString(valueRaw, out roomCode))
+                    // Canonical frames carry explicit nulls for absent
+                    // optionals; null decodes as absent.
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        roomCode = null;
+                    }
+                    else if (!scanner.TryReadString(valueRaw, out roomCode))
                     {
                         return false;
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "max_players"))
                 {
-                    if (!scanner.TryReadUInt32(valueRaw, out uint maxPlayersValue))
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        maxPlayers = null;
+                    }
+                    else if (!scanner.TryReadUInt32(valueRaw, out uint maxPlayersValue))
                     {
                         return false;
                     }
-
-                    maxPlayers = maxPlayersValue;
+                    else
+                    {
+                        maxPlayers = maxPlayersValue;
+                    }
                 }
                 else if (scanner.KeyIs(keyRaw, "supports_authority"))
                 {
-                    if (!scanner.TryReadBoolean(valueRaw, out bool supportsAuthorityValue))
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        supportsAuthority = null;
+                    }
+                    else if (!scanner.TryReadBoolean(valueRaw, out bool supportsAuthorityValue))
                     {
                         return false;
                     }
-
-                    supportsAuthority = supportsAuthorityValue;
+                    else
+                    {
+                        supportsAuthority = supportsAuthorityValue;
+                    }
                 }
                 else if (scanner.KeyIs(keyRaw, "relay_transport"))
                 {
-                    if (!scanner.TryReadString(valueRaw, out relayTransport))
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        relayTransport = null;
+                    }
+                    else if (!scanner.TryReadString(valueRaw, out relayTransport))
                     {
                         return false;
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "password"))
                 {
-                    if (!scanner.TryReadString(valueRaw, out password))
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        password = null;
+                    }
+                    else if (!scanner.TryReadString(valueRaw, out password))
                     {
                         return false;
                     }

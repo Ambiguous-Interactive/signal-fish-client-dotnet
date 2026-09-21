@@ -99,7 +99,10 @@ namespace SignalFish.Client.Tests.Core
                 Is.EqualTo(PendingRoomOperation.JoinPlayer)
             );
             Assert.That(
-                ApplyWire(machine, GoldenFixtures.ReadLine("v2-server-messages.jsonl", 9)),
+                ApplyWire(
+                    machine,
+                    GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "Error")
+                ),
                 Is.EqualTo(ConnectionPhase.Authenticated)
             );
             Assert.That(

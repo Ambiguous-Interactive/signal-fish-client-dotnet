@@ -571,7 +571,10 @@ namespace SignalFish.Client.Tests.Core
         public void Arm_None_IsMisuse()
         {
             SignalFishStateMachine machine = Fresh();
-            Assert.That(() => machine.Arm(default(PendingRoomOperation)), Throws.ArgumentException);
+            Assert.That(
+                (Action)(() => machine.Arm(default(PendingRoomOperation))),
+                Throws.ArgumentException
+            );
         }
 
         [Test]

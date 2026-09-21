@@ -67,8 +67,7 @@ namespace SignalFish.Client.Tests.Transport
             Assert.That(close.Close.Kind, Is.EqualTo(expectedKind));
 
             TransportClosedException thrown = Assert.ThrowsAsync<TransportClosedException>(
-                async () =>
-                    await transport.ReceiveAsync(TestToken())
+                (Func<Task>)(async () => await transport.ReceiveAsync(TestToken()))
             );
             Assert.That(thrown, Is.Not.Null);
             Assert.That(thrown.Close.Code, Is.EqualTo(wireCode));
@@ -141,8 +140,8 @@ namespace SignalFish.Client.Tests.Transport
             await transport.ConnectAsync(ServerUri(server.Port), TestToken());
 
             byte[] oversized = new byte[65];
-            Assert.That(
-                async () => await transport.SendAsync(oversized, TestToken()),
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.SendAsync(oversized, TestToken())),
                 Throws.TypeOf<ArgumentOutOfRangeException>()
             );
 
@@ -223,8 +222,14 @@ namespace SignalFish.Client.Tests.Transport
             await transport.DisposeAsync();
             server.ClientConfigGate.TrySetResult(true);
 
-            Assert.That(async () => await connect, Throws.TypeOf<ObjectDisposedException>());
-            Assert.That(async () => await transport.DisposeAsync(), Throws.Nothing);
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await connect),
+                Throws.TypeOf<ObjectDisposedException>()
+            );
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.DisposeAsync()),
+                Throws.Nothing
+            );
 
             // Either no socket reached the wire (expected) or the one that
             // did was torn down promptly. A leaked socket would keep this
@@ -236,8 +241,8 @@ namespace SignalFish.Client.Tests.Transport
                 CancellationTokenSource closedCts = new CancellationTokenSource(
                     TimeSpan.FromSeconds(5)
                 );
-                IOException? closed = Assert.ThrowsAsync<IOException>(async () =>
-                    await connection.ReceiveFrameAsync(closedCts.Token)
+                IOException? closed = Assert.ThrowsAsync<IOException>(
+                    (Func<Task>)(async () => await connection.ReceiveFrameAsync(closedCts.Token))
                 );
                 Assert.That(closed, Is.Not.Null);
             }
@@ -302,8 +307,8 @@ namespace SignalFish.Client.Tests.Transport
 
             Task<TransportFrame> pending = transport.ReceiveAsync(TestToken()).AsTask();
 
-            Assert.That(
-                async () => await transport.ReceiveAsync(TestToken()),
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.ReceiveAsync(TestToken())),
                 Throws.InvalidOperationException
             );
 
@@ -328,11 +333,14 @@ namespace SignalFish.Client.Tests.Transport
             Assert.That(close.Close.Kind, Is.EqualTo(TransportCloseKind.Abnormal));
 
             // Dispose beats close: post-dispose use is ObjectDisposedException.
-            Assert.That(
-                async () => await transport.ReceiveAsync(TestToken()),
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.ReceiveAsync(TestToken())),
                 Throws.TypeOf<ObjectDisposedException>()
             );
-            Assert.That(async () => await transport.DisposeAsync(), Throws.Nothing);
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.DisposeAsync()),
+                Throws.Nothing
+            );
         }
 
         [Test]
@@ -344,15 +352,20 @@ namespace SignalFish.Client.Tests.Transport
 
             await transport.DisposeAsync();
 
-            Assert.That(
-                async () => await transport.ReceiveAsync(TestToken()),
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.ReceiveAsync(TestToken())),
                 Throws.TypeOf<ObjectDisposedException>()
             );
-            Assert.That(
-                async () => await transport.SendAsync(Encoding.UTF8.GetBytes("{}"), TestToken()),
+            await Assert.ThatAsync(
+                (Func<Task>)(
+                    async () => await transport.SendAsync(Encoding.UTF8.GetBytes("{}"), TestToken())
+                ),
                 Throws.TypeOf<ObjectDisposedException>()
             );
-            Assert.That(async () => await transport.DisposeAsync(), Throws.Nothing);
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.DisposeAsync()),
+                Throws.Nothing
+            );
         }
     }
 }

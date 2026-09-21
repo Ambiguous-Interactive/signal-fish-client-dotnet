@@ -6,6 +6,7 @@ namespace SignalFish.Client.Tests
     using System.IO;
     using System.Text;
     using FsCheck;
+    using FsCheck.Fluent;
     using NUnit.Framework;
     using SignalFish.Client.Protocol;
     using PropertyAttribute = FsCheck.NUnit.PropertyAttribute;
