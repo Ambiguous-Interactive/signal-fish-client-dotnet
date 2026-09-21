@@ -1,0 +1,80 @@
+# Auto-release pipeline for signal-fish-client-dotnet
+#
+# Tag-driven only (v*): packs the library, publishes to GitHub Packages,
+# and attaches the .nupkg/.snupkg to a GitHub Release as a no-auth
+# fallback. Never runs on branches or PRs, so PR CI time stays flat.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Pack, publish, release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Validate tag
+        shell: bash
+        run: |
+          if ! [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+].+)?$ ]]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' is not semver (expected vMAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Restore
+        run: dotnet restore src/SignalFish.Client/SignalFish.Client.csproj
+
+      - name: Pack
+        run: >
+          dotnet pack src/SignalFish.Client/SignalFish.Client.csproj
+          --no-restore -c Release
+          -p:Version=${{ env.VERSION }}
+          -p:ContinuousIntegrationBuild=true
+          -o dist
+
+      - name: Publish to GitHub Packages
+        run: >
+          dotnet nuget push "dist/*.nupkg"
+          --source https://nuget.pkg.github.com/Ambiguous-Interactive/index.json
+          --api-key ${{ secrets.GITHUB_TOKEN }}
+          --skip-duplicate
+
+      - name: Publish symbol package
+        run: >
+          dotnet nuget push "dist/*.snupkg"
+          --source https://nuget.pkg.github.com/Ambiguous-Interactive/index.json
+          --api-key ${{ secrets.GITHUB_TOKEN }}
+          --skip-duplicate
+
+      - name: Create GitHub release with package assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release create "${GITHUB_REF_NAME}"
+          dist/*.nupkg dist/*.snupkg
+          --verify-tag
+          --generate-notes
+          --title "SignalFish.Client ${{ env.VERSION }}"

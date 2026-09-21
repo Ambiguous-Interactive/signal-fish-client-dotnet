@@ -4,5 +4,22 @@
         <LangVersion>9.0</LangVersion>
         <Nullable>enable</Nullable>
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <PackageId>SignalFish.Client</PackageId>
+        <Version>0.1.0</Version>
+        <Description>C# client SDK for the Signal Fish multiplayer signaling server: rooms, lobbies, readiness, relay, heartbeats, reconnection, spectators, authority, and v3 mesh signaling. Zero dependencies, Unity compatible (netstandard2.1).</Description>
+        <Authors>Ambiguous Interactive</Authors>
+        <Company>Ambiguous Interactive</Company>
+        <PackageTags>multiplayer;networking;signaling;websocket;relay;unity;gamedev</PackageTags>
+        <PackageProjectUrl>https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     </PropertyGroup>
+    <ItemGroup>
+        <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
 </Project>
