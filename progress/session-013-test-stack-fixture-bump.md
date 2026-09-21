@@ -44,6 +44,15 @@ samples — bump the pin), #26/#20 conventions in touched code. CI time watch.
   rewrote every line-number pin (mapper tests x4, V2LifecycleTests x1) to
   select samples by wire type; the synthetic
   `Replace("RoomJoined","GameStarting")` hack became the real golden line.
+- **Same-class sweep (null-tolerant decode)**: spec check found
+  `JoinAsSpectator.password` is `[string, 'null']` like `JoinRoom`'s — its
+  decoder got the same explicit-null-as-absent treatment (required fields
+  still fail closed). Pinned by a new data-driven decode test
+  (`Decode_ExplicitNullOptionals_DecodeAsAbsent`); 320 tests per TFM.
+- **Provenance template refresh**: the sync script's regenerated
+  `PROVENANCE.md` claimed the v2 floor gaps were still open; the template
+  now records the 0.9.2 coverage and only asks for upstream samples when a
+  future floor message lacks one.
 
 ## Red-green evidence
 
@@ -81,7 +90,7 @@ so the bump invalidates once; first CI run pays a one-time repopulation.
 
 ## Verification
 
-`dotnet build -warnaserror` 0 warnings both TFMs; 319 x 2 TFMs green;
+`dotnet build -warnaserror` 0 warnings both TFMs; 320 x 2 TFMs green;
 coverage lane green; CSharpier clean; zero-dep, LINQ-ban, this.-ban,
 file-size, and llm-instruction lints green; fixtures byte-identical to
 `07a6fd08` (sync-script verify mode); tooling projects (fuzz, perf) build

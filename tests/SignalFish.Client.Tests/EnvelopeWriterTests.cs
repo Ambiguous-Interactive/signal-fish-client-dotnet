@@ -745,6 +745,52 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
+        public void Decode_ExplicitNullOptionals_DecodeAsAbsent()
+        {
+            // Canonical wire form: absent optionals are explicit nulls
+            // (upstream JoinRoom samples; password is [string, 'null']).
+            Assert.That(
+                JoinRoomMessage.TryDecode(
+                    Encoding.UTF8.GetBytes(
+                        "{\"game_name\": \"g\", \"room_code\": null, \"player_name\": \"p\","
+                            + " \"max_players\": null, \"supports_authority\": null,"
+                            + " \"relay_transport\": null, \"password\": null}"
+                    ),
+                    out JoinRoomMessage join
+                ),
+                Is.True
+            );
+            Assert.That(join.RoomCode, Is.Null);
+            Assert.That(join.MaxPlayers, Is.Null);
+            Assert.That(join.SupportsAuthority, Is.Null);
+            Assert.That(join.RelayTransport, Is.Null);
+            Assert.That(join.Password, Is.Null);
+
+            Assert.That(
+                JoinAsSpectatorMessage.TryDecode(
+                    Encoding.UTF8.GetBytes(
+                        "{\"game_name\": \"g\", \"room_code\": \"C\", \"spectator_name\": \"s\","
+                            + " \"password\": null}"
+                    ),
+                    out JoinAsSpectatorMessage spectator
+                ),
+                Is.True
+            );
+            Assert.That(spectator.Password, Is.Null);
+
+            // Required fields stay required even when null-typed optionals exist.
+            Assert.That(
+                JoinAsSpectatorMessage.TryDecode(
+                    Encoding.UTF8.GetBytes(
+                        "{\"game_name\": \"g\", \"room_code\": null, \"spectator_name\": \"s\"}"
+                    ),
+                    out _
+                ),
+                Is.False
+            );
+        }
+
+        [Test]
         public void Decode_UnknownPayloadFields_AreSkipped()
         {
             Assert.That(

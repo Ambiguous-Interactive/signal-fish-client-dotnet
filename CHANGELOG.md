@@ -12,9 +12,10 @@ changes (CI, tests, tooling, docs) are not listed.
   `room_code` precedes `player_name`, and absent optionals (`room_code`,
   `max_players`, `supports_authority`, `relay_transport`) are sent as explicit
   `null`s exactly like the upstream golden samples. Decoding accepts both
-  forms. Found by re-vendoring the golden fixtures, which the server extended
-  to cover the full mandatory v2 message floor (`GameStarting`, `RoomLeft`,
-  and the typed failure family now have wire samples).
+  forms, and `JoinAsSpectator`'s optional `password` decodes explicit `null`
+  as absent too. Found by re-vendoring the golden fixtures, which the server
+  extended to cover the full mandatory v2 message floor (`GameStarting`,
+  `RoomLeft`, and the typed failure family now have wire samples).
 
 ### Added
 

@@ -203,9 +203,10 @@ $fileTable
 ## Coverage gaps (at this pin)
 
 The corpus is verbatim upstream and covers only what the server publishes.
-The mandatory v2 floor also includes ``GameStarting``, ``RoomLeft``, and the
-``*Failed`` family, which have no upstream wire samples yet. Request them
-upstream; never hand-vendor replacements.
+At pin ``07a6fd08`` (server 0.9.2) the full mandatory v2 floor has wire
+samples, including ``GameStarting``, ``RoomLeft``, and the ``*Failed``
+family. If a future floor message lacks a sample here, request it upstream;
+never hand-vendor replacements.
 "@
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($provenancePath, "$provenance`n", $utf8NoBom)
