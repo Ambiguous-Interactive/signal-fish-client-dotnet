@@ -3,14 +3,6 @@ namespace SignalFish.Client.Protocol
     using System;
 
     /// <summary>
-    /// Payload of the outbound <c>JoinAsSpectator</c> message (C→S): join a
-    /// room as a read-only observer. All of <see cref="GameName"/>,
-    /// <see cref="RoomCode"/>, and <see cref="SpectatorName"/> are required;
-    /// <see cref="Password"/> is optional (<see langword="null"/> omits it).
-    /// Wire order: <c>game_name</c>, <c>room_code</c>,
-    /// <c>spectator_name</c>, <c>password</c>.
-    /// </summary>
-    /// <summary>
     /// Payload of the inbound <c>Reconnected</c> frame (S→C): a prior
     /// membership reclaimed on a fresh, re-authenticated connection, plus
     /// the room-state snapshot. The v2 <c>missed_events</c> marker is
@@ -145,6 +137,14 @@ namespace SignalFish.Client.Protocol
         }
     }
 
+    /// <summary>
+    /// Payload of the outbound <c>JoinAsSpectator</c> message (C→S): join a
+    /// room as a read-only observer. All of <see cref="GameName"/>,
+    /// <see cref="RoomCode"/>, and <see cref="SpectatorName"/> are required;
+    /// <see cref="Password"/> is optional (<see langword="null"/> omits it).
+    /// Wire order: <c>game_name</c>, <c>room_code</c>,
+    /// <c>spectator_name</c>, <c>password</c>.
+    /// </summary>
     public readonly struct JoinAsSpectatorMessage : IEquatable<JoinAsSpectatorMessage>
     {
         /// <summary>Gets the name of the game (required).</summary>

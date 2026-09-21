@@ -45,7 +45,7 @@ scheduled after M3.4), #36 (TUnit spike, same), #26 (final closure), and the
   (verbatim/raw-string fix over the comment-form lexer), CSharpier-indent
   anchoring, unknown constructs skipped. RED: 47 violation sites/~30 files;
   all fixed mechanically (field-init-order audit clean; 409 × 2 TFM green).
-  Self-test 16 assertions. Hook + CI wired; `.llm/context.md` rule 21.
+  Self-test: 12 cases / 16 assertions. Hook + CI wired; `.llm/context.md` rule 21.
 - **CI time held flat** despite the new gate: the five per-lint CI steps
   collapsed into one consolidated `lint-conventions.ps1` step (six lints in
   one pwsh process — `exit N` from `&`-invoked scripts returns control and
@@ -66,7 +66,7 @@ scheduled after M3.4), #36 (TUnit spike, same), #26 (final closure), and the
 - Idle-poll gate red-checked; payload decodes red-checked (planted bug in
   `AuthorityResponseMessage` null handling → test failed → reverted).
 - All six lints green (69 files); `lint-conventions.ps1` consolidated step
-  green; CSharpier clean; self-tests 12/12.
+  green; CSharpier clean; all 12 self-test files green.
 
 ## Left for later
 

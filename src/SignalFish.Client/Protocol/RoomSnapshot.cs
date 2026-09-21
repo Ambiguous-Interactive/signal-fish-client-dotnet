@@ -104,9 +104,9 @@ namespace SignalFish.Client.Protocol
 
         /// <summary>
         /// Decodes the snapshot fields of a membership-confirming frame.
-        /// Total: keys the frame omits leave their default; a repeated key
-        /// is tolerated with first-wins (the snapshot is advisory state,
-        /// never fail-closed).
+        /// Keys the frame omits leave their default; an explicit JSON null
+        /// counts as omitted (the canonical wire form); a repeated known
+        /// key is rejected (fail-closed, matching every payload decoder).
         /// </summary>
         internal static bool TryDecode(ReadOnlyMemory<byte> data, out RoomSnapshot snapshot)
         {
@@ -123,6 +123,15 @@ namespace SignalFish.Client.Protocol
             IReadOnlyList<string>? readyPlayers = null;
             IReadOnlyList<PlayerInfo>? currentPlayers = null;
             IReadOnlyList<SpectatorInfo>? currentSpectators = null;
+            bool gameSeen = false,
+                maxSeen = false,
+                supportsSeen = false,
+                authoritySeen = false,
+                lobbySeen = false,
+                relaySeen = false,
+                readySeen = false,
+                playersSeen = false,
+                spectatorsSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -132,67 +141,148 @@ namespace SignalFish.Client.Protocol
                     return false;
                 }
 
-                if (gameName is null && scanner.KeyIs(keyRaw, "game_name"))
+                if (scanner.KeyIs(keyRaw, "game_name"))
                 {
-                    if (!scanner.TryReadString(valueRaw, out gameName))
+                    if (gameSeen)
                     {
                         return false;
+                    }
+
+                    gameSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadString(valueRaw, out gameName))
+                        {
+                            return false;
+                        }
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "max_players"))
                 {
-                    if (!scanner.TryReadUInt32(valueRaw, out maxPlayers))
+                    if (maxSeen)
                     {
                         return false;
+                    }
+
+                    maxSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadUInt32(valueRaw, out maxPlayers))
+                        {
+                            return false;
+                        }
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "supports_authority"))
                 {
-                    if (!scanner.TryReadBoolean(valueRaw, out supportsAuthority))
+                    if (supportsSeen)
                     {
                         return false;
+                    }
+
+                    supportsSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadBoolean(valueRaw, out supportsAuthority))
+                        {
+                            return false;
+                        }
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "is_authority"))
                 {
-                    if (!scanner.TryReadBoolean(valueRaw, out isAuthority))
+                    if (authoritySeen)
                     {
                         return false;
                     }
+
+                    authoritySeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadBoolean(valueRaw, out isAuthority))
+                        {
+                            return false;
+                        }
+                    }
                 }
-                else if (lobbyState is null && scanner.KeyIs(keyRaw, "lobby_state"))
+                else if (scanner.KeyIs(keyRaw, "lobby_state"))
                 {
-                    if (!scanner.TryReadString(valueRaw, out lobbyState))
+                    if (lobbySeen)
                     {
                         return false;
                     }
+
+                    lobbySeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadString(valueRaw, out lobbyState))
+                        {
+                            return false;
+                        }
+                    }
                 }
-                else if (relayType is null && scanner.KeyIs(keyRaw, "relay_type"))
+                else if (scanner.KeyIs(keyRaw, "relay_type"))
                 {
-                    if (!scanner.TryReadString(valueRaw, out relayType))
+                    if (relaySeen)
                     {
                         return false;
                     }
+
+                    relaySeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadString(valueRaw, out relayType))
+                        {
+                            return false;
+                        }
+                    }
                 }
-                else if (readyPlayers is null && scanner.KeyIs(keyRaw, "ready_players"))
+                else if (scanner.KeyIs(keyRaw, "ready_players"))
                 {
-                    if (!JsonScanner.TryReadStringArray(data, valueRaw, out readyPlayers))
+                    if (readySeen)
                     {
                         return false;
+                    }
+
+                    readySeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!JsonScanner.TryReadStringArray(data, valueRaw, out readyPlayers))
+                        {
+                            return false;
+                        }
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "current_players"))
                 {
-                    if (!PlayerInfo.TryReadArray(data, valueRaw, out currentPlayers))
+                    if (playersSeen)
                     {
                         return false;
+                    }
+
+                    playersSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!PlayerInfo.TryReadArray(data, valueRaw, out currentPlayers))
+                        {
+                            return false;
+                        }
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "current_spectators"))
                 {
-                    if (!SpectatorInfo.TryReadArray(data, valueRaw, out currentSpectators))
+                    if (spectatorsSeen)
                     {
                         return false;
+                    }
+
+                    spectatorsSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!SpectatorInfo.TryReadArray(data, valueRaw, out currentSpectators))
+                        {
+                            return false;
+                        }
                     }
                 }
 

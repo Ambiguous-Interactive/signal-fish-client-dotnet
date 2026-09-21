@@ -532,6 +532,33 @@ namespace SignalFish.Client.Tests
             Assert.That(message, Is.EqualTo(default(AuthenticatedMessage)));
         }
 
+        [Test]
+        public void RoomSnapshotTreatsExplicitNullFieldsAsAbsent()
+        {
+            string data =
+                @"{""game_name"":null,""max_players"":null,""supports_authority"":null,"
+                + @"""is_authority"":null,""lobby_state"":null,""relay_type"":null,"
+                + @"""ready_players"":null,""current_players"":null,""current_spectators"":null}";
+            Assert.That(RoomSnapshot.TryDecode(Bytes(data), out RoomSnapshot snapshot), Is.True);
+            Assert.That(snapshot.GameName, Is.Null);
+            Assert.That(snapshot.MaxPlayers, Is.EqualTo(0u));
+            Assert.That(snapshot.SupportsAuthority, Is.False);
+            Assert.That(snapshot.IsAuthority, Is.False);
+            Assert.That(snapshot.LobbyState, Is.Null);
+            Assert.That(snapshot.RelayType, Is.Null);
+            Assert.That(snapshot.ReadyPlayers, Is.Null);
+            Assert.That(snapshot.CurrentPlayers, Is.Empty);
+            Assert.That(snapshot.CurrentSpectators, Is.Empty);
+        }
+
+        [Test]
+        public void RoomSnapshotRejectsRepeatedKeys()
+        {
+            string data =
+                @"{""is_authority"":true,""lobby_state"":""lobby"",""is_authority"":false}";
+            Assert.That(RoomSnapshot.TryDecode(Bytes(data), out _), Is.False);
+        }
+
         private static EnvelopeEvent DecodeFixtureEnvelope(string wireType)
         {
             string line = GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", wireType);

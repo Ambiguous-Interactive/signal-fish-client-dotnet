@@ -125,10 +125,17 @@ namespace SignalFish.Client.Polling
                 return 0;
             }
 
+            /*
+                One ring slot is always reserved for the terminal
+                Disconnected event: a teardown on a full ring (heartbeat
+                timeout, ping failure, dispose) must never lose the one
+                event the game cannot reconstruct from Phase.
+            */
+            int regularEventCap = _options.EventCapacity - 1;
             int frames = 0;
             while (
                 frames < _options.MaxFramesPerPoll
-                && !_events.IsFull
+                && _events.Count < regularEventCap
                 && TryTakeFrame(out TransportFrame frame)
             )
             {
@@ -610,6 +617,21 @@ namespace SignalFish.Client.Polling
                 */
                 _sendFailed = true;
             }
+        }
+
+        /// <summary>
+        /// Observes the in-flight receive abandoned by teardown so a late
+        /// fault can never surface as an unobserved task exception.
+        /// </summary>
+        private void ObserveAbandonedReceive()
+        {
+            Task<TransportFrame>? abandoned = Interlocked.Exchange(ref _pendingReceive, null);
+            abandoned?.ContinueWith(
+                static finished => _ = finished.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default
+            );
         }
 
         private void Teardown(TransportClose close)

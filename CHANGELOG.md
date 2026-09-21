@@ -11,8 +11,9 @@ changes (CI, tests, tooling, docs) are not listed.
 - Polling client (M3.4): `SignalFishPollingClient` for Unity
   `Update()`-style loops. Every `Poll()` drains up to 64 transport frames
   (configurable) into typed struct events via a fixed-capacity ring buffer
-  with cooperative backpressure — a full ring pauses consumption, frames are
-  never dropped. Full v2 payload surface as typed events: room snapshots
+  with cooperative backpressure — a full ring pauses frame consumption (no
+  frame is ever dropped), and one ring slot is always reserved so the
+  terminal `Disconnected` event can never be squeezed out. Full v2 payload surface as typed events: room snapshots
   (players, lobby, relay), lobby state, player lifecycle, game start with
   peer connections, authority answers, spectator rosters, verbatim
   `GameData`, and typed failure reasons. Heartbeat is automatic (~30 s ping,

@@ -20,16 +20,20 @@
     the CSharpier indent (type body + 4 spaces), which .editorconfig and the
     CSharpier check guarantee.
 
-    Documented simplifications (deliberate, conservative): operators and
-    expression-bodied members rank as methods; indexers rank as properties;
-    delegates rank as nested types; events rank with properties; enum
-    bodies are exempt (their members are not members of the containing
-    type); static-before-instance is applied to fields and properties only
-    (methods and nested types order by tier alone); a member declared
-    without an access modifier defaults to public in an interface and
-    private elsewhere; "protected internal" ranks as protected. A line that
-    cannot be classified confidently as a member declaration is skipped
-    silently rather than misfired on.
+    Documented simplifications (deliberate, conservative): operators rank
+    as methods; expression-bodied members rank by their first sigil (a
+    parameter list means method, otherwise property); indexers rank as
+    properties; delegates rank as nested types; events rank with
+    properties; enum bodies are exempt (their members are not members of
+    the containing type); static-before-instance is applied to fields and
+    properties only (methods and nested types order by tier alone); a
+    member declared without an access modifier defaults to public in an
+    interface and private elsewhere; "protected internal" ranks as
+    protected. Interpolated-string holes that contain quote characters are
+    blanked conservatively (hole contents may leak into the scan only for
+    that rare shape; probes show it cannot create a false positive on
+    well-formed declarations). A line that cannot be classified confidently
+    as a member declaration is skipped silently rather than misfired on.
 
     Run standalone, from CI (dotnet.yml, via lint-conventions.ps1), or from
     the pre-commit hook (which passes only staged paths).
@@ -310,7 +314,7 @@ function Get-MemberInfo {
     if ($modifiers.Count -eq 0 -and -not $inInterface) { return $null }
 
     $rest = $candidate.Substring($pos).TrimStart()
-    if ($rest -match '\boperator\b') {
+    if ($rest -cmatch '\boperator\b') {
         $name = [regex]::Match($rest, 'operator\s*(\S+)')
         if (-not $name.Success) { return $null }
         return @{

@@ -157,6 +157,13 @@ namespace SignalFish.Client.Tests.Polling
             Assert.That(snapshot.CurrentPlayers![0].Id, Is.EqualTo(PlayerId));
             Assert.That(snapshot.CurrentPlayers[0].Name, Is.EqualTo("Player 1"));
             Assert.That(snapshot.CurrentPlayers[0].IsAuthority, Is.True);
+
+            EnqueueGolden(transport, "RoomLeft");
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            PollEvent left = Single(client);
+            Assert.That(left.Kind, Is.EqualTo(PollEventKind.RoomLeft));
+            Assert.That(client.Membership.IsPresent, Is.False);
+            Assert.That(client.Phase, Is.EqualTo(ConnectionPhase.Authenticated));
         }
 
         [Test]
@@ -287,11 +294,17 @@ namespace SignalFish.Client.Tests.Polling
                 transport,
                 @"{""type"":""RoomJoinFailed"",""data"":{""reason"":""Room is full"",""error_code"":""ROOM_FULL""}}"
             );
-            EnqueueGolden(transport, "Error", "AuthenticationError");
-            Assert.That(client.Poll(), Is.EqualTo(3));
+            EnqueueGolden(
+                transport,
+                "Error",
+                "AuthenticationError",
+                "ReconnectionFailed",
+                "SpectatorJoinFailed"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(5));
 
             List<PollEvent> events = DrainAll(client);
-            Assert.That(events, Has.Count.EqualTo(3));
+            Assert.That(events, Has.Count.EqualTo(5));
             Assert.That(events[0].Kind, Is.EqualTo(PollEventKind.RoomJoinFailed));
             Assert.That(events[0].Failure.Reason, Is.EqualTo("Room is full"));
             Assert.That(events[0].Failure.ErrorCode, Is.EqualTo("ROOM_FULL"));
@@ -307,6 +320,14 @@ namespace SignalFish.Client.Tests.Polling
                 "the error alias maps to Reason"
             );
             Assert.That(events[2].Failure.ErrorCode, Is.EqualTo("INVALID_APP_ID"));
+
+            Assert.That(events[3].Kind, Is.EqualTo(PollEventKind.ReconnectionFailed));
+            Assert.That(events[3].Failure.Reason, Is.EqualTo("Invalid reconnection token"));
+            Assert.That(events[3].Failure.ErrorCode, Is.EqualTo("RECONNECTION_TOKEN_INVALID"));
+
+            Assert.That(events[4].Kind, Is.EqualTo(PollEventKind.SpectatorJoinFailed));
+            Assert.That(events[4].Failure.Reason, Is.EqualTo("Room not found"));
+            Assert.That(events[4].Failure.ErrorCode, Is.EqualTo("ROOM_NOT_FOUND"));
         }
 
         [Test]
@@ -530,16 +551,22 @@ namespace SignalFish.Client.Tests.Polling
                 EnqueueGolden(transport, "LobbyStateChanged");
             }
 
-            Assert.That(client.Poll(), Is.EqualTo(3), "stops when the ring fills");
-            Assert.That(client.PendingEventCount, Is.EqualTo(3));
+            /*
+                Capacity 3 reserves one slot for the terminal event, so at
+                most 2 regular events queue before backpressure.
+            */
+            Assert.That(client.Poll(), Is.EqualTo(2), "stops when the regular capacity fills");
+            Assert.That(client.PendingEventCount, Is.EqualTo(2));
 
-            Assert.That(DrainAll(client), Has.Count.EqualTo(3));
+            Assert.That(DrainAll(client), Has.Count.EqualTo(2));
             Assert.That(
                 client.Poll(),
                 Is.EqualTo(2),
                 "backpressured frames are consumed next poll"
             );
             Assert.That(DrainAll(client), Has.Count.EqualTo(2));
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            Assert.That(DrainAll(client), Has.Count.EqualTo(1));
         }
 
         [Test]
@@ -567,6 +594,55 @@ namespace SignalFish.Client.Tests.Polling
                 Is.EqualTo(0),
                 "Idle polls (no inbound traffic, no heartbeat due) must not allocate."
             );
+        }
+
+        [Test]
+        public async Task TeardownOnFullRingStillDeliversDisconnected()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock clock) =
+                BuildTimed(new PollingClientOptions(eventCapacity: 3));
+            await ConnectAndAuthenticate(client, transport);
+
+            /*
+                Two events fill capacity - 1: the frame loop stops before
+                the last slot so the terminal event always fits.
+            */
+            EnqueueGolden(transport, "LobbyStateChanged", "LobbyStateChanged", "LobbyStateChanged");
+            Assert.That(client.Poll(), Is.EqualTo(2), "reserved slot stops frame consumption");
+            Assert.That(client.PendingEventCount, Is.EqualTo(2));
+
+            clock.Advance(60_000);
+            Assert.That(client.Poll(), Is.EqualTo(0));
+
+            List<PollEvent> events = DrainAll(client);
+            Assert.That(events, Has.Count.EqualTo(3));
+            Assert.That(events[2].Kind, Is.EqualTo(PollEventKind.Disconnected));
+            Assert.That(events[2].Close.Code, Is.EqualTo(1006));
+        }
+
+        [Test]
+        public async Task PingSendFailureFoldsIntoTheNextPoll()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock clock) =
+                BuildTimed(new PollingClientOptions(heartbeatIntervalMilliseconds: 1_000));
+            await ConnectAndAuthenticate(client, transport);
+
+            /*
+                EnqueueClose marks the fake closed without resolving the
+                pending receive, so no close frame arrives; the ping send
+                then throws synchronously (FakeTransport throws before
+                recording) and the failure folds into the next poll.
+            */
+            transport.EnqueueClose(4000);
+            clock.Advance(1_000);
+            Assert.That(client.Poll(), Is.EqualTo(0));
+            Assert.That(CountPings(transport), Is.EqualTo(0));
+
+            Assert.That(client.Poll(), Is.EqualTo(0));
+            Assert.That(client.Phase, Is.EqualTo(ConnectionPhase.Terminal));
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.Disconnected));
+            Assert.That(pollEvent.Close.Code, Is.EqualTo(1006));
         }
 
         [Test]
