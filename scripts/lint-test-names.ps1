@@ -17,8 +17,9 @@
     Known constraints (documented, not accidental): declarations are
     anchored on an access modifier - repo style puts one on every member -
     and signatures must carry the name and `(` on the same line (the
-    CSharpier shape). The scan is line-based, so a commented-out
-    declaration would be flagged; there are none to begin with.
+    CSharpier shape). The scan is line-based, so an underscored
+    declaration embedded in a multi-line string would be flagged; there
+    are none to begin with.
 
     Run standalone, from CI (dotnet.yml), or from the pre-commit hook
     (which passes only staged paths).
