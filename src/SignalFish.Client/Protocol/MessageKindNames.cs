@@ -45,6 +45,16 @@ namespace SignalFish.Client.Protocol
             "TransportStatus",
             "PeerTransportStatus",
             "GoingAway",
+            "AuthenticationError",
+            "AuthorityChanged",
+            "NewSpectatorJoined",
+            "PlayerReconnected",
+            "ReconnectionFailed",
+            "RoomJoinFailed",
+            "SpectatorDisconnected",
+            "SpectatorJoinFailed",
+            "SpectatorJoined",
+            "SpectatorLeft",
         };
 
         private static readonly byte[][] NameBytes = BuildNameBytes();

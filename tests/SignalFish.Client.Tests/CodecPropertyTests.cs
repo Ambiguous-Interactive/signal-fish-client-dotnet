@@ -325,6 +325,10 @@ namespace SignalFish.Client.Tests
 
                     writer.WriteByte((byte)'}');
                     break;
+                default:
+                    throw new InvalidOperationException(
+                        "Undefined JKind value: " + (byte)node.Kind
+                    );
             }
         }
 
@@ -426,12 +430,18 @@ namespace SignalFish.Client.Tests
 
         internal enum JKind : byte
         {
-            Null = 0,
-            Bool = 1,
-            Number = 2,
-            Str = 3,
-            Arr = 4,
-            Obj = 5,
+            /// <summary>Sentinel for <c>default(JKind)</c>; not a valid JSON kind.</summary>
+            [Obsolete(
+                "This value only exists so the enum default (0) is not a JSON kind. Construct JNode with an explicit Kind."
+            )]
+            None = 0,
+
+            Null = 1,
+            Bool = 2,
+            Number = 3,
+            Str = 4,
+            Arr = 5,
+            Obj = 6,
         }
     }
 }

@@ -15,7 +15,6 @@ namespace SignalFish.Client.Core
         private bool _connected;
         private bool _transportReady;
         private bool _authenticated;
-        private Guid _authenticatedPlayerId;
         private RoomMembership _membership;
         private PendingRoomOperation _pendingOperation;
         private bool _terminal;
@@ -71,12 +70,6 @@ namespace SignalFish.Client.Core
         public bool IsAuthenticated
         {
             get { return _authenticated; }
-        }
-
-        /// <summary>Player id assigned by the server at authentication.</summary>
-        public Guid AuthenticatedPlayerId
-        {
-            get { return _authenticatedPlayerId; }
         }
 
         /// <summary>The four-field membership invariant; absent outside a confirmed room.</summary>
@@ -212,14 +205,10 @@ namespace SignalFish.Client.Core
                     _transportReady = true;
                     break;
                 case SessionEventKind.Authenticated:
-                    // Fail-closed: a repeated or conflicting authentication is
-                    // a protocol violation; the first assignment stands.
-                    if (!_authenticated)
-                    {
-                        _authenticated = true;
-                        _authenticatedPlayerId = sessionEvent.PlayerId;
-                    }
-
+                    // Idempotent: the v2 Authenticated payload carries no
+                    // identity, so a repeat has nothing to conflict with;
+                    // the player identity is confirmed with the membership.
+                    _authenticated = true;
                     break;
                 case SessionEventKind.RoomJoined:
                 case SessionEventKind.SpectatorJoined:
@@ -260,13 +249,13 @@ namespace SignalFish.Client.Core
                     _membership = default;
                     ReleaseIfPending(LeaveRelease(sessionEvent.Kind));
                     break;
-                case SessionEventKind.JoinRoomFailed:
+                case SessionEventKind.RoomJoinFailed:
                     ReleaseIfPending(PendingRoomOperation.JoinPlayer);
                     break;
-                case SessionEventKind.JoinSpectatorFailed:
+                case SessionEventKind.SpectatorJoinFailed:
                     ReleaseIfPending(PendingRoomOperation.JoinSpectator);
                     break;
-                case SessionEventKind.ReconnectFailed:
+                case SessionEventKind.ReconnectionFailed:
                     ReleaseIfPending(PendingRoomOperation.ReconnectPlayer);
                     break;
                 case SessionEventKind.ServerError:
@@ -330,7 +319,6 @@ namespace SignalFish.Client.Core
             _connected = false;
             _transportReady = false;
             _authenticated = false;
-            _authenticatedPlayerId = Guid.Empty;
             _membership = default;
             _pendingOperation = default(PendingRoomOperation);
         }

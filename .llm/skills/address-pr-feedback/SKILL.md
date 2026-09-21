@@ -74,6 +74,7 @@ codebase for siblings:
 | Helper mangles input type | Other narrowly-typed params fed arrays by callers |
 | Hook blesses a file CI rejects | Every gate's hook selector vs its linter's accepted inputs vs CI's trigger (see [add-quality-gate](../add-quality-gate/SKILL.md)) |
 | Generator/switch breaks after enum renumbering | Every numeric enum construction (`(Enum)(byte % N)`), ordinal loop, and sentinel-guard added in the same change — test/fuzz generators and perf harnesses included |
+| Repro artifact lands in the repo tree | Tracked files matching fuzz/crash/seed patterns; artifacts belong in gitignored persistence dirs (`.fuzz/`), never the repo root |
 
 Fix every sibling in the same change. One-off fixes guarantee the reviewer
 finds the sibling next round.

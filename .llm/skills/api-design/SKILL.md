@@ -88,14 +88,19 @@ pattern when the team adopts one:
   `foreach` control variables and `out var` arguments.
 - **`using` directives go inside the namespace** (IDE0065).
 - **Enum value 0 is always a non-valid `None` sentinel, marked
-  `[Obsolete]` — project-wide, no exceptions** (`EnvelopeEventKind` set the
-  pattern). Reference the sentinel only as `default(TEnum)`; a named
-  reference fails the build (`-warnaserror` CS0618), which is the point:
-  `default(...)` vs valid values are compiler-distinguishable. Shape public
-  APIs so callers never need the sentinel's name — return `bool` + `out`
-  value (`TryAdmit`) instead of a "None means OK" status enum; refuse
+  `[Obsolete]` — project-wide, no exceptions, test-internal enums
+  included** (`EnvelopeEventKind` set the pattern; the first sweep counted
+  only `src/` and missed a test-only `JKind` whose `Null = 0` was valid —
+  sweep test projects too). Reference the sentinel only as `default(TEnum)`;
+  a named reference fails the build (`-warnaserror` CS0618), which is the
+  point: `default(...)` vs valid values are compiler-distinguishable. Shape
+  public APIs so callers never need the sentinel's name — return `bool` +
+  `out` value (`TryAdmit`) instead of a "None means OK" status enum; refuse
   default-carrying payloads at encode time (`GameDataMessage`) instead of
-  encoding them.
+  encoding them. A switch over a sentinel-bearing enum must be fail-closed:
+  a `default:` arm throws on an undefined value instead of silently doing
+  nothing (an unguarded switch once rendered an empty JSON node for an
+  unset node).
 - **No `this.` qualification; private fields are `_camelCase`.** The
   underscore prefix is what makes unqualified access unambiguous. Note:
   Roslyn's `EnforceCodeStyleInBuild` does NOT enforce IDE0003 or naming

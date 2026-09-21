@@ -68,3 +68,5 @@ BenchmarkDotNet.Artifacts/
 
 # Fuzz-lane persistence (corpus + crash artifacts, scripts/fuzz-codec.ps1)
 .fuzz/
+# Crash seeds a driver may drop in the repo root (they belong in .fuzz/crashes/)
+crash-*.bin
