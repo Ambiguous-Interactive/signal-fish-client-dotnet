@@ -36,9 +36,9 @@ holding code coverage flat. No PLAN milestone tasks this round by design
 - **CI time down, coverage flat**: dotnet.yml matrix 4 -> 3 cells
   (windows+net10 dropped — OS assurance carried by windows+net8, TFM
   assurance by ubuntu+net10, coverage collected on ubuntu+net8 regardless).
-  Measured: the dropped cell was 202s on the last PR run; new expected
-  wall ~2m (windows+net8 124s) vs 3m26s; runner-minutes ~-45%. Two new
-  lint steps add ~10s to the coverage cell.
+  Measured from the last PR run: the dropped cell took 202s and windows+net8
+  (the expected new long pole) 124s vs the old 3m26s wall; expect the PR
+  wall around ~2m. Two new lint steps add ~10s to the coverage cell.
 - **Sibling-analyzer decision recorded**: unity-helpers' WUH analyzers are
   UnityEngine-object-coupled (null-patterns, serialization, lifecycle) —
   poor fit for a netstandard2.1 protocol library. The adoptable pieces are

@@ -29,8 +29,8 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   self-tests, wired into hook + CI; 42 comment runs converted to blocks;
   `.llm` naming table + create-test skill updated (rules 19/20);
   dotnet.yml matrix 4 -> 3 cells (windows+net10 dropped: OS and TFM
-  assurances carried by other cells) - PR wall time ~3m30s -> ~2m,
-  runner-minutes ~-45%, code coverage unchanged.
+  assurances carried by other cells) - drops the measured 202s longest
+  cell (last PR run); expected wall ~3m30s -> ~2m, code coverage unchanged.
 - Open: DoxReloaded member-ordering lint adoption and the TUnit spike
   remain from #26 (follow-up issues filed); unity-helpers WUH analyzers
   are Unity-object-coupled - lint scripts adopted instead (decision

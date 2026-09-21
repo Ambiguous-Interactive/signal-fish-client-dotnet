@@ -11,8 +11,14 @@
     `MethodScenario`.
 
     Checks method declarations (any visibility, any return type) in test
-    sources, plus underscored NUnit display names in `TestName = "..."` and
-    `SetName("...")` positions.
+    sources, plus underscored NUnit display names in `TestName = "..."`,
+    `SetName("...")`, and `SetArgDisplayNames("...")` positions.
+
+    Known constraints (documented, not accidental): declarations are
+    anchored on an access modifier - repo style puts one on every member -
+    and signatures must carry the name and `(` on the same line (the
+    CSharpier shape). The scan is line-based, so a commented-out
+    declaration would be flagged; there are none to begin with.
 
     Run standalone, from CI (dotnet.yml), or from the pre-commit hook
     (which passes only staged paths).
@@ -68,11 +74,13 @@ if ($targets.Count -eq 0) {
 }
 
 # Method declaration: an access modifier, optional modifiers, explicit
-# return type, then the name. `var` is banned repo-wide, so the name is
-# always preceded by a type token. Control-flow keywords never follow an
-# access modifier, so one regex is exact enough here.
-$methodPattern = '^(?<lead>\s*(?:\[[^\]]*\]\s*)?(?:public|internal|protected|private)\s+(?:(?:static|async|override|sealed|new|partial|extern|unsafe|virtual)\s+)*)(?<type>\S+)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)(?<tail>\s*<[^>]*>\s*)?\('
-$displayPattern = 'TestName\s*=\s*"(?<name>[^"]*)"|SetName\s*\(\s*"(?<name>[^"]*)"'
+# return type (generics/arrays/qualified names included), then the name.
+# `var` is banned repo-wide, so the name is always preceded by a type
+# token. Type keywords (record/class/struct/...) are skipped below. The
+# access-modifier anchor is what keeps control-flow statements out.
+$methodPattern = '^(?<lead>\s*(?:\[[^\]]*\]\s*)?(?:public|internal|protected|private)\s+(?:(?:static|async|override|sealed|new|partial|extern|unsafe|virtual)\s+)*(?<type>[A-Za-z_][\w\.<>\[\],\s]*?)\s+)(?<name>[A-Za-z_][A-Za-z0-9_]*)(?<tail>\s*<[^>]*>\s*)?\('
+$typeKeywordPattern = '\b(record|class|struct|interface|enum|delegate)\b'
+$displayPattern = 'TestName\s*=\s*"(?<name>[^"]*)"|SetName\s*\(\s*"(?<name>[^"]*)"|SetArgDisplayNames\s*\(\s*"(?<name>[^"]*)"'
 
 $violations = New-Object 'System.Collections.Generic.List[string]'
 $checkedCount = 0
@@ -83,25 +91,35 @@ foreach ($target in $targets) {
         continue
     }
 
-    $relative = [System.IO.Path]::GetFullPath($target).Substring(
-        [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/').Length + 1)
+    $fullPath = [System.IO.Path]::GetFullPath($target)
+    $rootPath = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/')
+    if ($fullPath.StartsWith($rootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $relative = $fullPath.Substring($rootPath.Length + 1)
+    }
+    else {
+        $relative = $fullPath
+    }
     $relative = $relative -replace '\\', '/'
     $checkedCount++
 
     $lines = [System.IO.File]::ReadAllLines($target)
     for ($i = 0; $i -lt $lines.Length; $i++) {
         $method = [regex]::Match($lines[$i], $methodPattern)
-        if ($method.Success -and $method.Groups['name'].Value -match '_') {
-            $violations.Add(
-                "$relative($($i + 1)): method '$($method.Groups['name'].Value)' contains an underscore - " +
-                'test names are PascalCase with no underscores.')
+        if ($method.Success) {
+            $typeToken = [regex]::Match($method.Groups['type'].Value, $typeKeywordPattern)
+            if ($method.Groups['name'].Value -match '_' -and -not $typeToken.Success) {
+                $violations.Add(
+                    "$relative($($i + 1)): method '$($method.Groups['name'].Value)' contains an underscore - " +
+                    'test names are PascalCase with no underscores.')
+            }
         }
 
-        $display = [regex]::Match($lines[$i], $displayPattern)
-        if ($display.Success -and $display.Groups['name'].Value -match '_') {
-            $violations.Add(
-                "$relative($($i + 1)): display name '$($display.Groups['name'].Value)' contains an " +
-                'underscore - use dot notation (e.g. "Input.Null.Throws").')
+        foreach ($display in [regex]::Matches($lines[$i], $displayPattern)) {
+            if ($display.Groups['name'].Value -match '_') {
+                $violations.Add(
+                    "$relative($($i + 1)): display name '$($display.Groups['name'].Value)' contains an " +
+                    'underscore - use dot notation (e.g. "Input.Null.Throws").')
+            }
         }
     }
 }

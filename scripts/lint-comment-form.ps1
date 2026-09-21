@@ -12,10 +12,18 @@
 
     Depth comes from indentation rather than brace counting, which
     CSharpier guarantees: a namespace body is indented four, a type body
-    eight. So a `//` run indented eight or more is inside a type or member.
-    Trailing comments on a code line are single comments and never join a
-    run. Comment detection is string-aware (`//` inside a literal is not a
-    comment; raw `"""`, verbatim `@"`, and interpolated strings do not leak).
+    eight. So a `//` run indented eight or more is inside a type or member;
+    runs indented less (file headers, notes between namespace members) are
+    outside the rule by construction. This relies on space indentation
+    (enforced by .editorconfig); tab-indented files would never reach the
+    threshold. Trailing comments on a code line are single comments and
+    never join a run. Comment detection is string-aware (`//` inside a
+    literal is not a comment; raw `"""`, verbatim `@"`, and interpolated
+    strings do not leak). Known simplification: interpolation holes
+    (`{ ... }`) inside single-line interpolated strings are not tracked, so
+    a quote inside a hole ends the literal early - the tail is then scanned
+    as code (it can only ever produce a trailing comment, which never
+    joins a run).
 
     Run standalone, from CI (dotnet.yml), or from the pre-commit hook
     (which passes only staged paths).
@@ -116,50 +124,60 @@ function Get-CSharpComments {
             }
         }
 
-        if ($c -eq '"' -and ($i + 2) -lt $len -and $Text[$i + 1] -eq '"' -and $Text[$i + 2] -eq '"') {
-            # Raw string: the opening run length (3+) is the closing length.
-            $quoteCount = 0
+        if ($c -eq '"' -or $c -eq '$' -or $c -eq '@') {
+            # String literal start: consume the `$`/`@` prefix run (any
+            # order, e.g. $" / @" / $@" / $$"), then the quote run. Raw
+            # strings (quote run of 3+) close on a run at least as long and
+            # treat newlines as content; verbatim (@ in prefix) close on an
+            # undoubled quote and also span lines; plain/interpolated
+            # single-quote-run strings are line-bounded. An unterminated
+            # literal must not swallow the file, so the line-bounded forms
+            # stop at the newline and scanning resumes as code.
             $j = $i
+            $verbatim = $false
+            while ($j -lt $len -and ($Text[$j] -eq '$' -or $Text[$j] -eq '@')) {
+                if ($Text[$j] -eq '@') { $verbatim = $true }
+                $j++
+            }
+            if ($j -ge $len -or $Text[$j] -ne '"') {
+                # Prefix chars with no quote: ordinary code, advance one.
+                $i++
+                continue
+            }
+            $quoteCount = 0
             while ($j -lt $len -and $Text[$j] -eq '"') { $quoteCount++; $j++ }
-            $i = $j
-            while ($i -lt $len) {
-                if ($Text[$i] -eq '"') {
-                    $endCount = 0
-                    $k = $i
-                    while ($k -lt $len -and $Text[$k] -eq '"') { $endCount++; $k++ }
-                    if ($endCount -ge $quoteCount) { $i = $k; break }
-                    $i = $k
-                    continue
-                }
-                $i++
+            if ($quoteCount -eq 2) {
+                # `""` is the empty string token.
+                $i = $j
+                continue
             }
-            continue
-        }
-
-        if (($c -eq '$' -or $c -eq '@') -and ($i + 1) -lt $len -and $Text[$i + 1] -eq '"') {
-            # Interpolated ($") or verbatim (@" or $@") string; only verbatim
-            # and raw-interpolated forms span lines, and "" is an escaped
-            # quote inside them. Single-line forms end at the next quote or
-            # newline either way; escapes other than "" do not apply.
-            $i += 2
-            while ($i -lt $len) {
-                if ($Text[$i] -eq '"') {
-                    if (($i + 1) -lt $len -and $Text[$i + 1] -eq '"') { $i += 2; continue }
+            if ($quoteCount -ge 3) {
+                $i = $j
+                while ($i -lt $len) {
+                    if ($Text[$i] -eq '"') {
+                        $endCount = 0
+                        $k = $i
+                        while ($k -lt $len -and $Text[$k] -eq '"') { $endCount++; $k++ }
+                        if ($endCount -ge $quoteCount) { $i = $k; break }
+                        $i = $k
+                        continue
+                    }
                     $i++
-                    break
                 }
-                if ($Text[$i] -eq "`n" -and $Text[$i - 1] -ne '@') {
-                    # A regular interpolated string cannot span lines; stop so
-                    # code after a broken literal is still scanned.
-                    break
-                }
-                $i++
+                continue
             }
-            continue
-        }
-
-        if ($c -eq '"') {
-            $i++
+            $i = $j
+            if ($verbatim) {
+                while ($i -lt $len) {
+                    if ($Text[$i] -eq '"') {
+                        if (($i + 1) -lt $len -and $Text[$i + 1] -eq '"') { $i += 2; continue }
+                        $i++
+                        break
+                    }
+                    $i++
+                }
+                continue
+            }
             while ($i -lt $len) {
                 if ($Text[$i] -eq '\' -and ($i + 1) -lt $len) { $i += 2; continue }
                 if ($Text[$i] -eq '"') { $i++; break }

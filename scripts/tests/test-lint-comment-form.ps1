@@ -136,6 +136,8 @@ namespace X
         {
             const string a = "https://example.local//path";
             const string b = @"verbatim // still a string
+// these two lines look
+// like a comment run
 continues here";
             return a + b;
         }
@@ -145,7 +147,60 @@ continues here";
     $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo, '-Paths', 'src/strings.cs')
     Assert-Equal 0 $run.ExitCode 'string contents are not comments'
 
-    # 8. Full-scan mode with no C# files fails loudly.
+    # 8. Raw interpolated ($$""") and raw (""") multi-line strings do not
+    # leak comment-looking content lines, and scanning resumes after them.
+    $raw = (Join-Path $repo 'src/raw.cs') -replace '\\', '/'
+    Write-TestFile -Path $raw -Content @'
+namespace X
+{
+    internal sealed class A
+    {
+        internal string Read(int n)
+        {
+            var a = $$"""
+// these lines look
+// like comment runs
+""";
+            var b = $@"{$n}
+// more fake runs
+";
+            return a + b;
+        }
+
+        internal void After()
+        {
+            // real run
+            // must still be flagged
+            System.Console.WriteLine(1);
+        }
+    }
+}
+'@
+    $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo, '-Paths', 'src/raw.cs')
+    Assert-True ($run.ExitCode -ne 0) 'raw strings are skipped as strings'
+    Assert-True (@($run.Output | Where-Object { $_ -match 'raw\.cs\(9\)|raw\.cs\(10\)|raw\.cs\(14\)|raw\.cs\(15\)' }).Count -eq 0) 'raw string content is not flagged'
+    Assert-OutputContains -Run $run -Pattern 'raw\.cs\(19\)' 'scanning resumes after a raw string'
+
+    # 9. The empty string token does not desynchronize the scanner.
+    $emptyString = (Join-Path $repo 'src/empty.cs') -replace '\\', '/'
+    Write-TestFile -Path $emptyString -Content @'
+namespace X
+{
+    internal sealed class A
+    {
+        internal string Read()
+        {
+            const string a = "";
+            const string b = "x";
+            return a + b; // trailing fine
+        }
+    }
+}
+'@
+    $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $repo, '-Paths', 'src/empty.cs')
+    Assert-Equal 0 $run.ExitCode 'empty string token passes'
+
+    # 10. Full-scan mode with no C# files fails loudly.
     $empty = Join-Path $repo 'nowhere'
     $run = Invoke-Pwsh -ScriptPath $linter -Arguments @('-RepoRoot', $empty)
     Assert-True ($run.ExitCode -ne 0) 'empty scan fails loudly'
