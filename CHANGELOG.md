@@ -8,6 +8,13 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Session-event mapping (M3.3): every v2 server session fact —
+  authentication, room/spectator join, reconnection, leaves, the typed
+  failure family (`RoomJoinFailed`, `SpectatorJoinFailed`,
+  `ReconnectionFailed`), and generic errors — routes and decodes into typed
+  session events for the state machine. The routing table now covers the
+  full v2 server message set (spectator and authority broadcasts included);
+  unknown types stay forward-compatible events.
 - Connection core: injectable monotonic clock (`ISignalFishClock`) and a
   connection state machine with Rust-client-parity phase tracking, room
   membership (role/player/room/code as one invariant), and fail-closed

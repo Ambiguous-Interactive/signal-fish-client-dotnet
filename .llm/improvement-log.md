@@ -9,6 +9,30 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-21 - session 012: M3.3 v2 session-fact wire mapping + wire-truth audit
+
+- Trigger: PLAN M3.3 (inbound payload decode -> SessionEvent) exposed two
+  wire-truth classes the golden corpus could not catch (corpus has no
+  Failed/spectator frames and a placeholder-only RoomJoined).
+- Findings: (1) routing-table completeness needs an independent source (the
+  server AsyncAPI spec) — kind sets derived from samples alone silently
+  strand session facts as `UnknownMessage` (the whole `*Failed`/spectator
+  family was unroutable). (2) `Guid.Parse` parity for hand-rolled UUID text
+  decode has three trap classes: field big-endianity (first three groups
+  are MSB-first but serialize little-endian into the binary Guid), group
+  boundaries (8-4-4-4-12, hyphens at 8/13/18/23 — the third hex group sits
+  at 19, not 18), and the -1 error sentinel aliasing an all-FFFF field
+  (validate each pair, never OR combined signed ints). (3) required-field
+  enforcement needs per-field seen flags — `default(Guid)` is a valid
+  value, absence is not. (4) 0 B allocation gates must scope by path:
+  join mapping legitimately allocates the membership's room-code string
+  (cold); payload-less session facts (per-frame traffic) stay 0 B.
+- Applied: mapper + routing tests data-driven from spec-shaped frames;
+  `TryReadGuid` pinned against `Guid.Parse` as oracle; fence semantics
+  unchanged; appended MessageKinds keep ordinals stable (fuzz seeds).
+- Open: fold (2) into json-serialization skill when next edited (300-line
+  cap).
+
 ## 2026-09-21 - session 012: PR #30 feedback verification + sentinel-sweep leftovers
 
 - Trigger: request to re-fetch all PR #30/#27 feedback (human + bugbot),
