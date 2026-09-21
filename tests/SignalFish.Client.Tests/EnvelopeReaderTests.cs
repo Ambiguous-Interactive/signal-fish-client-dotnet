@@ -356,7 +356,7 @@ namespace SignalFish.Client.Tests
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.DecodeFailed), name);
             Assert.That(ev.Error, Is.EqualTo(expectedError), name);
             Assert.That(ev.ErrorOffset, Is.InRange(0, Math.Max(0, wire.Length)), name);
-            Assert.That(ev.Message, Is.EqualTo(MessageKind.None), name);
+            Assert.That(ev.Message, Is.EqualTo(default(MessageKind)), name);
         }
 
         private static IEnumerable<TestCaseData> MalformedCorpus()

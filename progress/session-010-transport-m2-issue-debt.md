@@ -55,8 +55,36 @@ design + tests; #26 and #20 triaged with status comments.
   fixed and re-verified.
 - Mapping RED: planted `case 4007 → Unknown` in `TransportClose.MapCode` →
   data-driven loopback suite failed; reverted → green.
-- GREEN: 262 tests × net8.0 + net10.0 (32 new), CSharpier repo-wide,
+- GREEN: 265 tests × net8.0 + net10.0 (35 new), CSharpier repo-wide,
   zero-deps + LINQ-ban lints, `-warnaserror` builds on both TFMs.
+
+## Bugbot round (2 findings, both verified red before the fix)
+
+- **High — dispose during connect leaked the socket**: `DisposeAsync`
+  racing the client-config probe let a socket be created *after* disposal
+  and upgraded (leaking a live connection). Fix: `ThrowIfDisposed()` guards
+  the upgrade; any socket reaching the catch is disposed. The regression
+  test parks the connect in the probe via a server-side gate, disposes,
+  then verifies no socket reached the wire — or that the server-side
+  connection closes promptly. Red check mattered: the first version of the
+  test passed against the bug (the post-connect CAS branch also throws ODE),
+  so the leak assertion was strengthened until it caught it.
+- **Medium — probe cap vs pool buckets**: the receive cap was enforced
+  against the rented array length, but `ArrayPool.Rent(5000)` returns an
+  8192-byte bucket, so over-cap messages slipped through after one growth.
+  Fix: usable capacity is clamped to `_maxReceiveBytes` at rent and growth.
+  Pinned by a boundary pair: exactly 5000 bytes delivers; 5001 closes 1009
+  (fails without the clamp, verified).
+
+## Final state
+
+- PR #27: all 11 CI checks green (dotnet matrix x2 OS x2 TFM, LLM-context
+  lint, markdownlint, spell, link, mkdocs, Bugbot re-review clean); both
+  Bugbot findings replied to with fix evidence; #25/#19/#24 closed;
+  #26/#20 triaged in comments. 265 tests × net8.0 + net10.0 green.
+- CI time: PR cells unchanged-to-faster (tool-restore dedupe); Dependabot
+  and the fuzz cache live outside PR CI; coverage unchanged (265 vs 230
+  tests, strictly additive).
 
 ## Notes for the next session
 

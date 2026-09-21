@@ -1,5 +1,7 @@
 namespace SignalFish.Client.Protocol
 {
+    using System;
+
     /// <summary>
     /// Bounded reason codes for a <see cref="EnvelopeEventKind.DecodeFailed"/>
     /// event. The decoder is total: malformed input produces one of these
@@ -7,7 +9,10 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     public enum DecodeError : byte
     {
-        /// <summary>No failure.</summary>
+        /// <summary>Sentinel for <c>default(DecodeError)</c>; no failure.</summary>
+        [Obsolete(
+            "This value only exists so the enum default (0) is not an error. Compare against default(DecodeError) instead."
+        )]
         None = 0,
 
         /// <summary>The input ended before a complete frame was read.</summary>

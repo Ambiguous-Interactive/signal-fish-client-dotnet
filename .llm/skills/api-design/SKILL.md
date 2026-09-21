@@ -87,12 +87,25 @@ pattern when the team adopts one:
 - **No `var`** (IDE0008): every local declares its type explicitly, including
   `foreach` control variables and `out var` arguments.
 - **`using` directives go inside the namespace** (IDE0065).
-- **Enum value 0 is always a sentinel named `None` (or `Unknown`), never a
-  real value.** `default(SomeEnum)` must not be mistakable for valid data.
-  Mark the sentinel `[Obsolete]` when constructing it explicitly is a bug
-  (e.g. `EnvelopeEventKind.None`); leave it usable without the attribute
-  when comparing against it is the sanctioned way to detect "absence"
-  (e.g. `MessageKind.None`, `DecodeError.None`).
+- **Enum value 0 is always a non-valid `None` sentinel, marked
+  `[Obsolete]` — project-wide, no exceptions** (`EnvelopeEventKind` set the
+  pattern). Reference the sentinel only as `default(TEnum)`; a named
+  reference fails the build (`-warnaserror` CS0618), which is the point:
+  `default(...)` vs valid values are compiler-distinguishable. Shape public
+  APIs so callers never need the sentinel's name — return `bool` + `out`
+  value (`TryAdmit`) instead of a "None means OK" status enum; refuse
+  default-carrying payloads at encode time (`GameDataMessage`) instead of
+  encoding them.
+- **No `this.` qualification; private fields are `_camelCase`.** The
+  underscore prefix is what makes unqualified access unambiguous. Note:
+  Roslyn's `EnforceCodeStyleInBuild` does NOT enforce IDE0003 or naming
+  rules (IDE1006) — those are enforced IDE-side by `.editorconfig` and at
+  build time by `scripts/lint-no-this-qualification.ps1` (hook + CI).
+- **Linter precedent for banned constructs:** when an analyzer package would
+  break the zero-PackageReference rule or Roslyn cannot enforce a rule at
+  build time, add a PowerShell linter (`lint-no-linq.ps1`,
+  `lint-no-this-qualification.ps1`) with a self-test, hook step, and CI
+  step — the repo's established enforcement shape.
 
 ## When NOT to Use
 

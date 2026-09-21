@@ -146,6 +146,19 @@ if ($linqTargets.Count -gt 0) {
     }
 }
 
+$thisTargets = @($staged | Where-Object { $_ -match '\.cs$' })
+if ($thisTargets.Count -gt 0) {
+    Write-Host 'pre-commit: enforcing the this.-qualification ban...'
+    $thisLinter = Join-Path $repoRoot 'scripts/lint-no-this-qualification.ps1'
+    $result = Invoke-LintStep -ScriptPath $thisLinter -Params @{ RepoRoot = $repoRoot; Paths = $thisTargets }
+    if ($result.ExitCode -ne 0) {
+        foreach ($line in $result.Output) { Write-Host "    | $line" }
+        Write-Host 'pre-commit: no-this-qualification lint failed. Run:' -ForegroundColor Red
+        Write-Host '  pwsh -NoProfile -File scripts/lint-no-this-qualification.ps1' -ForegroundColor Red
+        $failed = $true
+    }
+}
+
 if ($formattableFiles.Count -gt 0) {
     Write-Host 'pre-commit: checking C# formatting (CSharpier)...'
     & dotnet tool restore --verbosity quiet 2>&1 | Out-Null

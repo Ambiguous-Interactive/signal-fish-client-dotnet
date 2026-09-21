@@ -114,6 +114,18 @@ the outcome in [improvement-log.md](./improvement-log.md) (see rule 15).
     docs. Lead with *why*, then *how*; no filler. `CHANGELOG.md` follows
     [keep-a-changelog](https://keepachangelog.com/en/1.1.0/) + semver and
     lists **only user-visible changes** — never CI, test, or tooling churn.
+17. **Every enum's `0` value is a non-valid `None` sentinel, marked
+    `[Obsolete]`** (see
+    [api-design](./skills/api-design/SKILL.md) for the pattern): reference
+    the sentinel only as `default(TEnum)` — a named reference fails the
+    build under `-warnaserror`. This makes `default(...)` vs valid values
+    compiler-distinguishable (`default(GameDataClass)` must never mean
+    "reliable").
+18. **No `this.` qualification; private fields are `_camelCase`.** The
+    underscore prefix is what makes unqualified access unambiguous. The
+    `this.` ban is enforced by `scripts/lint-no-this-qualification.ps1`
+    (IDE0003 is not enforced at build time by Roslyn — the lint script is
+    the gate, wired into hook + CI).
 
 ## Protocol Essentials
 
@@ -148,6 +160,7 @@ guidance.
 | Private fields | `_camelCase` | `_eventQueue` |
 | Locals / parameters | camelCase | `roomCode` |
 | Constants | PascalCase | `DefaultPort` |
+| `this.` qualification | banned | `_count`, never `this._count` |
 | Files | one public type per file, name = type | `ITransport.cs` |
 | Tests | `<Type>Tests` / `Method_Scenario_Expectation` | `ClientTests.JoinRoom_WithoutCode_CreatesRoom` |
 | Skills | lowercase verb-noun kebab-case | `create-test` |

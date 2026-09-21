@@ -112,7 +112,7 @@ namespace SignalFish.Client.FuzzTests
 
             if (decoded.Kind == EnvelopeEventKind.DecodeFailed)
             {
-                if (decoded.Error == DecodeError.None)
+                if (decoded.Error == default(DecodeError))
                 {
                     throw new InvalidOperationException(
                         "DecodeFailed event without a decode error."
@@ -129,14 +129,19 @@ namespace SignalFish.Client.FuzzTests
                 return;
             }
 
-            if (decoded.Error != DecodeError.None)
+            if (decoded.Error != default(DecodeError))
             {
                 throw new InvalidOperationException("Non-failed event carries a decode error.");
             }
 
-            if (decoded.Kind == EnvelopeEventKind.Message && decoded.Message == MessageKind.None)
+            if (
+                decoded.Kind == EnvelopeEventKind.Message
+                && decoded.Message == default(MessageKind)
+            )
             {
-                throw new InvalidOperationException("Message event routed to MessageKind.None.");
+                throw new InvalidOperationException(
+                    "Message event routed to default(MessageKind)."
+                );
             }
 
             if (decoded.Kind == EnvelopeEventKind.Message && decoded.TypeText is not null)
@@ -235,7 +240,7 @@ namespace SignalFish.Client.FuzzTests
                     if (
                         decoded.Kind != EnvelopeEventKind.Message
                         || decoded.Message != MessageKind.Ping
-                        || decoded.Error != DecodeError.None
+                        || decoded.Error != default(DecodeError)
                         || !decoded.Data.IsEmpty
                     )
                     {
@@ -287,7 +292,11 @@ namespace SignalFish.Client.FuzzTests
                 ? cursor.JsonSeed()
                 : TrimJsonWhitespace(cursor.RawSlice());
 
-            GameDataClass classification = (GameDataClass)(cursor.Byte() % 3u);
+            // Sample the valid classes only (1..3): the default (0) is the
+            // non-valid None sentinel and the writer refuses it, so mapping
+            // the raw byte modulo the valid range keeps the classified-
+            // delivery paths (reliable/latest/volatile) uniformly reachable.
+            GameDataClass classification = (GameDataClass)(1u + (cursor.Byte() % 3u));
             uint key = cursor.OptionalUint() ?? 0u;
             return new GameDataMessage(payload, classification, key);
         }
@@ -340,7 +349,7 @@ namespace SignalFish.Client.FuzzTests
             if (
                 decoded.Kind != EnvelopeEventKind.Message
                 || decoded.Message != expectedKind
-                || decoded.Error != DecodeError.None
+                || decoded.Error != default(DecodeError)
             )
             {
                 throw new InvalidOperationException(

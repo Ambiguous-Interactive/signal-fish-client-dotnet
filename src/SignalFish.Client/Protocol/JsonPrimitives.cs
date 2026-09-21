@@ -34,14 +34,20 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     internal enum JsonMemberState : byte
     {
+        /// <summary>Sentinel for <c>default(JsonMemberState)</c>; not a walk outcome.</summary>
+        [Obsolete(
+            "This value only exists so the enum default (0) is not a walk outcome. Use the walk outcomes defined below."
+        )]
+        None = 0,
+
         /// <summary>A member (or the next member) is available.</summary>
-        Member = 0,
+        Member = 1,
 
         /// <summary>The object closed cleanly.</summary>
-        EndObject = 1,
+        EndObject = 2,
 
         /// <summary>Malformed input (bounded; the walker must stop).</summary>
-        Error = 2,
+        Error = 3,
     }
 
     /// <summary>
@@ -115,7 +121,7 @@ namespace SignalFish.Client.Protocol
             }
 
             _pos++;
-            return DecodeError.None;
+            return default(DecodeError);
         }
 
         /// <summary>
@@ -129,7 +135,7 @@ namespace SignalFish.Client.Protocol
             hasEscapes = false;
 
             DecodeError err = Expect((byte)'"');
-            if (err != DecodeError.None)
+            if (err != default(DecodeError))
             {
                 return err;
             }
@@ -148,11 +154,11 @@ namespace SignalFish.Client.Protocol
                     case (byte)'"':
                         _pos++;
                         raw = start.._pos;
-                        return DecodeError.None;
+                        return default(DecodeError);
                     case (byte)'\\':
                         hasEscapes = true;
                         err = ScanEscape();
-                        if (err != DecodeError.None)
+                        if (err != default(DecodeError))
                         {
                             return err;
                         }
@@ -218,7 +224,7 @@ namespace SignalFish.Client.Protocol
                         : _buf[_pos] == (byte)'f' ? "false"
                         : "null"
                     );
-                    if (literal == DecodeError.None)
+                    if (literal == default(DecodeError))
                     {
                         raw = start.._pos;
                     }
@@ -231,7 +237,7 @@ namespace SignalFish.Client.Protocol
                 {
                     int start = _pos;
                     DecodeError number = ScanNumber();
-                    if (number == DecodeError.None)
+                    if (number == default(DecodeError))
                     {
                         raw = start.._pos;
                     }
@@ -256,7 +262,7 @@ namespace SignalFish.Client.Protocol
         internal JsonMemberState BeginObject()
         {
             SkipWhitespace();
-            if (Expect((byte)'{') != DecodeError.None)
+            if (Expect((byte)'{') != default(DecodeError))
             {
                 return JsonMemberState.Error;
             }
@@ -281,19 +287,19 @@ namespace SignalFish.Client.Protocol
         {
             keyRaw = default;
             valueRaw = default;
-            if (ScanStringRaw(out keyRaw, out _) != DecodeError.None)
+            if (ScanStringRaw(out keyRaw, out _) != default(DecodeError))
             {
                 return JsonMemberState.Error;
             }
 
             SkipWhitespace();
-            if (Expect((byte)':') != DecodeError.None)
+            if (Expect((byte)':') != default(DecodeError))
             {
                 return JsonMemberState.Error;
             }
 
             SkipWhitespace();
-            return ScanValueRaw(RootMemberDepth, MaxDepth, out valueRaw) == DecodeError.None
+            return ScanValueRaw(RootMemberDepth, MaxDepth, out valueRaw) == default(DecodeError)
                 ? JsonMemberState.Member
                 : JsonMemberState.Error;
         }
@@ -471,7 +477,7 @@ namespace SignalFish.Client.Protocol
 
             JsonScanner scanner = new JsonScanner(data.Span.Slice(s.Offset, s.Length));
             scanner.SkipWhitespace();
-            if (scanner.Expect((byte)'[') != DecodeError.None)
+            if (scanner.Expect((byte)'[') != default(DecodeError))
             {
                 return false;
             }
@@ -489,7 +495,7 @@ namespace SignalFish.Client.Protocol
                     scanner.SkipWhitespace();
                     if (
                         scanner.ScanStringRaw(out Range element, out bool hasEscapes)
-                        != DecodeError.None
+                        != default(DecodeError)
                     )
                     {
                         return false;
@@ -768,7 +774,7 @@ namespace SignalFish.Client.Protocol
             raw = default;
             int start = _pos;
             DecodeError err = Expect((byte)'[');
-            if (err != DecodeError.None)
+            if (err != default(DecodeError))
             {
                 return err;
             }
@@ -778,14 +784,14 @@ namespace SignalFish.Client.Protocol
             {
                 _pos++;
                 raw = start.._pos;
-                return DecodeError.None;
+                return default(DecodeError);
             }
 
             while (true)
             {
                 SkipWhitespace();
                 err = ScanValue(depth + 1, maxDepth);
-                if (err != DecodeError.None)
+                if (err != default(DecodeError))
                 {
                     return err;
                 }
@@ -804,7 +810,7 @@ namespace SignalFish.Client.Protocol
                     case (byte)']':
                         _pos++;
                         raw = start.._pos;
-                        return DecodeError.None;
+                        return default(DecodeError);
                     default:
                         return DecodeError.InvalidToken;
                 }
@@ -820,7 +826,7 @@ namespace SignalFish.Client.Protocol
             raw = default;
             int start = _pos;
             DecodeError err = Expect((byte)'{');
-            if (err != DecodeError.None)
+            if (err != default(DecodeError))
             {
                 return err;
             }
@@ -830,28 +836,28 @@ namespace SignalFish.Client.Protocol
             {
                 _pos++;
                 raw = start.._pos;
-                return DecodeError.None;
+                return default(DecodeError);
             }
 
             while (true)
             {
                 // Member key.
                 err = ScanStringRaw(out _, out _);
-                if (err != DecodeError.None)
+                if (err != default(DecodeError))
                 {
                     return err;
                 }
 
                 SkipWhitespace();
                 err = Expect((byte)':');
-                if (err != DecodeError.None)
+                if (err != default(DecodeError))
                 {
                     return err;
                 }
 
                 SkipWhitespace();
                 err = ScanValue(depth + 1, maxDepth);
-                if (err != DecodeError.None)
+                if (err != default(DecodeError))
                 {
                     return err;
                 }
@@ -871,7 +877,7 @@ namespace SignalFish.Client.Protocol
                     case (byte)'}':
                         _pos++;
                         raw = start.._pos;
-                        return DecodeError.None;
+                        return default(DecodeError);
                     default:
                         return DecodeError.InvalidToken;
                 }
@@ -902,7 +908,7 @@ namespace SignalFish.Client.Protocol
                 case (byte)'n':
                 case (byte)'r':
                 case (byte)'t':
-                    return DecodeError.None;
+                    return default(DecodeError);
                 case (byte)'u':
                     for (int i = 0; i < 4; i++)
                     {
@@ -919,7 +925,7 @@ namespace SignalFish.Client.Protocol
                         _pos++;
                     }
 
-                    return DecodeError.None;
+                    return default(DecodeError);
                 default:
                     return DecodeError.InvalidToken;
             }
@@ -943,7 +949,7 @@ namespace SignalFish.Client.Protocol
                 _pos++;
             }
 
-            return DecodeError.None;
+            return default(DecodeError);
         }
 
         private DecodeError ScanNumber()
@@ -1023,7 +1029,7 @@ namespace SignalFish.Client.Protocol
                 }
             }
 
-            return DecodeError.None;
+            return default(DecodeError);
         }
 
         /// <summary>

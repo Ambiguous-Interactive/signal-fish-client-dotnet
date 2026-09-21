@@ -81,7 +81,7 @@ namespace SignalFish.Client.Protocol
             DecodeError err = scanner.Expect((byte)'{');
             bool firstMember = true;
             bool rootClosed = false;
-            while (err == DecodeError.None && !rootClosed)
+            while (err == default(DecodeError) && !rootClosed)
             {
                 scanner.SkipWhitespace();
                 if (firstMember && scanner.Peek == (byte)'}')
@@ -92,14 +92,14 @@ namespace SignalFish.Client.Protocol
                 }
 
                 err = scanner.ScanStringRaw(out Range keyRaw, out bool keyHasEscapes);
-                if (err != DecodeError.None)
+                if (err != default(DecodeError))
                 {
                     break;
                 }
 
                 scanner.SkipWhitespace();
                 err = scanner.Expect((byte)':');
-                if (err != DecodeError.None)
+                if (err != default(DecodeError))
                 {
                     break;
                 }
@@ -125,8 +125,8 @@ namespace SignalFish.Client.Protocol
                     }
 
                     err = scanner.ScanStringRaw(out typeRaw, out typeHasEscapes);
-                    typeSeen = err == DecodeError.None;
-                    if (err != DecodeError.None)
+                    typeSeen = err == default(DecodeError);
+                    if (err != default(DecodeError))
                     {
                         break;
                     }
@@ -142,8 +142,8 @@ namespace SignalFish.Client.Protocol
                     if (scanner.Peek == (byte)'{')
                     {
                         err = scanner.ScanObject(RootMemberDepth, MaxDepth, out dataRaw);
-                        dataSeen = err == DecodeError.None;
-                        if (err != DecodeError.None)
+                        dataSeen = err == default(DecodeError);
+                        if (err != default(DecodeError))
                         {
                             break;
                         }
@@ -152,9 +152,9 @@ namespace SignalFish.Client.Protocol
                     {
                         // JSON null payload: tolerated as absent.
                         err = scanner.ScanLiteral("null");
-                        dataSeen = err == DecodeError.None;
-                        dataIsNull = err == DecodeError.None;
-                        if (err != DecodeError.None)
+                        dataSeen = err == default(DecodeError);
+                        dataIsNull = err == default(DecodeError);
+                        if (err != default(DecodeError))
                         {
                             break;
                         }
@@ -169,7 +169,7 @@ namespace SignalFish.Client.Protocol
                 {
                     // Unknown field: validate and skip (forward compatibility).
                     err = scanner.ScanValue(RootMemberDepth, MaxDepth);
-                    if (err != DecodeError.None)
+                    if (err != default(DecodeError))
                     {
                         break;
                     }
@@ -192,7 +192,7 @@ namespace SignalFish.Client.Protocol
                 }
             }
 
-            if (err != DecodeError.None)
+            if (err != default(DecodeError))
             {
                 return Fail(frame, err, scanner.Position);
             }
@@ -229,7 +229,7 @@ namespace SignalFish.Client.Protocol
                     frame,
                     data,
                     typeText: null,
-                    DecodeError.None,
+                    default(DecodeError),
                     errorOffset: 0
                 );
             }
@@ -237,11 +237,11 @@ namespace SignalFish.Client.Protocol
             // Unknown type: forward-compatible event carrying the raw frame.
             return new EnvelopeEvent(
                 EnvelopeEventKind.UnknownMessage,
-                MessageKind.None,
+                default(MessageKind),
                 frame,
                 data,
                 typeText: DecodeTypeText(typeInner, typeHasEscapes),
-                DecodeError.None,
+                default(DecodeError),
                 errorOffset: 0
             );
         }
@@ -253,7 +253,7 @@ namespace SignalFish.Client.Protocol
         ) =>
             new EnvelopeEvent(
                 EnvelopeEventKind.DecodeFailed,
-                MessageKind.None,
+                default(MessageKind),
                 frame,
                 data: default,
                 typeText: null,

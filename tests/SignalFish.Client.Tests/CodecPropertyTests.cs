@@ -115,7 +115,7 @@ namespace SignalFish.Client.Tests
                     JsonScanner scanner = new JsonScanner(rendered);
                     DecodeError err = scanner.ScanStringRaw(out Range raw, out bool hasEscapes);
                     (int offset, int length) = raw.GetOffsetAndLength(rendered.Length);
-                    if (err != DecodeError.None || offset != 0 || length != rendered.Length)
+                    if (err != default(DecodeError) || offset != 0 || length != rendered.Length)
                     {
                         return false;
                     }
@@ -146,7 +146,7 @@ namespace SignalFish.Client.Tests
                         out Range raw
                     );
                     (int offset, int length) = raw.GetOffsetAndLength(rendered.Length);
-                    return err == DecodeError.None && offset == 0 && length == rendered.Length;
+                    return err == default(DecodeError) && offset == 0 && length == rendered.Length;
                 }
             );
         }
@@ -195,7 +195,7 @@ namespace SignalFish.Client.Tests
                     EnvelopeEvent ev = EnvelopeReader.Decode(frame);
                     return ev.Kind == EnvelopeEventKind.Message
                         && ev.Message == kind
-                        && ev.Error == DecodeError.None
+                        && ev.Error == default(DecodeError)
                         && ev.TypeText is null
                         && ev.Data.Span.SequenceEqual(data);
                 }
@@ -218,8 +218,8 @@ namespace SignalFish.Client.Tests
                     byte[] frame = buffer.WrittenSpan.ToArray();
                     EnvelopeEvent ev = EnvelopeReader.Decode(frame);
                     return ev.Kind == EnvelopeEventKind.UnknownMessage
-                        && ev.Message == MessageKind.None
-                        && ev.Error == DecodeError.None
+                        && ev.Message == default(MessageKind)
+                        && ev.Error == default(DecodeError)
                         && ev.TypeText == "Zz" + typeName
                         && ev.Data.IsEmpty;
                 }
@@ -233,13 +233,13 @@ namespace SignalFish.Client.Tests
             EnvelopeEvent ev = EnvelopeReader.Decode(frame);
             return ev.Kind switch
             {
-                EnvelopeEventKind.Message => ev.Error == DecodeError.None
-                    && ev.Message != MessageKind.None
+                EnvelopeEventKind.Message => ev.Error == default(DecodeError)
+                    && ev.Message != default(MessageKind)
                     && ev.TypeText is null,
-                EnvelopeEventKind.UnknownMessage => ev.Error == DecodeError.None
-                    && ev.Message == MessageKind.None
+                EnvelopeEventKind.UnknownMessage => ev.Error == default(DecodeError)
+                    && ev.Message == default(MessageKind)
                     && ev.TypeText is not null,
-                EnvelopeEventKind.DecodeFailed => ev.Error != DecodeError.None
+                EnvelopeEventKind.DecodeFailed => ev.Error != default(DecodeError)
                     && ev.ErrorOffset >= 0
                     && ev.ErrorOffset <= frame.Length,
                 _ => false,
@@ -398,7 +398,7 @@ namespace SignalFish.Client.Tests
             List<MessageKind> kinds = new List<MessageKind>();
             foreach (MessageKind kind in Enum.GetValues<MessageKind>())
             {
-                if (kind != MessageKind.None)
+                if (kind != default(MessageKind))
                 {
                     kinds.Add(kind);
                 }
