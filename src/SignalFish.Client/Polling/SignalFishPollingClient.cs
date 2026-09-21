@@ -36,6 +36,13 @@ namespace SignalFish.Client.Polling
         /// <summary>Gets the confirmed membership; absent outside a confirmed room.</summary>
         public RoomMembership Membership => _machine.Membership;
 
+        /// <summary>
+        /// Gets one coherent snapshot of the session state (phase fields,
+        /// membership identity, latest reconnection token) — prefer it
+        /// whenever multiple fields must describe the same instant.
+        /// </summary>
+        public ClientSnapshot Snapshot => _machine.CreateSnapshot();
+
         /// <summary>Gets the in-flight directed room operation, if any.</summary>
         public PendingRoomOperation PendingOperation => _machine.PendingOperation;
 

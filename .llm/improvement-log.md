@@ -9,6 +9,21 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-22 - session 017: M3.5 snapshot + SSOT/KISS/SOLID doctrine (issue #23)
+
+- Trigger: issue #23 (aggressive SSOT/KISS/SOLID) + M3.5. Audit found the
+  doctrine already structurally enforced (pointer-file rule, generated
+  index, server-wins fact chain, six convention lints) but never stated as
+  rules agents must apply.
+- Applied: "Design Principles" block added to `.llm/context.md`, each
+  principle bound to its existing enforcement (rule numbers, lints, truth
+  chain). New principle-level finding from M3.5: the reconnection-token
+  fact existed only in skills, not in code — capture it in
+  `ClientSnapshot.ReconnectionToken` with Rust-parity lifecycle (baseline
+  capture, reconnect rotation, spectator/leave/terminal clears, ToString
+  redaction).
+- Open: none.
+
 ## 2026-09-21 - session 014: issue-debt round (server spec adoption, test-name + comment-form gates)
 
 - Trigger: issue debt after M3.3/M3.4 groundwork (#34 new server spec,

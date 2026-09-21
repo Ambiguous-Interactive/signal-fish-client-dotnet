@@ -184,6 +184,24 @@ guidance.
 | Tests | `<Type>Tests` / PascalCase, no underscores | `ClientTests.JoinRoomWithoutCodeCreatesRoom` |
 | Skills | lowercase verb-noun kebab-case | `create-test` |
 
+## Design Principles
+
+Apply these to every change; each is enforced by the structure it names.
+
+- **SSOT (single source of truth)**: every fact or rule lives in exactly one
+  place. Truth chain for protocol facts: server docs win, then
+  [protocol-quick-reference](./references/protocol-quick-reference.md)
+  (updated to match), then skills, then code XML docs. Pointer files only
+  delegate here (rule 12); `skills/index.md` is generated (rule 13). When a
+  fact appears twice, delete one copy and link.
+- **KISS**: the simplest thing that passes red-green. No new abstraction,
+  test, script, or dependency without a demonstrated, recurring problem
+  (mirrors the Fix Philosophy in `PLAN.md`).
+- **SOLID**: depend on abstractions (`ITransport`, `ISignalFishClock`,
+  `IBoundedQueue`), never on sockets or concrete timers (rules 2, 10); one
+  type, one reason to change; open for extension via additive wire events,
+  closed against breaking the v2 floor (rules 5, 7).
+
 ## Agent-Specific Rules
 
 - **Single source of truth**: front-end pointer files only delegate here.

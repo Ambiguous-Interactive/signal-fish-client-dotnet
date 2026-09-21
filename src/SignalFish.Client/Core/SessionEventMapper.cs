@@ -122,7 +122,8 @@ namespace SignalFish.Client.Core
 
                 sessionEvent = SessionEvent.Joined(
                     kind,
-                    new RoomMembership(role, joined.PlayerId, joined.RoomId, joined.RoomCode)
+                    new RoomMembership(role, joined.PlayerId, joined.RoomId, joined.RoomCode),
+                    joined.ReconnectionToken
                 );
                 return true;
             }

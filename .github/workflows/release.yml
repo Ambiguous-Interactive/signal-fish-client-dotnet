@@ -1,8 +1,10 @@
 # Auto-release pipeline for signal-fish-client-dotnet
 #
-# Tag-driven only (v*): packs the library, publishes to GitHub Packages,
+# Tag-driven only (v*): packs the library, publishes to GitHub Packages
+# (always) and nuget.org (when the NUGET_API_KEY secret is populated),
 # and attaches the .nupkg/.snupkg to a GitHub Release as a no-auth
 # fallback. Never runs on branches or PRs, so PR CI time stays flat.
+# Operator runbook: docs/releasing.md.
 
 name: Release
 
@@ -24,6 +26,9 @@ jobs:
     name: Pack, publish, release
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # Empty when unset: the nuget.org step below skips itself.
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -64,6 +69,16 @@ jobs:
 
       # The .snupkg rides only on the GitHub Release: GitHub Packages has
       # no NuGet symbol-publish endpoint, so pushing it there fails.
+
+      # Optional: nuget.org publishing happens only when the NUGET_API_KEY
+      # secret is populated (see docs/releasing.md).
+      - name: Publish to NuGet.org
+        if: env.NUGET_API_KEY != ''
+        run: >
+          dotnet nuget push "dist/*.nupkg" "dist/*.snupkg"
+          --source https://api.nuget.org/v3/index.json
+          --api-key "$NUGET_API_KEY"
+          --skip-duplicate
 
       - name: Create GitHub release with package assets
         env:

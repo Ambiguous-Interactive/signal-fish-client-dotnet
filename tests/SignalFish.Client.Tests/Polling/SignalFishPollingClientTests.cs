@@ -167,6 +167,52 @@ namespace SignalFish.Client.Tests.Polling
         }
 
         [Test]
+        public async Task SnapshotTracksJoinedSessionAndClearsOnTerminal()
+        {
+            /*
+                M3.5 end-to-end: the coherent snapshot mirrors the machine
+                through a token-bearing join and clears whole at teardown —
+                the game-loop read never observes a half-applied fact.
+            */
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            string joinedLine = GoldenFixtures.ReadFirstLineOfType(
+                "v2-server-messages.jsonl",
+                "RoomJoined"
+            );
+            string joinedWire = joinedLine.Insert(
+                joinedLine.Length - 2,
+                ",\"reconnection_token\":\"tok-e2e-1\""
+            );
+            EnqueueWire(transport, joinedWire);
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            ClientSnapshot joined = client.Snapshot;
+            Assert.That(joined.Connected, Is.True);
+            Assert.That(joined.TransportReady, Is.True);
+            Assert.That(joined.Authenticated, Is.True);
+            Assert.That(joined.Role, Is.EqualTo(RoomRole.Player));
+            Assert.That(joined.PlayerId, Is.EqualTo(PlayerId));
+            Assert.That(joined.RoomId, Is.EqualTo(RoomId));
+            Assert.That(joined.RoomCode, Is.EqualTo(RoomCode));
+            Assert.That(joined.ReconnectionToken, Is.EqualTo("tok-e2e-1"));
+
+            // Server close delivered as a frame: consumed by the next poll.
+            transport.Abort(4000);
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+            Assert.That(client.Phase, Is.EqualTo(ConnectionPhase.Terminal));
+
+            ClientSnapshot terminal = client.Snapshot;
+            Assert.That(terminal.Connected, Is.False);
+            Assert.That(terminal.Role, Is.Null);
+            Assert.That(terminal.ReconnectionToken, Is.Null);
+        }
+
+        [Test]
         public async Task SpectatorJoinedCarriesSnapshotSubset()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =

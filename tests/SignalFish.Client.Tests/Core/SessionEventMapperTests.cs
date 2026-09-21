@@ -17,6 +17,8 @@ namespace SignalFish.Client.Tests.Core
     public class SessionEventMapperTests
     {
         private const string RoomCode = "ABC123";
+        private const string JoinToken = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+        private const string RotatedToken = "0d5c2f6a-9b1e-4c3d-8a7f-2e4b6d9c1a3f";
 
         /*
             Canonical frames. RoomJoined/Reconnected carry the full v2 field
@@ -210,6 +212,77 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
+        public void ReconnectionTokenDecodedWhenPresent()
+        {
+            /*
+                The reconnection token rides RoomJoined/Reconnected for v3+
+                deployments (server docs, docs/protocol.md); the v2 floor
+                captures it whenever the wire carries it — it is the
+                credential manual reconnection (M4) consumes.
+            */
+            (string Wire, string ExpectedToken)[] rows =
+            {
+                (FrameWithToken(RoomJoinedFrame, JoinToken), JoinToken),
+                (FrameWithToken(ReconnectedFrame, RotatedToken), RotatedToken),
+            };
+
+            foreach ((string wire, string expectedToken) in rows)
+            {
+                Assert.That(TryMapWire(wire, out SessionEvent sessionEvent), Is.True, wire);
+                Assert.That(sessionEvent.ReconnectionToken, Is.EqualTo(expectedToken));
+            }
+        }
+
+        [Test]
+        public void ReconnectionTokenAbsentOrNullMapsAsAbsent()
+        {
+            Assert.That(TryMapWire(RoomJoinedFrame, out SessionEvent absent), Is.True);
+            Assert.That(absent.ReconnectionToken, Is.Null);
+
+            Assert.That(
+                TryMapWire(FrameWithToken(RoomJoinedFrame, "null"), out SessionEvent explicitNull),
+                Is.True
+            );
+            Assert.That(explicitNull.ReconnectionToken, Is.Null);
+        }
+
+        [Test]
+        public void ReconnectionTokenMalformedFormsAreRejected()
+        {
+            string[] badWires =
+            {
+                // Repeated session-critical key: fail-closed.
+                FrameWithToken(FrameWithToken(ReconnectedFrame, JoinToken), RotatedToken),
+                // Wrong value type.
+                FrameWithToken(RoomJoinedFrame, "42"),
+                FrameWithToken(RoomJoinedFrame, "true"),
+            };
+
+            foreach (string wire in badWires)
+            {
+                Assert.That(TryMapWire(wire, out _), Is.False, wire);
+            }
+        }
+
+        [Test]
+        public void SpectatorJoinedToleratesTokenFieldWithoutMapping()
+        {
+            /*
+                Spectator baselines carry no reconnection token; a frame
+                that includes one anyway is forward-compatible noise the
+                spectator decode tolerates as unknown — never mapped.
+            */
+            Assert.That(
+                TryMapWire(
+                    FrameWithToken(SpectatorJoinedFrame, JoinToken),
+                    out SessionEvent mapped
+                ),
+                Is.True
+            );
+            Assert.That(mapped.ReconnectionToken, Is.Null);
+        }
+
+        [Test]
         public void HotPathTryMapSteadyStateAllocatesNothing()
         {
             /*
@@ -271,6 +344,19 @@ namespace SignalFish.Client.Tests.Core
                 Is.EqualTo(0),
                 "Steady-state envelope→session mapping must not allocate."
             );
+        }
+
+        private static string FrameWithToken(string frame, string tokenOrJson)
+        {
+            /*
+                The frames end with the data object's close followed by the
+                envelope close ("}}"); the token member goes inside data.
+            */
+            string json =
+                tokenOrJson == "null" || tokenOrJson == "42" || tokenOrJson == "true"
+                    ? tokenOrJson
+                    : "\"" + tokenOrJson + "\"";
+            return frame.Insert(frame.Length - 2, ",\"reconnection_token\":" + json);
         }
 
         private static bool TryMapWire(string wire, out SessionEvent sessionEvent)

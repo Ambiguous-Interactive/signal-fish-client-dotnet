@@ -25,18 +25,26 @@ namespace SignalFish.Client.Protocol
         /// </summary>
         public RoomSnapshot Snapshot { get; }
 
+        /// <summary>
+        /// Gets the reconnection token the frame carried (null when
+        /// absent — the v2 wire omits it; tolerant capture).
+        /// </summary>
+        public string? ReconnectionToken { get; }
+
         /// <summary>Initializes a new <see cref="RoomJoinedMessage"/> payload.</summary>
         public RoomJoinedMessage(
             Guid playerId,
             Guid roomId,
             string roomCode,
-            RoomSnapshot? snapshot = null
+            RoomSnapshot? snapshot = null,
+            string? reconnectionToken = null
         )
         {
             PlayerId = playerId;
             RoomId = roomId;
             RoomCode = roomCode;
             Snapshot = snapshot ?? default;
+            ReconnectionToken = reconnectionToken;
         }
 
         /// <inheritdoc />
@@ -70,7 +78,10 @@ namespace SignalFish.Client.Protocol
         /// Decodes the <c>data</c> object of a <c>RoomJoined</c> envelope
         /// (the <see cref="EnvelopeEvent.Data"/> slice). Unknown fields are
         /// skipped; a repeated session-critical key is rejected (fail-closed,
-        /// matching the envelope layer's first-wins posture). Returns
+        /// matching the envelope layer's first-wins posture). The
+        /// <c>reconnection_token</c> key is session-critical when present
+        /// (a repeated or non-string value is rejected; an explicit JSON
+        /// null counts as absent, the canonical wire form). Returns
         /// <see langword="false"/> for malformed input or a missing
         /// session-critical field.
         /// </summary>
@@ -83,8 +94,10 @@ namespace SignalFish.Client.Protocol
             Guid playerId = default;
             Guid roomId = default;
             string? roomCode = null;
+            string? reconnectionToken = null;
             bool playerSeen = false;
             bool roomSeen = false;
+            bool tokenSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -119,6 +132,22 @@ namespace SignalFish.Client.Protocol
                         return false;
                     }
                 }
+                else if (scanner.KeyIs(keyRaw, "reconnection_token"))
+                {
+                    if (tokenSeen)
+                    {
+                        return false;
+                    }
+
+                    tokenSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadString(valueRaw, out reconnectionToken))
+                        {
+                            return false;
+                        }
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -132,7 +161,13 @@ namespace SignalFish.Client.Protocol
             {
                 return false;
             }
-            message = new RoomJoinedMessage(playerId, roomId, roomCode, snapshot);
+            message = new RoomJoinedMessage(
+                playerId,
+                roomId,
+                roomCode,
+                snapshot,
+                reconnectionToken
+            );
             return true;
         }
     }
