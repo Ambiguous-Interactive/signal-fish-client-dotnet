@@ -20,7 +20,7 @@ Advance the plan to M3.5 (red-green) and drive open-issue debt to zero
   the server's `reconnection_token` — delivered on `RoomJoined`/`Reconnected`
   for v3+ deployments (server `docs/protocol.md`) — was silently dropped by
   the v2-floor decoders (unknown-field tolerance). The whole failure class
-  is now handled: both decoders capture the token (repeated/non-string
+  is now handled: both decoders capture the token (repeated/non-string/empty
   rejected fail-closed; explicit JSON null = absent), the state machine
   rotates it on reconnect and clears it on spectator baselines (no
   spectator reconnect), confirmed exits, and terminal teardown — matching
@@ -52,7 +52,7 @@ Advance the plan to M3.5 (red-green) and drive open-issue debt to zero
 ## Verification
 
 - `dotnet build -warnaserror` clean; 429 tests green on net8.0 + net10.0
-  (was 414: +15, zero removed).
+  (16 new tests, zero removed).
 - All six convention lints, file-size lint, LLM-instructions lint, skills
   index freshness, automation self-tests, csharpier check green.
 - Rust parity hand-verified against `client.rs`/`client_core.rs`

@@ -239,11 +239,20 @@ namespace SignalFish.Client.Tests.Core
             Assert.That(TryMapWire(RoomJoinedFrame, out SessionEvent absent), Is.True);
             Assert.That(absent.ReconnectionToken, Is.Null);
 
-            Assert.That(
-                TryMapWire(FrameWithToken(RoomJoinedFrame, "null"), out SessionEvent explicitNull),
-                Is.True
-            );
-            Assert.That(explicitNull.ReconnectionToken, Is.Null);
+            (string RawJson, string Label)[] absentForms = { ("null", "explicit JSON null") };
+
+            foreach ((string rawJson, string label) in absentForms)
+            {
+                Assert.That(
+                    TryMapWire(
+                        FrameWithRawToken(RoomJoinedFrame, rawJson),
+                        out SessionEvent mapped
+                    ),
+                    Is.True,
+                    label
+                );
+                Assert.That(mapped.ReconnectionToken, Is.Null, label);
+            }
         }
 
         [Test]
@@ -254,8 +263,10 @@ namespace SignalFish.Client.Tests.Core
                 // Repeated session-critical key: fail-closed.
                 FrameWithToken(FrameWithToken(ReconnectedFrame, JoinToken), RotatedToken),
                 // Wrong value type.
-                FrameWithToken(RoomJoinedFrame, "42"),
-                FrameWithToken(RoomJoinedFrame, "true"),
+                FrameWithRawToken(RoomJoinedFrame, "42"),
+                FrameWithRawToken(RoomJoinedFrame, "true"),
+                // No credential (fail-closed, like Rust v3).
+                FrameWithRawToken(RoomJoinedFrame, "\"\""),
             };
 
             foreach (string wire in badWires)
@@ -346,17 +357,18 @@ namespace SignalFish.Client.Tests.Core
             );
         }
 
-        private static string FrameWithToken(string frame, string tokenOrJson)
+        private static string FrameWithToken(string frame, string token)
         {
             /*
                 The frames end with the data object's close followed by the
                 envelope close ("}}"); the token member goes inside data.
             */
-            string json =
-                tokenOrJson == "null" || tokenOrJson == "42" || tokenOrJson == "true"
-                    ? tokenOrJson
-                    : "\"" + tokenOrJson + "\"";
-            return frame.Insert(frame.Length - 2, ",\"reconnection_token\":" + json);
+            return FrameWithRawToken(frame, "\"" + token + "\"");
+        }
+
+        private static string FrameWithRawToken(string frame, string tokenJson)
+        {
+            return frame.Insert(frame.Length - 2, ",\"reconnection_token\":" + tokenJson);
         }
 
         private static bool TryMapWire(string wire, out SessionEvent sessionEvent)

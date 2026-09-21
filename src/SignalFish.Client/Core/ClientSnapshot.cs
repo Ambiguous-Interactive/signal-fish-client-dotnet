@@ -131,8 +131,6 @@ namespace SignalFish.Client.Core
                 + Authenticated
                 + ", Role="
                 + (Role?.ToString() ?? "<none>")
-                + ", InRoom="
-                + (Role is not null)
                 + ", ReconnectionToken="
                 + (ReconnectionToken is null ? "<none>" : "<redacted>");
         }

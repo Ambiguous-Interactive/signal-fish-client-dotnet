@@ -206,21 +206,131 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void SnapshotEqualityComparesAllFields()
+        public void SnapshotEqualityComparesEveryField()
         {
             /*
                 Two machines driven through identical facts must produce
-                equal snapshots; a differing token must break equality.
+                equal snapshots; flipping any one field must break it.
             */
-            SignalFishStateMachine first = InRoomWithToken(RoomRole.Player);
-            SignalFishStateMachine second = InRoomWithToken(RoomRole.Player);
-            Assert.That(first.CreateSnapshot(), Is.EqualTo(second.CreateSnapshot()));
+            SignalFishStateMachine machine = InRoomWithToken(RoomRole.Player);
+            SignalFishStateMachine identical = InRoomWithToken(RoomRole.Player);
+            Assert.That(machine.CreateSnapshot(), Is.EqualTo(identical.CreateSnapshot()));
 
-            SignalFishStateMachine untstoned = AuthenticatedAtLeast();
-            untstoned.Apply(Joined(SessionEventKind.RoomJoined, RoomRole.Player, token: null));
-            Assert.That(first.CreateSnapshot(), Is.Not.EqualTo(untstoned.CreateSnapshot()));
+            (string Label, ClientSnapshot Mutant)[] mutants =
+            {
+                (
+                    "connected",
+                    new ClientSnapshot(
+                        false,
+                        true,
+                        true,
+                        RoomRole.Player,
+                        PlayerId,
+                        RoomId,
+                        RoomCode,
+                        JoinToken
+                    )
+                ),
+                (
+                    "transport ready",
+                    new ClientSnapshot(
+                        true,
+                        false,
+                        true,
+                        RoomRole.Player,
+                        PlayerId,
+                        RoomId,
+                        RoomCode,
+                        JoinToken
+                    )
+                ),
+                (
+                    "authenticated",
+                    new ClientSnapshot(
+                        true,
+                        true,
+                        false,
+                        RoomRole.Player,
+                        PlayerId,
+                        RoomId,
+                        RoomCode,
+                        JoinToken
+                    )
+                ),
+                (
+                    "role",
+                    new ClientSnapshot(
+                        true,
+                        true,
+                        true,
+                        RoomRole.Spectator,
+                        PlayerId,
+                        RoomId,
+                        RoomCode,
+                        JoinToken
+                    )
+                ),
+                (
+                    "player id",
+                    new ClientSnapshot(
+                        true,
+                        true,
+                        true,
+                        RoomRole.Player,
+                        new Guid("2c34f45a-ee18-4c2e-93ba-8a4d7e1b0c55"),
+                        RoomId,
+                        RoomCode,
+                        JoinToken
+                    )
+                ),
+                (
+                    "room id",
+                    new ClientSnapshot(
+                        true,
+                        true,
+                        true,
+                        RoomRole.Player,
+                        PlayerId,
+                        new Guid("8f0e2b7c-6d31-4a58-9c4f-1e2d3a4b5c6d"),
+                        RoomCode,
+                        JoinToken
+                    )
+                ),
+                (
+                    "room code",
+                    new ClientSnapshot(
+                        true,
+                        true,
+                        true,
+                        RoomRole.Player,
+                        PlayerId,
+                        RoomId,
+                        "XYZ789",
+                        JoinToken
+                    )
+                ),
+                (
+                    "token",
+                    new ClientSnapshot(
+                        true,
+                        true,
+                        true,
+                        RoomRole.Player,
+                        PlayerId,
+                        RoomId,
+                        RoomCode,
+                        "other-token"
+                    )
+                ),
+            };
 
-            Assert.That(first.CreateSnapshot(), Is.Not.EqualTo(default(ClientSnapshot)));
+            ClientSnapshot baseline = machine.CreateSnapshot();
+            foreach ((string label, ClientSnapshot mutant) in mutants)
+            {
+                Assert.That(mutant, Is.Not.EqualTo(baseline), label);
+            }
+
+            Assert.That(baseline, Is.Not.EqualTo(default(ClientSnapshot)));
             Assert.That(default(ClientSnapshot).Connected, Is.False);
         }
 

@@ -51,7 +51,8 @@ namespace SignalFish.Client.Protocol
         public bool Equals(ReconnectedMessage other) =>
             PlayerId == other.PlayerId
             && RoomId == other.RoomId
-            && AuthenticateMessage.NullableStringEquals(RoomCode, other.RoomCode);
+            && AuthenticateMessage.NullableStringEquals(RoomCode, other.RoomCode)
+            && AuthenticateMessage.NullableStringEquals(ReconnectionToken, other.ReconnectionToken);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) =>
@@ -64,6 +65,7 @@ namespace SignalFish.Client.Protocol
             hash.Add(PlayerId);
             hash.Add(RoomId);
             hash.Add(RoomCode);
+            hash.Add(ReconnectionToken);
             return hash.ToHashCode();
         }
 
@@ -80,10 +82,11 @@ namespace SignalFish.Client.Protocol
         /// (the <see cref="EnvelopeEvent.Data"/> slice). Unknown fields are
         /// skipped; a repeated session-critical key is rejected
         /// (fail-closed). The <c>reconnection_token</c> key carries the
-        /// rotated credential when present (a repeated or non-string value
-        /// is rejected; an explicit JSON null counts as absent, the
-        /// canonical wire form). Returns <see langword="false"/> for
-        /// malformed input or a missing session-critical field.
+        /// rotated credential when present (a repeated, non-string, or
+        /// empty value is rejected; an explicit JSON null counts as
+        /// absent, the canonical wire form). Returns
+        /// <see langword="false"/> for malformed input or a missing
+        /// session-critical field.
         /// </summary>
         internal static bool TryDecode(ReadOnlyMemory<byte> data, out ReconnectedMessage message)
         {
@@ -143,6 +146,12 @@ namespace SignalFish.Client.Protocol
                     if (!scanner.TryReadNull(valueRaw))
                     {
                         if (!scanner.TryReadString(valueRaw, out reconnectionToken))
+                        {
+                            return false;
+                        }
+
+                        // Fail-closed: an empty string is no credential.
+                        if (reconnectionToken.Length == 0)
                         {
                             return false;
                         }

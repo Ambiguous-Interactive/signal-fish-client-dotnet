@@ -27,7 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # Empty when unset: the nuget.org step below skips itself.
+      # Mapped at job level because a step's own env is not reliably
+      # readable in that step's `if`. Empty when the secret is unset,
+      # which is exactly what the nuget.org step tests below.
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
     steps:
       - name: Checkout repository

@@ -51,7 +51,8 @@ namespace SignalFish.Client.Protocol
         public bool Equals(RoomJoinedMessage other) =>
             PlayerId == other.PlayerId
             && RoomId == other.RoomId
-            && AuthenticateMessage.NullableStringEquals(RoomCode, other.RoomCode);
+            && AuthenticateMessage.NullableStringEquals(RoomCode, other.RoomCode)
+            && AuthenticateMessage.NullableStringEquals(ReconnectionToken, other.ReconnectionToken);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is RoomJoinedMessage other && Equals(other);
@@ -63,6 +64,7 @@ namespace SignalFish.Client.Protocol
             hash.Add(PlayerId);
             hash.Add(RoomId);
             hash.Add(RoomCode);
+            hash.Add(ReconnectionToken);
             return hash.ToHashCode();
         }
 
@@ -80,8 +82,8 @@ namespace SignalFish.Client.Protocol
         /// skipped; a repeated session-critical key is rejected (fail-closed,
         /// matching the envelope layer's first-wins posture). The
         /// <c>reconnection_token</c> key is session-critical when present
-        /// (a repeated or non-string value is rejected; an explicit JSON
-        /// null counts as absent, the canonical wire form). Returns
+        /// (a repeated, non-string, or empty value is rejected; an explicit
+        /// JSON null counts as absent, the canonical wire form). Returns
         /// <see langword="false"/> for malformed input or a missing
         /// session-critical field.
         /// </summary>
@@ -146,6 +148,12 @@ namespace SignalFish.Client.Protocol
                         {
                             return false;
                         }
+
+                        // Fail-closed: an empty string is no credential.
+                        if (reconnectionToken.Length == 0)
+                        {
+                            return false;
+                        }
                     }
                 }
 
@@ -176,7 +184,11 @@ namespace SignalFish.Client.Protocol
     /// Session-critical fields of the inbound <c>SpectatorJoined</c> payload
     /// (S→C): the confirmed spectator membership. The remaining v2 fields
     /// (<c>game_name</c>, <c>current_players</c>, …) are tolerated as
-    /// unknown and land with the M3.4 event surface.
+    /// unknown and land with the M3.4 event surface. A stray
+    /// <c>reconnection_token</c> is likewise unknown-field noise: the
+    /// protocol has no spectator reconnect, so it is never mapped
+    /// (unlike <c>RoomJoined</c>/<c>Reconnected</c>, which reject a
+    /// malformed one).
     /// </summary>
     public readonly struct SpectatorJoinedMessage : IEquatable<SpectatorJoinedMessage>
     {
