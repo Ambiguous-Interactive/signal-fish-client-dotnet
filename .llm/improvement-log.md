@@ -9,6 +9,31 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-21 - session 012: PR #30 feedback verification + sentinel-sweep leftovers
+
+- Trigger: request to re-fetch all PR #30/#27 feedback (human + bugbot),
+  verify the dispositions landed on main, and sweep for sibling issues.
+- Evidence: all 5 PR #30 threads + 2 PR #27 threads verified fixed on main
+  (leave fence, `RoomCode` nullability, 13 enum sentinels, `this.` lint
+  wiring, fuzz generator, dispose-during-connect, receive-cap clamp);
+  build green, 287 tests x 2 TFMs. Sweep then found 3 leftovers: (1) a
+  test-internal enum (`JKind`) kept a *valid* member at 0 — the session-011
+  sweep counted only `src/` enums; (2) the 5-byte bugbot repro seed was
+  committed at the repo root (`crash-*.bin`, tracked in 4c7da9d) — the
+  standalone-replay technique writes artifacts wherever the shell CWD is;
+  (3) an exhaustive switch over a sentinel-bearing enum (`Render(JNode)`)
+  silently rendered nothing for an unset kind.
+- Findings: (1) sentinel sweeps must include test projects; the rule is
+  project-wide but the inventory habit was src-scoped. (2) repro/crash
+  artifacts belong in gitignored persistence dirs; `crash-*.bin` is now
+  ignored repo-wide and the seed lives in `.fuzz/crashes/`. (3) once
+  `default(T)` is a distinct non-valid value, every switch over that enum
+  must be fail-closed (throw on undefined), mirroring `Admit`/`Apply`.
+- Applied: `JKind` sentinel + renumber + fail-closed `Render` default;
+  `.gitignore` `crash-*.bin`; rules folded into api-design (sweep scope +
+  fail-closed switches), create-test (artifact location), and an
+  address-pr-feedback sweep-table row.
+
 ## 2026-09-20 - session 011: polling core (M3.1/M3.2) + enum-default and this.-ban project sweep
 
 - Trigger: PR #30 human review: (1) force every enum's default (0) to a
@@ -127,41 +152,6 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   scratch span. (4) struct ctors must normalize ignored fields or `Equals`
   contradicts the wire.
 - Open: fold (1)+(2) into json-serialization when next edited (300-line cap).
-
-## 2026-09-20 - PR #18 Bugbot round: CWD-dependent tooling class
-
-- Findings: `dotnet tool run` resolves the manifest by walking up from the
-  CWD; every tool invocation needs the same `$RepoRoot`/`git -C` anchoring
-  as the script itself. Rule 7 in powershell-tooling; pinned by
-  test-install-hooks.ps1. Open: none.
-
-## 2026-09-20 - PR #11 feedback round: MCP auth-header class + style mechanization
-
-- Findings: (1) URL-only assertions on remote MCP entries are a coverage
-  blind spot - auth headers need value assertions with throwaway creds. (2)
-  optional-parameter builders interpolating into output turn a forgotten
-  argument into a literal "undefined"; fail at write time. (3) no-var and
-  usings-inside-namespace were mechanized via `.editorconfig` +
-  EnforceCodeStyleInBuild; `EnvelopeEventKind` gained the first
-  `[Obsolete] None = 0` sentinel (project-wide completion in session 011).
-- Applied: fix + guard + self-tests; MCP-writer facts in
-  [devcontainer-tooling](./references/devcontainer-tooling.md). Open: none.
-
-## 2026-09-19 - devcontainer rounds (5 entries, condensed)
-
-- Full facts in [devcontainer-tooling](./references/devcontainer-tooling.md):
-  fix volume ownership at image build time (pre-create mountpoints
-  vscode-owned, parents first); `os.homedir()` ignores `HOME` on win32;
-  `containerEnv` cannot self-reference `PATH`; the dotnet feature v1 shadows
-  the image SDK; nvm hard-fails under `NPM_CONFIG_PREFIX`; apphost shims work
-  top-level yet spawn broken `$PSHOME` binaries - arch-validate nested
-  invocations; codex MCP env intentionally persists the zai-vision key
-  (chmod 600) so blanket no-secrets greps false-positive there; hermetic
-  self-tests need env skip-seams plus backup/restore traps; `COPY --from`
-  beats curl-installers; global `zai-mcp-server` bin over runtime `npx`;
-  `Z_AI_MODE=ZHIPU` switches remote base URLs; configs prune when
-  credentials disappear.
-- Open: none (Unity MCP relay deferred until Unity work starts).
 
 ## 2026-09-19 - session 005: M1.2 envelope codec + devcontainer carry-forward
 

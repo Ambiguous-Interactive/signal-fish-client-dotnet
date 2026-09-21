@@ -92,6 +92,10 @@ server; the client adapts. Resync only from the pinned server commit.
   (crash exits non-zero, ~134). Craft the seed from the cursor's
   consumption order; a hand-built 5-byte file can prove a generator bug
   red-green in seconds instead of a 15-minute instrumented run.
+- **Repro seeds and crash artifacts stay under `.fuzz/`** (gitignored;
+  `crash-*.bin` is ignored repo-wide) — never write them to the repo root,
+  where a `git add .` commits them (a 5-byte crash seed was). If a seed is
+  worth keeping permanently, graduate it into a golden fixture instead.
 - When a fuzz/property run finds a real bug, graduate it into a golden
   fixture + regression test before fixing.
 - Long fuzz runs belong to scheduled CI, not the unit test suite — keep
