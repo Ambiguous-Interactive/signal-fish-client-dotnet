@@ -6,6 +6,22 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ## [Unreleased]
 
+### Added
+
+- Polling client (M3.4): `SignalFishPollingClient` for Unity
+  `Update()`-style loops. Every `Poll()` drains up to 64 transport frames
+  (configurable) into typed struct events via a fixed-capacity ring buffer
+  with cooperative backpressure — a full ring pauses consumption, frames are
+  never dropped. Full v2 payload surface as typed events: room snapshots
+  (players, lobby, relay), lobby state, player lifecycle, game start with
+  peer connections, authority answers, spectator rosters, verbatim
+  `GameData`, and typed failure reasons. Heartbeat is automatic (~30 s ping,
+  2x-ping liveness timeout) on an injected clock; idle polls allocate zero
+  bytes (allocation-gated test). Frames the client cannot honor — malformed
+  session-critical fields, oversized or binary frames, failed payload
+  decodes — surface as typed protocol violations instead of being silently
+  ignored.
+
 ### Fixed
 
 - `JoinRoom` frames now reproduce the server's published canonical wire form:
