@@ -60,6 +60,24 @@ dotnet_naming_style.private_fields_underscore_camel.capitalization = camel_case
 dotnet_diagnostic.CA1028.severity = none
 dotnet_diagnostic.CA1815.severity = none
 
+# Polling-client conventions (scoped to src/SignalFish.Client/Polling/):
+# - CA1028 (enums should be Int32): PollEventKind is byte-backed so
+#   PollEvent stays dense inside the ring buffer (locked zero-alloc budget;
+#   same rationale as the Protocol enums).
+# - CA1815 (override Equals/== on public structs): PollEvent is a hot-path
+#   tag-and-payload union consumed via DrainEvents; it is never compared,
+#   so operator/Equals overrides would be dead weight.
+[src/SignalFish.Client/Polling/*.cs]
+dotnet_diagnostic.CA1028.severity = none
+dotnet_diagnostic.CA1815.severity = none
+
+# The polling client's ping send and best-effort teardown complete off the
+# game thread and must never surface exceptions into an unobserved task
+# (the fire-and-forget is the design); failures fold back into the next
+# Poll as a liveness teardown.
+[src/SignalFish.Client/Polling/SignalFishPollingClient.cs]
+dotnet_diagnostic.CA1031.severity = none
+
 # Transport sizing probe is deliberately fail-open: any failure (malformed
 # body, proxy interference, exotic socket error) must fall back to the
 # protocol default instead of blocking the connect. The catch-all is the

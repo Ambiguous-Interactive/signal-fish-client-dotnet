@@ -76,30 +76,13 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
 
       # OS-independent lints and formatting run once, on the coverage cell.
-      - name: Enforce zero dependencies on the client library
+      # One consolidated step invokes all six convention lints in a single
+      # pwsh process (scripts/lint-conventions.ps1), so CI wall time stays
+      # flat as lints are added.
+      - name: Enforce C# source conventions (zero-deps, no-linq, no-this, comment form, test names, member order)
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         shell: pwsh
-        run: pwsh -NoProfile -File scripts/lint-zero-dependencies.ps1
-
-      - name: Enforce the LINQ ban on the client library
-        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/lint-no-linq.ps1
-
-      - name: Enforce the this.-qualification ban on C# sources
-        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/lint-no-this-qualification.ps1
-
-      - name: Enforce the comment form rules on C# sources
-        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/lint-comment-form.ps1
-
-      - name: Enforce the test-name underscore ban
-        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/lint-test-names.ps1
+        run: pwsh -NoProfile -File scripts/lint-conventions.ps1
 
       # One restore covers both tool invocations below (CSharpier check and
       # the coverage report).

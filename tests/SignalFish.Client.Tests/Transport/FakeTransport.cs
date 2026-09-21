@@ -20,14 +20,6 @@ namespace SignalFish.Client.Tests.Transport
         private const int StateClosed = 2;
         private const int StateDisposed = 3;
 
-        private readonly object _gate = new object();
-        private readonly Queue<TransportFrame> _incoming = new Queue<TransportFrame>();
-        private readonly List<byte[]> _sent = new List<byte[]>();
-        private TaskCompletionSource<TransportFrame>? _pendingReceive;
-        private int _state = StateNew;
-        private bool _closeDelivered;
-        private int _closeCode;
-
         /// <summary>Gets a value indicating whether the transport is connected.</summary>
         public bool IsConnected => Volatile.Read(ref _state) == StateConnected;
 
@@ -48,6 +40,14 @@ namespace SignalFish.Client.Tests.Transport
                 }
             }
         }
+
+        private readonly object _gate = new object();
+        private readonly Queue<TransportFrame> _incoming = new Queue<TransportFrame>();
+        private readonly List<byte[]> _sent = new List<byte[]>();
+        private TaskCompletionSource<TransportFrame>? _pendingReceive;
+        private int _state = StateNew;
+        private bool _closeDelivered;
+        private int _closeCode;
 
         /// <summary>Scripts an inbound text frame.</summary>
         public void EnqueueText(string text)
@@ -84,6 +84,25 @@ namespace SignalFish.Client.Tests.Transport
                 _closeCode = code;
                 _state = StateClosed;
             }
+        }
+
+        /// <summary>
+        /// Completes the outstanding receive with a typed close (the
+        /// <see cref="WebSocketTransport"/> contract for a close landing
+        /// mid-receive).
+        /// </summary>
+        public void FailPendingReceive(int code)
+        {
+            TaskCompletionSource<TransportFrame>? pending;
+            lock (_gate)
+            {
+                _closeCode = code;
+                _state = StateClosed;
+                pending = _pendingReceive;
+                _pendingReceive = null;
+            }
+
+            pending?.SetException(new TransportClosedException(new TransportClose(code)));
         }
 
         /// <summary>Injects an abrupt local abort (pending receive completes with the close frame).</summary>

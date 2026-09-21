@@ -167,6 +167,16 @@ if ($thisTargets.Count -gt 0) {
         Write-Host '  pwsh -NoProfile -File scripts/lint-comment-form.ps1' -ForegroundColor Red
         $failed = $true
     }
+
+    Write-Host 'pre-commit: enforcing the canonical member order...'
+    $orderLinter = Join-Path $repoRoot 'scripts/lint-member-order.ps1'
+    $result = Invoke-LintStep -ScriptPath $orderLinter -Params @{ RepoRoot = $repoRoot; Paths = $thisTargets }
+    if ($result.ExitCode -ne 0) {
+        foreach ($line in $result.Output) { Write-Host "    | $line" }
+        Write-Host 'pre-commit: member-order lint failed. Run:' -ForegroundColor Red
+        Write-Host '  pwsh -NoProfile -File scripts/lint-member-order.ps1' -ForegroundColor Red
+        $failed = $true
+    }
 }
 
 $testCsTargets = @($staged | Where-Object { $_ -match '^tests/.*\.cs$' })

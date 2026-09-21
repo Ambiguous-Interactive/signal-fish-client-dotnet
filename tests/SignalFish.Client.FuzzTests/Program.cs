@@ -18,6 +18,107 @@ namespace SignalFish.Client.FuzzTests
     {
         private delegate bool PayloadTryDecode<T>(ReadOnlyMemory<byte> data, out T message);
 
+        /// <summary>
+        /// Deterministic consumption of fuzz input: every choice comes from
+        /// the next unconsumed byte, and exhausted input stays deterministic
+        /// so standalone replays of a crashing artifact reproduce exactly.
+        /// </summary>
+        private ref struct FuzzCursor
+        {
+            private ReadOnlySpan<byte> _input;
+            private int _position;
+
+            public FuzzCursor(ReadOnlySpan<byte> input)
+            {
+                _input = input;
+                _position = 0;
+            }
+
+            public uint Byte()
+            {
+                uint value =
+                    _position < _input.Length ? _input[_position] : (byte)((13 * _position) + 7);
+                _position++;
+                return value;
+            }
+
+            public uint? OptionalUint() => (Byte() & 3u) == 0 ? Byte() : null;
+
+            public bool? OptionalBool()
+            {
+                uint pick = Byte();
+                return (pick & 3u) == 0 ? (pick & 4u) != 0 : null;
+            }
+
+            /// <summary>A required string: 0-48 chars over U+0000-U+00FF.</summary>
+            public string String() => String(Byte() % 49u);
+
+            /// <summary>
+            /// A string or null (null ~25% of the time). Chars map 1:1 from
+            /// input bytes so escapes, control characters, and two-byte UTF-8
+            /// sequences all appear on the wire.
+            /// </summary>
+            public string? OptionalString()
+            {
+                uint pick = Byte();
+                return (pick & 3u) == 0 ? null : String((pick >> 2) % 49u);
+            }
+
+            /// <summary>A list of 0-3 strings, or null ~25% of the time.</summary>
+            public string[]? OptionalStringList()
+            {
+                uint pick = Byte();
+                if ((pick & 3u) == 0)
+                {
+                    return null;
+                }
+
+                uint count = (pick >> 2) % 4u;
+                string[] items = new string[count];
+                for (uint i = 0; i < count; i++)
+                {
+                    items[i] = String();
+                }
+
+                return items;
+            }
+
+            public ReadOnlyMemory<byte> RawSlice()
+            {
+                uint length = Byte() % 96u;
+                byte[] bytes = new byte[length];
+                for (uint i = 0; i < length; i++)
+                {
+                    bytes[i] = (byte)Byte();
+                }
+
+                return bytes;
+            }
+
+            public ReadOnlyMemory<byte> JsonSeed()
+            {
+                return (Byte() % 5u) switch
+                {
+                    0 => new byte[] { 123, 34, 110, 34, 58, 49, 125 }, // {"n":1}
+                    1 => new byte[] { 91, 49, 44, 50, 93 }, // [1,2]
+                    2 => new byte[] { 34, 115, 116, 114, 34 }, // "str"
+                    3 => new byte[] { 116, 114, 117, 101 }, // true
+                    _ => new byte[] { 110, 117, 108, 108 }, // null
+                };
+            }
+
+            private string String(uint length)
+            {
+                char[] chars = new char[length];
+                for (uint i = 0; i < length; i++)
+                {
+                    chars[i] = (char)Byte();
+                }
+
+                return new string(chars);
+            }
+        }
+
         private static int Main(string[] args)
         {
             if (args.Length == 0 && !RunningUnderLibFuzzer())
@@ -393,106 +494,5 @@ namespace SignalFish.Client.FuzzTests
         /// <summary>Lossy text rendering of a frame for failure diagnostics.</summary>
         private static string FrameText(ArrayBufferWriter<byte> buffer) =>
             System.Text.Encoding.UTF8.GetString(buffer.WrittenSpan);
-
-        /// <summary>
-        /// Deterministic consumption of fuzz input: every choice comes from
-        /// the next unconsumed byte, and exhausted input stays deterministic
-        /// so standalone replays of a crashing artifact reproduce exactly.
-        /// </summary>
-        private ref struct FuzzCursor
-        {
-            private ReadOnlySpan<byte> _input;
-            private int _position;
-
-            public FuzzCursor(ReadOnlySpan<byte> input)
-            {
-                _input = input;
-                _position = 0;
-            }
-
-            public uint Byte()
-            {
-                uint value =
-                    _position < _input.Length ? _input[_position] : (byte)((13 * _position) + 7);
-                _position++;
-                return value;
-            }
-
-            public uint? OptionalUint() => (Byte() & 3u) == 0 ? Byte() : null;
-
-            public bool? OptionalBool()
-            {
-                uint pick = Byte();
-                return (pick & 3u) == 0 ? (pick & 4u) != 0 : null;
-            }
-
-            /// <summary>A required string: 0-48 chars over U+0000-U+00FF.</summary>
-            public string String() => String(Byte() % 49u);
-
-            /// <summary>
-            /// A string or null (null ~25% of the time). Chars map 1:1 from
-            /// input bytes so escapes, control characters, and two-byte UTF-8
-            /// sequences all appear on the wire.
-            /// </summary>
-            public string? OptionalString()
-            {
-                uint pick = Byte();
-                return (pick & 3u) == 0 ? null : String((pick >> 2) % 49u);
-            }
-
-            /// <summary>A list of 0-3 strings, or null ~25% of the time.</summary>
-            public string[]? OptionalStringList()
-            {
-                uint pick = Byte();
-                if ((pick & 3u) == 0)
-                {
-                    return null;
-                }
-
-                uint count = (pick >> 2) % 4u;
-                string[] items = new string[count];
-                for (uint i = 0; i < count; i++)
-                {
-                    items[i] = String();
-                }
-
-                return items;
-            }
-
-            public ReadOnlyMemory<byte> RawSlice()
-            {
-                uint length = Byte() % 96u;
-                byte[] bytes = new byte[length];
-                for (uint i = 0; i < length; i++)
-                {
-                    bytes[i] = (byte)Byte();
-                }
-
-                return bytes;
-            }
-
-            public ReadOnlyMemory<byte> JsonSeed()
-            {
-                return (Byte() % 5u) switch
-                {
-                    0 => new byte[] { 123, 34, 110, 34, 58, 49, 125 }, // {"n":1}
-                    1 => new byte[] { 91, 49, 44, 50, 93 }, // [1,2]
-                    2 => new byte[] { 34, 115, 116, 114, 34 }, // "str"
-                    3 => new byte[] { 116, 114, 117, 101 }, // true
-                    _ => new byte[] { 110, 117, 108, 108 }, // null
-                };
-            }
-
-            private string String(uint length)
-            {
-                char[] chars = new char[length];
-                for (uint i = 0; i < length; i++)
-                {
-                    chars[i] = (char)Byte();
-                }
-
-                return new string(chars);
-            }
-        }
     }
 }

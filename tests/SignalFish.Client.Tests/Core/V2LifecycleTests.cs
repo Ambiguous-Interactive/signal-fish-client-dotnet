@@ -17,9 +17,10 @@ namespace SignalFish.Client.Tests.Core
     [TestFixture]
     public class V2LifecycleTests
     {
+        private const string RoomCode = "ABC123";
+
         private static readonly Guid PlayerId = new Guid("0f8fad5b-d9cb-469f-a165-70867728950e");
         private static readonly Guid RoomId = new Guid("7c9e6679-7425-40de-944b-e07fc1f90ae7");
-        private const string RoomCode = "ABC123";
 
         [Test]
         public void PlayerLifecycleFullV2LoopReachesCleanExit()

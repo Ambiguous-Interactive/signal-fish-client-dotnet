@@ -100,6 +100,9 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     public readonly struct ProvideConnectionInfoMessage : IEquatable<ProvideConnectionInfoMessage>
     {
+        /// <summary>Gets the connection-info JSON object, as UTF-8 bytes.</summary>
+        public ReadOnlyMemory<byte> ConnectionInfo => _connectionInfo;
+
         private readonly ReadOnlyMemory<byte> _connectionInfo;
 
         /// <summary>Initializes a new <see cref="ProvideConnectionInfoMessage"/> payload.</summary>
@@ -108,9 +111,6 @@ namespace SignalFish.Client.Protocol
         {
             _connectionInfo = connectionInfo;
         }
-
-        /// <summary>Gets the connection-info JSON object, as UTF-8 bytes.</summary>
-        public ReadOnlyMemory<byte> ConnectionInfo => _connectionInfo;
 
         /// <inheritdoc />
         public bool Equals(ProvideConnectionInfoMessage other) =>

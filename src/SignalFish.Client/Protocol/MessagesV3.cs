@@ -574,6 +574,15 @@ namespace SignalFish.Client.Protocol
     /// </summary>
     public readonly struct SignalMessage : IEquatable<SignalMessage>
     {
+        /// <summary>Gets the target peer's player UUID.</summary>
+        public string To { get; }
+
+        /// <summary>Gets the generation UUID from the sender's latest <c>SessionPlan</c>.</summary>
+        public string Generation { get; }
+
+        /// <summary>Gets the signal JSON value, as UTF-8 bytes (relayed verbatim).</summary>
+        public ReadOnlyMemory<byte> Signal => _signal;
+
         private readonly ReadOnlyMemory<byte> _signal;
 
         /// <summary>Initializes a new <see cref="SignalMessage"/> payload.</summary>
@@ -586,15 +595,6 @@ namespace SignalFish.Client.Protocol
             Generation = generation;
             _signal = signal;
         }
-
-        /// <summary>Gets the target peer's player UUID.</summary>
-        public string To { get; }
-
-        /// <summary>Gets the generation UUID from the sender's latest <c>SessionPlan</c>.</summary>
-        public string Generation { get; }
-
-        /// <summary>Gets the signal JSON value, as UTF-8 bytes (relayed verbatim).</summary>
-        public ReadOnlyMemory<byte> Signal => _signal;
 
         /// <inheritdoc />
         public bool Equals(SignalMessage other) =>

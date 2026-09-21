@@ -13,15 +13,15 @@ namespace SignalFish.Client.Tests.Transport
     /// <summary>One frame read from a WebSocket peer: opcode plus payload.</summary>
     internal readonly struct TestWsFrame
     {
+        public int Opcode { get; }
+
+        public byte[] Payload { get; }
+
         public TestWsFrame(int opcode, byte[] payload)
         {
             Opcode = opcode;
             Payload = payload;
         }
-
-        public int Opcode { get; }
-
-        public byte[] Payload { get; }
     }
 
     /// <summary>
@@ -179,18 +179,6 @@ namespace SignalFish.Client.Tests.Transport
     /// </summary>
     internal sealed class TestWsServer : IAsyncDisposable
     {
-        private readonly TcpListener _listener;
-        private readonly CancellationTokenSource _shutdown = new CancellationTokenSource();
-        private readonly ConcurrentQueue<TestWsConnection> _connections =
-            new ConcurrentQueue<TestWsConnection>();
-        private readonly SemaphoreSlim _connectionSignal = new SemaphoreSlim(0);
-
-        private TestWsServer(TcpListener listener)
-        {
-            _listener = listener;
-            Port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        }
-
         /// <summary>Gets the bound loopback port.</summary>
         public int Port { get; }
 
@@ -205,6 +193,18 @@ namespace SignalFish.Client.Tests.Transport
 
         /// <summary>Gets the HTTP request paths observed so far (probe assertions).</summary>
         public ConcurrentQueue<string> HttpRequestPaths { get; } = new ConcurrentQueue<string>();
+
+        private readonly TcpListener _listener;
+        private readonly CancellationTokenSource _shutdown = new CancellationTokenSource();
+        private readonly ConcurrentQueue<TestWsConnection> _connections =
+            new ConcurrentQueue<TestWsConnection>();
+        private readonly SemaphoreSlim _connectionSignal = new SemaphoreSlim(0);
+
+        private TestWsServer(TcpListener listener)
+        {
+            _listener = listener;
+            Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
 
         /// <summary>Starts listening on an ephemeral loopback port.</summary>
         public static TestWsServer Start(string? clientConfigJson)

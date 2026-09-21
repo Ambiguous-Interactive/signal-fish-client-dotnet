@@ -7,13 +7,6 @@ namespace SignalFish.Client.Transport
     /// </summary>
     public readonly struct TransportClose : IEquatable<TransportClose>
     {
-        /// <summary>Initializes a close descriptor from a raw wire code.</summary>
-        public TransportClose(int code)
-        {
-            Code = code;
-            Kind = MapCode(code);
-        }
-
         /// <summary>The raw close code as sent on the wire (0 = none).</summary>
         public int Code { get; }
 
@@ -22,6 +15,13 @@ namespace SignalFish.Client.Transport
         /// table in the protocol reference for the reaction table.
         /// </summary>
         public TransportCloseKind Kind { get; }
+
+        /// <summary>Initializes a close descriptor from a raw wire code.</summary>
+        public TransportClose(int code)
+        {
+            Code = code;
+            Kind = MapCode(code);
+        }
 
         /// <summary>Maps a raw wire code to its server-defined meaning.</summary>
         public static TransportCloseKind MapCode(int code)

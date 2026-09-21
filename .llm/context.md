@@ -137,6 +137,13 @@ the outcome in [improvement-log.md](./improvement-log.md) (see rule 15).
     for zero comments on non-public code — naming and structure carry the
     meaning; keep only non-obvious *why*. Enforced by
     `scripts/lint-comment-form.ps1` (hook + CI).
+21. **Members of every type follow one canonical order**: nested types,
+    const fields, static fields, properties, instance fields, constructors,
+    methods; within a category, accessibility ascends
+    public → protected → internal → private, and static precedes instance
+    for fields and properties. Enforced by
+    `scripts/lint-member-order.ps1`; CI runs all six convention lints via
+    `scripts/lint-conventions.ps1` (hook + CI).
 
 ## Protocol Essentials
 
@@ -160,6 +167,7 @@ guidance.
 | `pwsh -NoProfile -File scripts/generate-skills-index.ps1` | Regenerate `.llm/skills/index.md` |
 | `pwsh -NoProfile -File scripts/lint-file-sizes.ps1` | Enforce the 300-line limit |
 | `pwsh -NoProfile -File scripts/lint-llm-instructions.ps1` | Validate the whole `.llm` system |
+| `pwsh -NoProfile -File scripts/lint-conventions.ps1` | Run all six C# convention lints in one pass |
 | `pwsh -NoProfile -File scripts/tests/run-all.ps1` | Run the automation self-tests |
 
 ## Naming Conventions
