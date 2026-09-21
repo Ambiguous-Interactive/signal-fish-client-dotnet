@@ -6,8 +6,8 @@ nuget.org publishing is the only opt-in (one secret).
 
 ## What happens when you push a `v*` tag
 
-The [`release.yml`](../.github/workflows/release.yml) workflow (tag pushes
-only — it never runs on branches or PRs):
+The `release.yml` workflow (`.github/workflows/release.yml` in the repo
+root; tag pushes only — it never runs on branches or PRs):
 
 1. Validates the tag is semver (`vMAJOR.MINOR.PATCH`, optional `-suffix`).
 2. Packs the library with the tag's version (reproducible CI build):
