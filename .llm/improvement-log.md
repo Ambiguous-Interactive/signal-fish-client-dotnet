@@ -9,6 +9,33 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-21 - session 014: issue-debt round (server spec adoption, test-name + comment-form gates)
+
+- Trigger: issue debt after M3.3/M3.4 groundwork (#34 new server spec,
+  #26 style directives, #20 comment forms) plus the standing CI-time goal.
+- Findings: (1) #34 needed no new work - the pin `07a6fd08` IS server 0.9.2
+  (latest upstream main); session 013 had already vendored and routed it;
+  byte-identical verify + green corpus closed it with evidence. (2) The
+  sibling repos (unity-helpers, DoxReloaded) both ban underscores in test
+  method names (unity-helpers lint UNH004) and enforce one `/* */` block
+  for any multi-line non-doc comment - our `Method_Scenario_Expectation`
+  convention and 42 `//` stacks predated that guidance. (3) A PS7 ternary
+  cannot break before `?` - the assignment silently parses as a new
+  statement (bit the new lint's path handling). (4) Assertion patterns
+  must match rendered text literally: `...` is an ellipsis, not `. . .`.
+- Applied: 111 test methods renamed to PascalCase (320 x 2 TFM green,
+  discovery count unchanged); `scripts/lint-test-names.ps1` +
+  `scripts/lint-comment-form.ps1` (C#-only lexer, string-aware) with
+  self-tests, wired into hook + CI; 42 comment runs converted to blocks;
+  `.llm` naming table + create-test skill updated (rules 19/20);
+  dotnet.yml matrix 4 -> 3 cells (windows+net10 dropped: OS and TFM
+  assurances carried by other cells) - drops the measured 202s longest
+  cell (last PR run); expected wall ~3m30s -> ~2m, code coverage unchanged.
+- Open: DoxReloaded member-ordering lint adoption and the TUnit spike
+  remain from #26 (follow-up issues filed); unity-helpers WUH analyzers
+  are Unity-object-coupled - lint scripts adopted instead (decision
+  recorded on #26).
+
 ## 2026-09-21 - session 012: M3.3 v2 session-fact wire mapping + wire-truth audit
 
 - Trigger: PLAN M3.3 (inbound payload decode -> SessionEvent) exposed two

@@ -20,8 +20,9 @@ metadata:
 
 ## Naming and structure
 
-- Class: `<Type>Tests`. Method: `Method_Scenario_Expectation`.
-  `JoinRoom_WithoutRoomCode_SendsCreateRoomRequest`
+- Class: `<Type>Tests`. Method: PascalCase, no underscores - scenario and
+  expectation read as one name: `JoinRoomWithoutRoomCodeSendsCreateRoomRequest`.
+  NUnit display names use dot notation: `TestName = "Input.Null.Throws"`.
 - One behavior per test; arrange/act/assert in that order; no
   multiple-assert megatests (helper `Assert.Multiple` is fine for related
   assertions).

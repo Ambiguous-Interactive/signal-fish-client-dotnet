@@ -12,7 +12,7 @@ namespace SignalFish.Client.Tests.Core
     public class ClockTests
     {
         [Test]
-        public void SystemClock_ElapsedMilliseconds_AdvancesMonotonically()
+        public void SystemClockElapsedMillisecondsAdvancesMonotonically()
         {
             long first = SystemClock.Instance.ElapsedMilliseconds;
             long last = first;
@@ -33,7 +33,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void VirtualClock_RejectsBackwardsAdvance()
+        public void VirtualClockRejectsBackwardsAdvance()
         {
             VirtualClock clock = new VirtualClock();
             Assert.That(
@@ -44,7 +44,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void VirtualClock_StartsAtZero_AndAdvancesExactly()
+        public void VirtualClockStartsAtZeroAndAdvancesExactly()
         {
             VirtualClock clock = new VirtualClock();
             Assert.That(clock.ElapsedMilliseconds, Is.EqualTo(0));
@@ -56,7 +56,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void VirtualClock_SatisfiesClockContract()
+        public void VirtualClockSatisfiesClockContract()
         {
             VirtualClock clock = new VirtualClock();
             clock.Advance(1_000);

@@ -119,8 +119,10 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "password"))
                 {
-                    // Canonical frames may carry explicit nulls for absent
-                    // optionals; null decodes as absent.
+                    /*
+                        Canonical frames may carry explicit nulls for absent
+                        optionals; null decodes as absent.
+                    */
                     if (scanner.TryReadNull(valueRaw))
                     {
                         password = null;
@@ -395,8 +397,10 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "room_code"))
                 {
-                    // Canonical frames carry explicit nulls for absent
-                    // optionals; null decodes as absent.
+                    /*
+                        Canonical frames carry explicit nulls for absent
+                        optionals; null decodes as absent.
+                    */
                     if (scanner.TryReadNull(valueRaw))
                     {
                         roomCode = null;

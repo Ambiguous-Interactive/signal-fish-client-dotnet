@@ -93,8 +93,10 @@ namespace SignalFish.Client.Transport
             _socket = socket;
             try
             {
-                // Dispose may race the probe above; a socket created after
-                // it must never reach the wire. The catch below disposes it.
+                /*
+                    Dispose may race the probe above; a socket created after
+                    it must never reach the wire. The catch below disposes it.
+                */
                 ThrowIfDisposed();
                 await socket.ConnectAsync(uri, ct).ConfigureAwait(false);
             }
@@ -300,8 +302,10 @@ namespace SignalFish.Client.Transport
 
         private bool Grow(ref byte[] buffer, ref int capacity, int length)
         {
-            // Rent returns buckets that can exceed the request; the usable
-            // cap is the probed limit, never the rented array length.
+            /*
+                Rent returns buckets that can exceed the request; the usable
+                cap is the probed limit, never the rented array length.
+            */
             int nextCapacity = Math.Min(capacity * 2, _maxReceiveBytes);
             if (nextCapacity <= length)
             {
@@ -342,10 +346,12 @@ namespace SignalFish.Client.Transport
 
         private void ReleaseResources()
         {
-            // Single-releaser by construction: DisposeAsync is guarded by the
-            // state transition and the close path by the single-reader claim.
-            // ClientWebSocket/HttpClient dispose is idempotent, which covers
-            // the one overlap that remains (terminal close racing dispose).
+            /*
+                Single-releaser by construction: DisposeAsync is guarded by the
+                state transition and the close path by the single-reader claim.
+                ClientWebSocket/HttpClient dispose is idempotent, which covers
+                the one overlap that remains (terminal close racing dispose).
+            */
             ClientWebSocket? socket = _socket;
             _socket = null;
             HttpClient? probeClient = _probeClient;

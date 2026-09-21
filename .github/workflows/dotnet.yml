@@ -37,9 +37,19 @@ jobs:
   build-and-test:
     strategy:
       fail-fast: false
+      # Three cells, each carrying one distinct assurance: the coverage cell
+      # (ubuntu/net8) adds lints, formatting, tooling builds, and coverage;
+      # ubuntu/net10 covers the newer TFM; windows/net8 covers Windows.
+      # OS x TFM cross-combos are redundant for a netstandard2.1 library with
+      # no OS-specific code, and dropping them keeps CI time down.
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        framework: [net8.0, net10.0]
+        include:
+          - os: ubuntu-latest
+            framework: net8.0
+          - os: ubuntu-latest
+            framework: net10.0
+          - os: windows-latest
+            framework: net8.0
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -80,6 +90,16 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/lint-no-this-qualification.ps1
+
+      - name: Enforce the comment form rules on C# sources
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/lint-comment-form.ps1
+
+      - name: Enforce the test-name underscore ban
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/lint-test-names.ps1
 
       # One restore covers both tool invocations below (CSharpier check and
       # the coverage report).

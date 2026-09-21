@@ -20,9 +20,11 @@ namespace SignalFish.Client.Tests.Core
         private static readonly Guid RoomId = new Guid("7c9e6679-7425-40de-944b-e07fc1f90ae7");
         private const string RoomCode = "ABC123";
 
-        // Canonical frames. RoomJoined/Reconnected carry the full v2 field
-        // set; the decoder consumes the session-critical subset and tolerates
-        // the rest (spec: all 12 fields required on the v2 wire).
+        /*
+            Canonical frames. RoomJoined/Reconnected carry the full v2 field
+            set; the decoder consumes the session-critical subset and tolerates
+            the rest (spec: all 12 fields required on the v2 wire).
+        */
         private const string RoomJoinedFrame =
             @"{""type"":""RoomJoined"",""data"":{""room_id"":""7c9e6679-7425-40de-944b-e07fc1f90ae7"","
             + @"""room_code"":""ABC123"",""player_id"":""0f8fad5b-d9cb-469f-a165-70867728950e"","
@@ -42,7 +44,7 @@ namespace SignalFish.Client.Tests.Core
             + @"""missed_events"":[]}}";
 
         [Test]
-        public void TryMap_SessionFactFrames_MapToTypedEvents()
+        public void TryMapSessionFactFramesMapToTypedEvents()
         {
             (string Wire, SessionEvent Expected)[] rows =
             {
@@ -102,7 +104,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void TryMap_NonSessionFacts_AreNotMapped()
+        public void TryMapNonSessionFactsAreNotMapped()
         {
             string[] wires =
             {
@@ -128,7 +130,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void TryMap_MalformedOrUnknownEnvelope_IsNotMapped()
+        public void TryMapMalformedOrUnknownEnvelopeIsNotMapped()
         {
             // Session-critical field missing from the payload.
             Assert.That(
@@ -138,8 +140,10 @@ namespace SignalFish.Client.Tests.Core
                 ),
                 Is.False
             );
-            // A repeated session-critical key is rejected (fail-closed), not
-            // last-wins.
+            /*
+                A repeated session-critical key is rejected (fail-closed), not
+                last-wins.
+            */
             Assert.That(
                 TryMapWire(
                     @"{""type"":""RoomJoined"",""data"":{""room_id"":""7c9e6679-7425-40de-944b-e07fc1f90ae7"","
@@ -156,7 +160,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void TryMap_RoomJoined_GuidDecodeMatchesParse(
+        public void TryMapRoomJoinedGuidDecodeMatchesParse(
             [ValueSource(nameof(GuidVariants))] string text
         )
         {
@@ -175,7 +179,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void TryMap_RoomJoined_MalformedUuid_IsRejected()
+        public void TryMapRoomJoinedMalformedUuidIsRejected()
         {
             string[] badIds =
             {
@@ -205,12 +209,14 @@ namespace SignalFish.Client.Tests.Core
         };
 
         [Test]
-        public void HotPath_TryMap_SteadyStateAllocatesNothing()
+        public void HotPathTryMapSteadyStateAllocatesNothing()
         {
-            // Payload-less and failure session facts are per-frame traffic:
-            // mapping them must not allocate. Join/reconnect mapping is cold
-            // (one string per confirmed membership: the room code) and is
-            // excluded by design.
+            /*
+                Payload-less and failure session facts are per-frame traffic:
+                mapping them must not allocate. Join/reconnect mapping is cold
+                (one string per confirmed membership: the room code) and is
+                excluded by design.
+            */
             string[] wires =
             {
                 @"{""type"":""Authenticated""}",
@@ -222,8 +228,10 @@ namespace SignalFish.Client.Tests.Core
                 GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "Error"),
                 @"{""type"":""LobbyStateChanged"",""data"":{""lobby_state"":""lobby"",""all_ready"":false}}",
 
-                // Unknown types are excluded: they take the documented
-                // once-per-frame TypeText allocation on the rare path.
+                /*
+                    Unknown types are excluded: they take the documented
+                    once-per-frame TypeText allocation on the rare path.
+                */
             };
             byte[][] frames = new byte[wires.Length][];
             for (int i = 0; i < wires.Length; i++)
@@ -232,8 +240,10 @@ namespace SignalFish.Client.Tests.Core
             }
 
             Assert.That(TryMapWire(RoomJoinedFrame, out _), Is.True, "warmup must map");
-            // Warm every measured frame once so static/one-time costs land
-            // outside the measured passes.
+            /*
+                Warm every measured frame once so static/one-time costs land
+                outside the measured passes.
+            */
             foreach (string wire in wires)
             {
                 TryMapWire(wire, out _);

@@ -21,7 +21,7 @@ namespace SignalFish.Client.Tests.Transport
         private static readonly string[] PingTextSent = { "{\"type\":\"Ping\"}" };
 
         [Test]
-        public async Task Connect_SecondCall_IsMisuse()
+        public async Task ConnectSecondCallIsMisuse()
         {
             FakeTransport transport = new FakeTransport();
             await Assert.ThatAsync(
@@ -35,7 +35,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Send_BeforeConnect_IsMisuse()
+        public async Task SendBeforeConnectIsMisuse()
         {
             FakeTransport transport = new FakeTransport();
             await Assert.ThatAsync(
@@ -45,7 +45,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Send_ReturnsFullLength_AndDeliversVerbatim()
+        public async Task SendReturnsFullLengthAndDeliversVerbatim()
         {
             FakeTransport transport = new FakeTransport();
             await transport.ConnectAsync(FakeUri);
@@ -57,7 +57,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Receive_DrainsScriptedFrames_InOrder()
+        public async Task ReceiveDrainsScriptedFramesInOrder()
         {
             FakeTransport transport = new FakeTransport();
             await transport.ConnectAsync(FakeUri);
@@ -78,7 +78,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task CloseFrame_IsSurfacedExactlyOnce()
+        public async Task CloseFrameIsSurfacedExactlyOnce()
         {
             FakeTransport transport = new FakeTransport();
             await transport.ConnectAsync(FakeUri);
@@ -98,7 +98,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Abort_DuringPendingReceive_SurfacesCloseExactlyOnce()
+        public async Task AbortDuringPendingReceiveSurfacesCloseExactlyOnce()
         {
             FakeTransport transport = new FakeTransport();
             await transport.ConnectAsync(FakeUri);
@@ -117,7 +117,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Send_AfterClose_CarriesTheClose()
+        public async Task SendAfterCloseCarriesTheClose()
         {
             FakeTransport transport = new FakeTransport();
             await transport.ConnectAsync(FakeUri);
@@ -131,7 +131,7 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         [Test]
-        public async Task Dispose_IsIdempotent_EvenWhenConcurrent()
+        public async Task DisposeIsIdempotentEvenWhenConcurrent()
         {
             FakeTransport transport = new FakeTransport();
             await transport.ConnectAsync(FakeUri);

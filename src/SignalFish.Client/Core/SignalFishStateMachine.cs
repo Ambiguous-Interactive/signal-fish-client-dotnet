@@ -205,18 +205,22 @@ namespace SignalFish.Client.Core
                     _transportReady = true;
                     break;
                 case SessionEventKind.Authenticated:
-                    // Idempotent: the v2 Authenticated payload carries no
-                    // identity, so a repeat has nothing to conflict with;
-                    // the player identity is confirmed with the membership.
+                    /*
+                        Idempotent: the v2 Authenticated payload carries no
+                        identity, so a repeat has nothing to conflict with;
+                        the player identity is confirmed with the membership.
+                    */
                     _authenticated = true;
                     break;
                 case SessionEventKind.RoomJoined:
                 case SessionEventKind.SpectatorJoined:
                 case SessionEventKind.Reconnected:
-                    // Fail-closed: ignore a _membership the server could not
-                    // have confirmed — no authentication yet, or a success
-                    // kind that does not answer the fenced operation (a
-                    // protocol violation). Membership and fence stay put.
+                    /*
+                        Fail-closed: ignore a _membership the server could not
+                        have confirmed — no authentication yet, or a success
+                        kind that does not answer the fenced operation (a
+                        protocol violation). Membership and fence stay put.
+                    */
                     PendingRoomOperation release = SuccessRelease(sessionEvent.Kind);
                     if (
                         !_authenticated
@@ -234,10 +238,12 @@ namespace SignalFish.Client.Core
                     break;
                 case SessionEventKind.RoomLeft:
                 case SessionEventKind.SpectatorLeft:
-                    // Fail-closed: while fenced, only the leave kind the fence
-                    // awaits may clear _membership; a mismatched leave is a
-                    // protocol violation and is ignored. Unfenced, a leave is
-                    // accepted (tolerant server-initiated removal).
+                    /*
+                        Fail-closed: while fenced, only the leave kind the fence
+                        awaits may clear _membership; a mismatched leave is a
+                        protocol violation and is ignored. Unfenced, a leave is
+                        accepted (tolerant server-initiated removal).
+                    */
                     if (
                         _pendingOperation != default(PendingRoomOperation)
                         && _pendingOperation != LeaveRelease(sessionEvent.Kind)
@@ -265,8 +271,10 @@ namespace SignalFish.Client.Core
                     ClearSession();
                     break;
                 default:
-                    // Not a session fact (or an additive future kind);
-                    // ignored so default events stay inert.
+                    /*
+                        Not a session fact (or an additive future kind);
+                        ignored so default events stay inert.
+                    */
                     break;
             }
         }

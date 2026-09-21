@@ -8,7 +8,7 @@ namespace SignalFish.Client.Tests
     public class SignalFishClientInfoTests
     {
         [Test]
-        public void DefaultServerUri_DefaultHost_MatchesProtocolDefaults()
+        public void DefaultServerUriDefaultHostMatchesProtocolDefaults()
         {
             Uri uri = SignalFishClientInfo.DefaultServerUri();
 
@@ -18,7 +18,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void DefaultServerUri_CustomHost_PreservesHost()
+        public void DefaultServerUriCustomHostPreservesHost()
         {
             Uri uri = SignalFishClientInfo.DefaultServerUri("games.example.com");
 
@@ -28,7 +28,7 @@ namespace SignalFish.Client.Tests
         [TestCase("::1", "[::1]")]
         [TestCase("2001:db8::1", "[2001:db8::1]")]
         [TestCase("::ffff:127.0.0.1", "[::ffff:127.0.0.1]")]
-        public void DefaultServerUri_Ipv6Host_BracketsHostForValidUri(
+        public void DefaultServerUriIpv6HostBracketsHostForValidUri(
             string host,
             string expectedHost
         )
@@ -41,7 +41,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void DefaultServerUri_AlreadyBracketedIpv6Host_IsNotDoubleBracketed()
+        public void DefaultServerUriAlreadyBracketedIpv6HostIsNotDoubleBracketed()
         {
             Uri uri = SignalFishClientInfo.DefaultServerUri("[::1]");
 
@@ -51,7 +51,7 @@ namespace SignalFish.Client.Tests
         [TestCase(null)]
         [TestCase("")]
         [TestCase("   ")]
-        public void DefaultServerUri_EmptyHost_Throws(string? host)
+        public void DefaultServerUriEmptyHostThrows(string? host)
         {
             Assert.That(
                 (Action)(() => SignalFishClientInfo.DefaultServerUri(host!)),
@@ -60,7 +60,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void ProtocolConstants_MatchQuickReference()
+        public void ProtocolConstantsMatchQuickReference()
         {
             Assert.That(SignalFishClientInfo.V2WebSocketPath, Is.EqualTo("/v2/ws"));
             Assert.That(SignalFishClientInfo.V3WebSocketPath, Is.EqualTo("/v3/ws"));

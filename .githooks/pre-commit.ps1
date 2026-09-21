@@ -157,6 +157,29 @@ if ($thisTargets.Count -gt 0) {
         Write-Host '  pwsh -NoProfile -File scripts/lint-no-this-qualification.ps1' -ForegroundColor Red
         $failed = $true
     }
+
+    Write-Host 'pre-commit: enforcing the comment form rules...'
+    $commentLinter = Join-Path $repoRoot 'scripts/lint-comment-form.ps1'
+    $result = Invoke-LintStep -ScriptPath $commentLinter -Params @{ RepoRoot = $repoRoot; Paths = $thisTargets }
+    if ($result.ExitCode -ne 0) {
+        foreach ($line in $result.Output) { Write-Host "    | $line" }
+        Write-Host 'pre-commit: comment form lint failed. Run:' -ForegroundColor Red
+        Write-Host '  pwsh -NoProfile -File scripts/lint-comment-form.ps1' -ForegroundColor Red
+        $failed = $true
+    }
+}
+
+$testCsTargets = @($staged | Where-Object { $_ -match '^tests/.*\.cs$' })
+if ($testCsTargets.Count -gt 0) {
+    Write-Host 'pre-commit: enforcing the test-name underscore ban...'
+    $nameLinter = Join-Path $repoRoot 'scripts/lint-test-names.ps1'
+    $result = Invoke-LintStep -ScriptPath $nameLinter -Params @{ RepoRoot = $repoRoot; Paths = $testCsTargets }
+    if ($result.ExitCode -ne 0) {
+        foreach ($line in $result.Output) { Write-Host "    | $line" }
+        Write-Host 'pre-commit: test-name lint failed. Run:' -ForegroundColor Red
+        Write-Host '  pwsh -NoProfile -File scripts/lint-test-names.ps1' -ForegroundColor Red
+        $failed = $true
+    }
 }
 
 if ($formattableFiles.Count -gt 0) {

@@ -26,7 +26,7 @@ namespace SignalFish.Client.Tests
         private static string GoldenDirectory => Path.Combine(AppContext.BaseDirectory, "Golden");
 
         [Test]
-        public void Corpus_WithPinnedFiles_AreVendoredAndNonEmpty()
+        public void CorpusWithPinnedFilesAreVendoredAndNonEmpty()
         {
             Assert.That(
                 Directory.Exists(GoldenDirectory),
@@ -53,7 +53,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Corpus_EveryEnvelopeLine_IsJsonObjectWithTypedDiscriminator()
+        public void CorpusEveryEnvelopeLineIsJsonObjectWithTypedDiscriminator()
         {
             foreach (string fileName in PinnedFixtureFiles)
             {

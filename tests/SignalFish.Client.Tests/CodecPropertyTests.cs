@@ -106,7 +106,7 @@ namespace SignalFish.Client.Tests
         // ---- Escape-aware string roundtrip ----------------------------------
 
         [Property(MaxTest = 400, QuietOnSuccess = true)]
-        public Property Materialize_Write_ArbitraryString_Identity()
+        public Property MaterializeWriteArbitraryStringIdentity()
         {
             return Prop.ForAll(
                 Arb.From(TextGen),
@@ -133,7 +133,7 @@ namespace SignalFish.Client.Tests
         // ---- Value-scan stability over writer output -------------------------
 
         [Property(MaxTest = 250, QuietOnSuccess = true)]
-        public Property Scan_RenderedValue_IsByteStable()
+        public Property ScanRenderedValueIsByteStable()
         {
             return Prop.ForAll(
                 Arb.From(AnyJson),
@@ -155,7 +155,7 @@ namespace SignalFish.Client.Tests
         // ---- Envelope decode totality ----------------------------------------
 
         [Property(MaxTest = 1000, QuietOnSuccess = true)]
-        public Property Decode_ArbitraryBytes_NeverThrows()
+        public Property DecodeArbitraryBytesNeverThrows()
         {
             return Prop.ForAll(
                 Arb.From(Gen.ArrayOf(Gen.Elements(BytePool))),
@@ -164,7 +164,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Property(MaxTest = 600, QuietOnSuccess = true)]
-        public Property Decode_MutatedCorpusFrame_NeverThrows()
+        public Property DecodeMutatedCorpusFrameNeverThrows()
         {
             return Prop.ForAll(
                 Arb.From(Gen.Choose(0, corpusFrames.Length - 1)),
@@ -183,7 +183,7 @@ namespace SignalFish.Client.Tests
         // ---- Known-type routing under arbitrary legal payloads ----------------
 
         [Property(MaxTest = 150, QuietOnSuccess = true)]
-        public Property Decode_KnownType_ArbitraryObjectPayload_Routes()
+        public Property DecodeKnownTypeArbitraryObjectPayloadRoutes()
         {
             return Prop.ForAll(
                 Arb.From(KnownKindGen),
@@ -204,7 +204,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Property(MaxTest = 150, QuietOnSuccess = true)]
-        public Property Decode_UnknownType_SurfacesForwardCompatibleEvent()
+        public Property DecodeUnknownTypeSurfacesForwardCompatibleEvent()
         {
             return Prop.ForAll(
                 Arb.From(TextGen),

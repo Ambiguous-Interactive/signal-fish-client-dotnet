@@ -18,7 +18,7 @@ namespace SignalFish.Client.Tests.Core
         private const string RoomCode = "ABC123";
 
         [Test]
-        public void Phase_ProgressionTable_MatchesRustPhaseOrdering()
+        public void PhaseProgressionTableMatchesRustPhaseOrdering()
         {
             (SessionEvent Event, ConnectionPhase Expected)[] steps =
             {
@@ -44,7 +44,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Membership_JoinSetsAllFourFields_AsOneInvariant()
+        public void MembershipJoinSetsAllFourFieldsAsOneInvariant()
         {
             SignalFishStateMachine player = InRoom(RoomRole.Player);
             AssertMembership(player, RoomRole.Player);
@@ -55,7 +55,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Membership_ConfirmedExit_ClearsAllFourFields()
+        public void MembershipConfirmedExitClearsAllFourFields()
         {
             SignalFishStateMachine player = InRoom(RoomRole.Player);
             player.Apply(SessionEvent.From(SessionEventKind.RoomLeft));
@@ -69,7 +69,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Membership_SpectatorExit_ClearsFields_KeepsConnection()
+        public void MembershipSpectatorExitClearsFieldsKeepsConnection()
         {
             SignalFishStateMachine spectator = InRoom(RoomRole.Spectator);
             spectator.Apply(SessionEvent.From(SessionEventKind.SpectatorLeft));
@@ -79,19 +79,21 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Authenticated_IsSessionFactWithoutIdentity()
+        public void AuthenticatedIsSessionFactWithoutIdentity()
         {
             SignalFishStateMachine machine = new SignalFishStateMachine();
             machine.Apply(SessionEvent.Authenticated());
 
             Assert.That(machine.IsAuthenticated, Is.True);
-            // The v2 Authenticated payload carries no player id; the identity
-            // is confirmed with the membership at join/reconnect time.
+            /*
+                The v2 Authenticated payload carries no player id; the identity
+                is confirmed with the membership at join/reconnect time.
+            */
             Assert.That(machine.Membership.IsPresent, Is.False);
         }
 
         [Test]
-        public void Admit_AdmissionTable_MatchesRustPrecedence()
+        public void AdmitAdmissionTableMatchesRustPrecedence()
         {
             (
                 string Label,
@@ -324,7 +326,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void PendingOperationFor_DirectedOpsFence_OthersDoNot()
+        public void PendingOperationForDirectedOpsFenceOthersDoNot()
         {
             Assert.That(
                 SignalFishStateMachine.PendingOperationFor(ClientCommand.JoinRoom),
@@ -354,7 +356,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Fence_ReleaseTable_TypedResultsOnly()
+        public void FenceReleaseTableTypedResultsOnly()
         {
             (
                 string Label,
@@ -479,7 +481,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Fence_MismatchedSuccess_IsIgnoredFailClosed()
+        public void FenceMismatchedSuccessIsIgnoredFailClosed()
         {
             SignalFishStateMachine leaving = InRoom(RoomRole.Player);
             leaving.Arm(PendingRoomOperation.LeavePlayer);
@@ -504,7 +506,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Fence_MismatchedLeave_IsIgnoredFailClosed()
+        public void FenceMismatchedLeaveIsIgnoredFailClosed()
         {
             SignalFishStateMachine leaving = InRoom(RoomRole.Player);
             leaving.Arm(PendingRoomOperation.LeavePlayer);
@@ -526,7 +528,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Fence_UnfencedLeave_IsAcceptedAsServerRemoval()
+        public void FenceUnfencedLeaveIsAcceptedAsServerRemoval()
         {
             SignalFishStateMachine machine = InRoom(RoomRole.Player);
             machine.Apply(SessionEvent.From(SessionEventKind.SpectatorLeft));
@@ -536,7 +538,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Apply_JoinConfirmedWithoutAuthentication_IsIgnored()
+        public void ApplyJoinConfirmedWithoutAuthenticationIsIgnored()
         {
             SignalFishStateMachine fresh = Fresh();
             fresh.Apply(
@@ -548,7 +550,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Apply_RepeatedAuthenticated_StaysAuthenticated()
+        public void ApplyRepeatedAuthenticatedStaysAuthenticated()
         {
             SignalFishStateMachine machine = Fresh();
             machine.Apply(SessionEvent.Authenticated());
@@ -559,7 +561,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Apply_DefaultSessionEvent_IsInert()
+        public void ApplyDefaultSessionEventIsInert()
         {
             SignalFishStateMachine machine = Fresh();
             machine.Apply(default(SessionEvent));
@@ -568,7 +570,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Arm_None_IsMisuse()
+        public void ArmNoneIsMisuse()
         {
             SignalFishStateMachine machine = Fresh();
             Assert.That(
@@ -578,7 +580,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void StructEquality_MembershipAndEvents_FieldWise()
+        public void StructEqualityMembershipAndEventsFieldWise()
         {
             RoomMembership membership = Membership(RoomRole.Player);
             Assert.That(membership, Is.EqualTo(Membership(RoomRole.Player)));
@@ -620,7 +622,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void Terminal_AbsorbsAllLaterEvents()
+        public void TerminalAbsorbsAllLaterEvents()
         {
             SignalFishStateMachine machine = Fenced(PendingRoomOperation.JoinPlayer);
             machine.Apply(SessionEvent.From(SessionEventKind.Disconnected));
@@ -638,7 +640,7 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void HotPath_AdmitAndApply_SteadyStateAllocatesNothing()
+        public void HotPathAdmitAndApplySteadyStateAllocatesNothing()
         {
             SignalFishStateMachine machine = new SignalFishStateMachine();
             RoomMembership membership = Membership(RoomRole.Player);

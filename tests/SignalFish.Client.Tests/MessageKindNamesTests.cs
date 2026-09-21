@@ -13,9 +13,11 @@ namespace SignalFish.Client.Tests
     [TestFixture]
     public class MessageKindNamesTests
     {
-        // The v2 server→client session-fact wire types the mapping layer
-        // consumes (quick-reference "Mandatory v2 lifecycle" + typed
-        // failures + spectator confirmations).
+        /*
+            The v2 server→client session-fact wire types the mapping layer
+            consumes (quick-reference "Mandatory v2 lifecycle" + typed
+            failures + spectator confirmations).
+        */
         private static readonly string[] ServerSessionWireNames =
         {
             "Authenticated",
@@ -31,7 +33,7 @@ namespace SignalFish.Client.Tests
         };
 
         [Test]
-        public void TryRoute_ServerSessionTypes_RouteToKnownKinds()
+        public void TryRouteServerSessionTypesRouteToKnownKinds()
         {
             foreach (string wireName in ServerSessionWireNames)
             {
@@ -52,7 +54,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void Table_RouteRoundtrip_EveryDefinedKind()
+        public void TableRouteRoundtripEveryDefinedKind()
         {
             int definedCount = 0;
             foreach (MessageKind kind in Enum.GetValues<MessageKind>())
@@ -76,8 +78,10 @@ namespace SignalFish.Client.Tests
                 Assert.That(routed, Is.EqualTo(kind), wireName);
             }
 
-            // Enum and table must be in exact lockstep: a missing table
-            // entry strands a kind as unroutable; an extra one phantom-routes.
+            /*
+                Enum and table must be in exact lockstep: a missing table
+                entry strands a kind as unroutable; an extra one phantom-routes.
+            */
             int routedCount = 0;
             for (int value = 1; value <= 255; value++)
             {
@@ -91,7 +95,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void TryRoute_UnknownNames_AreNotRouted()
+        public void TryRouteUnknownNamesAreNotRouted()
         {
             Assert.That(
                 MessageKindNames.TryRoute(Encoding.ASCII.GetBytes("DefinitelyNotAType"), out _),
