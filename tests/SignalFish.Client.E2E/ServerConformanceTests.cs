@@ -347,9 +347,11 @@ namespace SignalFish.Client.E2E
         }
 
         /// <summary>
-        /// M5.2: an authority-enabled room hands the seat to a claiming
-        /// player (AuthorityResponse + AuthorityChanged, mirrored in the
-        /// snapshots) and only the holder can start the game.
+        /// M5.2: an authority-enabled room clears the seat on a release
+        /// (the vacated broadcast carries a null authority player), a
+        /// claiming player then takes it (AuthorityResponse +
+        /// AuthorityChanged, mirrored in the snapshots), and only the
+        /// holder can start the game.
         /// </summary>
         [Test]
         public async Task AuthorityClaimMovesTheSeatAndGatesTheStart()
@@ -365,8 +367,36 @@ namespace SignalFish.Client.E2E
             Assert.That(bob.Snapshot.IsAuthority, Is.False);
 
             /*
-                Bob claims the seat; the answer and the broadcast may arrive
-                in either order, so classify both from one combined wait.
+                Alice releases: the answer grants, and the room-wide
+                broadcast carries the vacated seat (authority_player null —
+                the spec-nullable form) with you_are_authority false for
+                everyone, including the releaser.
+            */
+            Assert.That(alice.SendAuthorityRequest(false).Accepted, Is.True);
+            PollEvent aliceAnswer = await E2EHarness.WaitForEventAsync(
+                alice,
+                e => e.Kind == PollEventKind.AuthorityResponse
+            );
+            Assert.That(aliceAnswer.AuthorityResponse.Granted, Is.True);
+            PollEvent aliceRelease = await E2EHarness.WaitForEventAsync(
+                alice,
+                e => e.Kind == PollEventKind.AuthorityChanged
+            );
+            Assert.That(aliceRelease.AuthorityChanged.AuthorityPlayer, Is.Null);
+            Assert.That(aliceRelease.AuthorityChanged.YouAreAuthority, Is.False);
+            Assert.That(alice.Snapshot.IsAuthority, Is.False);
+            await E2EHarness.WaitForEventAsync(
+                bob,
+                e =>
+                    e.Kind == PollEventKind.AuthorityChanged
+                    && e.AuthorityChanged.AuthorityPlayer is null
+            );
+            Assert.That(bob.Snapshot.IsAuthority, Is.False);
+
+            /*
+                With the seat vacant, bob's claim is granted; the answer
+                and the broadcast may arrive in either order, so classify
+                both from one combined wait.
             */
             Assert.That(bob.SendAuthorityRequest(true).Accepted, Is.True);
             List<PollEvent> bobEvents = await E2EHarness.WaitForEventsAsync(
@@ -379,14 +409,6 @@ namespace SignalFish.Client.E2E
             PollEvent bobMove = bobEvents.First(e => e.Kind == PollEventKind.AuthorityChanged);
             Assert.That(bobMove.AuthorityChanged.YouAreAuthority, Is.True);
             Assert.That(bob.Snapshot.IsAuthority, Is.True);
-
-            // The uniform broadcast reaches the old authority too.
-            PollEvent aliceMove = await E2EHarness.WaitForEventAsync(
-                alice,
-                e => e.Kind == PollEventKind.AuthorityChanged
-            );
-            Assert.That(aliceMove.AuthorityChanged.YouAreAuthority, Is.False);
-            Assert.That(alice.Snapshot.IsAuthority, Is.False);
 
             // The old authority can no longer start the game...
             await E2EHarness.SetReadyAsync(alice);

@@ -53,7 +53,7 @@ fixed a decoder bug (#54). One deliverable PR.
 - Red-checks: the #54 decode test fails against the reverted decoder;
   the admission matrix caught a real parity subtlety —
   `RequestAuthority` is not one of the five directed ops, so
-  unauthenticated queueing is `NotInRoom`, not `NotAuthenticated`.
+  unauthenticated queuing is `NotInRoom`, not `NotAuthenticated`.
 - CI-time: dotnet cells +~2 s (21 tests), e2e +~10 s (2 scenarios);
   net-flat against the 1 m20 s / 1 m14 s mains.
 
