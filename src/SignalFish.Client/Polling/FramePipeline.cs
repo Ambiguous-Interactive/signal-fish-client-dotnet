@@ -203,6 +203,18 @@ namespace SignalFish.Client.Polling
                     return BuildFailure(PollEventKind.ReconnectionFailed, envelope);
                 case SessionEventKind.ServerError:
                     return BuildFailure(PollEventKind.ServerError, envelope);
+                case SessionEventKind.AuthorityChanged:
+                {
+                    /*
+                        The session fact already validated the decode, so the
+                        informational re-decode cannot fail.
+                    */
+                    AuthorityChangedMessage.TryDecode(
+                        envelope.Data,
+                        out AuthorityChangedMessage authorityChanged
+                    );
+                    return PollEvent.FromAuthorityChanged(authorityChanged, envelope.Raw);
+                }
                 default:
                     // TransportReady and Disconnected are synthetic (not frame-driven).
                     return PollEvent.From(PollEventKind.TransportReady);
@@ -317,18 +329,6 @@ namespace SignalFish.Client.Polling
                     }
 
                     return PollEvent.FromAuthorityResponse(authorityResponse, envelope.Raw);
-                case MessageKind.AuthorityChanged:
-                    if (
-                        !AuthorityChangedMessage.TryDecode(
-                            envelope.Data,
-                            out AuthorityChangedMessage authorityChanged
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromAuthorityChanged(authorityChanged, envelope.Raw);
                 case MessageKind.GameData:
                     if (!IncomingGameData.TryDecode(envelope.Data, out IncomingGameData gameData))
                     {

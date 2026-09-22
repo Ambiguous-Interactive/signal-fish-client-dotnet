@@ -174,6 +174,100 @@ namespace SignalFish.Client.Tests.Polling
         }
 
         [Test]
+        public async Task AuthorityRequestSendsGoldenWireAndTracksTheSeat()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+            JoinGoldenRoom(client, transport);
+            Assert.That(
+                client.Snapshot.IsAuthority,
+                Is.True,
+                "the golden baseline holds authority"
+            );
+
+            CommandSend relinquish = client.SendAuthorityRequest(becomeAuthority: false);
+            Assert.That(relinquish.Accepted, Is.True);
+            Assert.That(
+                LastSent(transport),
+                Is.EqualTo(
+                    @"{""type"": ""AuthorityRequest"", ""data"": {""become_authority"": false}}"
+                ),
+                "relinquish carries become_authority: false"
+            );
+
+            /*
+                A rival claims the seat; the broadcast is the tracking source
+                of truth and the snapshot mirrors it.
+            */
+            EnqueueGolden(transport, "AuthorityChanged");
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+            Assert.That(client.Snapshot.IsAuthority, Is.False);
+
+            Assert.That(client.SendAuthorityRequest(false).Accepted, Is.False);
+            Assert.That(
+                client.SendAuthorityRequest(false).Refusal,
+                Is.EqualTo(AdmissionError.AuthorityRequired)
+            );
+        }
+
+        [Test]
+        public async Task AuthorityRequestRefusalsNeverTouchTheWire()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+            int sentBefore = transport.SentText.Count;
+
+            CommandSend outsideRoom = client.SendAuthorityRequest(true);
+            Assert.That(outsideRoom.Refusal, Is.EqualTo(AdmissionError.NotInRoom));
+
+            EnqueueGolden(transport, "SpectatorJoined");
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            CommandSend spectator = client.SendAuthorityRequest(true);
+            Assert.That(spectator.Refusal, Is.EqualTo(AdmissionError.WrongRoomRole));
+
+            EnqueueWire(
+                transport,
+                @"{""type"":""RoomJoined"",""data"":{""room_id"":""7c9e6679-7425-40de-944b-e07fc1f90ae7"","
+                    + @"""room_code"":""ABC123"",""player_id"":""0f8fad5b-d9cb-469f-a165-70867728950e"","
+                    + @"""game_name"":""my-game"",""max_players"":8,""supports_authority"":true,"
+                    + @"""current_players"":[],""is_authority"":false,""lobby_state"":""lobby"","
+                    + @"""ready_players"":[],""relay_type"":""relay"",""current_spectators"":[]}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            CommandSend nonAuthority = client.SendAuthorityRequest(false);
+            Assert.That(nonAuthority.Refusal, Is.EqualTo(AdmissionError.AuthorityRequired));
+
+            Assert.That(
+                transport.SentText.Count,
+                Is.EqualTo(sentBefore),
+                "refused commands never reach the wire"
+            );
+
+            /*
+                The claim form is still admitted for this seat; the wire
+                bytes match the golden claim frame.
+            */
+            CommandSend claim = client.SendAuthorityRequest(true);
+            Assert.That(claim.Accepted, Is.True);
+            Assert.That(
+                LastSent(transport),
+                Is.EqualTo(
+                    GoldenFixtures.ReadFirstLineOfType(
+                        "v2-client-messages.jsonl",
+                        "AuthorityRequest"
+                    )
+                )
+            );
+        }
+
+        [Test]
         public async Task SpectatorSeatRefusesPlayerCommandsAndLeavesAsSpectator()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =

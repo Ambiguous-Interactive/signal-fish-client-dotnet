@@ -40,5 +40,11 @@ namespace SignalFish.Client.Core
         /// waits for a slot instead.
         /// </summary>
         SendBufferFull = 7,
+
+        /// <summary>
+        /// Relinquishing authority (<c>SendAuthorityRequest(false)</c>)
+        /// refused: this connection does not hold the authority.
+        /// </summary>
+        AuthorityRequired = 8,
     }
 }

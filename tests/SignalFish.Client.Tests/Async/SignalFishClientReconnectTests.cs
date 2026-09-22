@@ -95,7 +95,8 @@ namespace SignalFish.Client.Tests.Async
             await WaitForAsync(
                 () =>
                     second.SentText.Count >= 1
-                    && second.SentText[0] == "{\"type\": \"Authenticate\"}",
+                    && second.SentText[0]
+                        == "{\"type\": \"Authenticate\", \"data\": {\"sdk_version\": \"0.1.0\", \"platform\": \"dotnet\"}}",
                 "the driver re-authenticates the fresh connection"
             );
             EnqueueGolden(second, "Authenticated");
@@ -634,11 +635,58 @@ namespace SignalFish.Client.Tests.Async
             );
         }
 
+        [Test]
+        public async Task ReconnectRoundReAuthenticatesWithConfiguredCredentials()
+        {
+            /*
+                An allowlisted deployment refuses an anonymous fresh
+                connection, so the per-round auto-handshake must carry the
+                configured credentials (app id + optional tenant token).
+                Defaults keep the SDK identity only (see the golden-bytes
+                assertion in the reclaim test above).
+            */
+            TransportFactory factory = new TransportFactory();
+            FakeTransport first = factory.Create();
+            SignalFishClient client = BuildPolicyClient(
+                first,
+                new ReconnectPolicy(
+                    factory.Create,
+                    initialBackoffMilliseconds: 0,
+                    maxBackoffMilliseconds: 0
+                ),
+                appId: "mb_app_abc123",
+                connectToken: "sfct_v1.secret-token-value"
+            );
+            await ConnectJoinRoomAsync(client, first);
+
+            first.FailPendingReceive(4003);
+            await NextEventAsync(client); // Disconnected
+            await NextEventAsync(client); // Reconnecting (0 backoff)
+
+            await AdvanceUntilAsync(client, () => factory.Called >= 2, "round 2 opens");
+            FakeTransport second = factory.Last!;
+            await NextEventAsync(client); // TransportReady
+
+            await WaitForAsync(
+                () => second.SentText.Count >= 1,
+                "the fresh round re-authenticates"
+            );
+            Assert.That(
+                second.SentText[0],
+                Is.EqualTo(
+                    @"{""type"": ""Authenticate"", ""data"": {""app_id"": ""mb_app_abc123"", ""sdk_version"": ""0.1.0"", ""platform"": ""dotnet"", ""connect_token"": ""sfct_v1.secret-token-value""}}"
+                )
+            );
+            await client.DisposeAsync();
+        }
+
         private SignalFishClient BuildPolicyClient(
             FakeTransport initial,
             ReconnectPolicy policy,
             int eventCapacity = SignalFishClientOptions.DefaultEventCapacity,
-            int commandCapacity = SignalFishClientOptions.DefaultCommandCapacity
+            int commandCapacity = SignalFishClientOptions.DefaultCommandCapacity,
+            string? appId = null,
+            string? connectToken = null
         )
         {
             _clock = new VirtualClock();
@@ -649,7 +697,9 @@ namespace SignalFish.Client.Tests.Async
                     eventCapacity: eventCapacity,
                     commandCapacity: commandCapacity,
                     shutdownTimeoutMilliseconds: 0,
-                    reconnectPolicy: policy
+                    reconnectPolicy: policy,
+                    appId: appId,
+                    connectToken: connectToken
                 )
             );
         }

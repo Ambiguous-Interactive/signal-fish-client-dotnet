@@ -698,19 +698,22 @@ namespace SignalFish.Client.Protocol
 
     /// <summary>
     /// Payload of the inbound <c>AuthorityChanged</c> message (S→C): the new
-    /// authority holder and whether this connection is it. Both fields are
-    /// required. Wire order: <c>authority_player</c>,
-    /// <c>you_are_authority</c>.
+    /// authority holder and whether this connection is it.
+    /// <see cref="AuthorityPlayer"/> is required but nullable — an explicit
+    /// JSON <c>null</c> means the authority seat vacated with no successor.
+    /// <see cref="YouAreAuthority"/> is required. Wire order:
+    /// <c>authority_player</c>, <c>you_are_authority</c>.
     /// </summary>
     public readonly struct AuthorityChangedMessage : IEquatable<AuthorityChangedMessage>
     {
-        public Guid AuthorityPlayer { get; }
+        /// <summary>Gets the new authority holder; <see langword="null"/> when the seat vacated.</summary>
+        public Guid? AuthorityPlayer { get; }
 
         /// <summary>Gets a value indicating whether this connection is the new authority (required).</summary>
         public bool YouAreAuthority { get; }
 
         /// <summary>Initializes a new <see cref="AuthorityChangedMessage"/> payload.</summary>
-        public AuthorityChangedMessage(Guid authorityPlayer, bool youAreAuthority)
+        public AuthorityChangedMessage(Guid? authorityPlayer, bool youAreAuthority)
         {
             AuthorityPlayer = authorityPlayer;
             YouAreAuthority = youAreAuthority;
@@ -749,8 +752,11 @@ namespace SignalFish.Client.Protocol
         /// Decodes the <c>data</c> object of an <c>AuthorityChanged</c>
         /// envelope (the <see cref="EnvelopeEvent.Data"/> slice). Unknown
         /// fields are skipped; a repeated key or a wrong-typed value is
-        /// rejected. Returns <see langword="false"/> for malformed input or
-        /// a missing required field.
+        /// rejected. An explicit JSON <c>null</c> for
+        /// <c>authority_player</c> decodes as the vacated seat (the field
+        /// is required-present but spec-nullable). Returns
+        /// <see langword="false"/> for malformed input or a missing
+        /// required field.
         /// </summary>
         internal static bool TryDecode(
             ReadOnlyMemory<byte> data,
@@ -761,7 +767,7 @@ namespace SignalFish.Client.Protocol
             JsonScanner scanner = new JsonScanner(data.Span);
             JsonMemberState state = scanner.BeginObject();
 
-            Guid authorityPlayer = default;
+            Guid? authorityPlayer = null;
             bool youAreAuthority = false;
             bool playerSeen = false;
             bool youAreSeen = false;
@@ -776,12 +782,21 @@ namespace SignalFish.Client.Protocol
 
                 if (scanner.KeyIs(keyRaw, "authority_player"))
                 {
-                    if (playerSeen || !scanner.TryReadGuid(valueRaw, out authorityPlayer))
+                    if (playerSeen)
                     {
                         return false;
                     }
 
                     playerSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadGuid(valueRaw, out Guid player))
+                        {
+                            return false;
+                        }
+
+                        authorityPlayer = player;
+                    }
                 }
                 else if (scanner.KeyIs(keyRaw, "you_are_authority"))
                 {

@@ -54,5 +54,8 @@ namespace SignalFish.Client.Core
 
         /// <summary>Transport closed or failed; the session is terminal.</summary>
         Disconnected = 12,
+
+        /// <summary>Authority moved (carries whether this connection holds it).</summary>
+        AuthorityChanged = 13,
     }
 }

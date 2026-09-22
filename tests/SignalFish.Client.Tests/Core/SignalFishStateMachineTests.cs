@@ -18,6 +18,136 @@ namespace SignalFish.Client.Tests.Core
         private static readonly Guid PlayerId = new Guid("0f8fad5b-d9cb-469f-a165-70867728950e");
         private static readonly Guid RoomId = new Guid("7c9e6679-7425-40de-944b-e07fc1f90ae7");
 
+        private static readonly TestCaseData[] RequestAuthorityAdmissionCases = new[]
+        {
+            /*
+                RequestAuthority is not one of the five directed room
+                operations, so per the Rust admission table it does not
+                demand authentication — the server refuses it in-band.
+            */
+            new TestCaseData(false, (RoomRole?)null, false, true, AdmissionError.NotInRoom).SetName(
+                "Unauthenticated"
+            ),
+            new TestCaseData(true, (RoomRole?)null, false, true, AdmissionError.NotInRoom).SetName(
+                "OutsideRoom"
+            ),
+            new TestCaseData(
+                true,
+                RoomRole.Spectator,
+                false,
+                true,
+                AdmissionError.WrongRoomRole
+            ).SetName("Spectator"),
+            new TestCaseData(true, RoomRole.Player, false, true, default(AdmissionError)).SetName(
+                "PlayerClaims"
+            ),
+            new TestCaseData(true, RoomRole.Player, true, false, default(AdmissionError)).SetName(
+                "AuthorityRelinquishes"
+            ),
+            new TestCaseData(
+                true,
+                RoomRole.Player,
+                false,
+                false,
+                AdmissionError.AuthorityRequired
+            ).SetName("RelinquishWithoutHoldIsRefused"),
+        };
+
+        private static readonly SessionEvent[] TrackSeedBroadcastFacts =
+        {
+            SessionEvent.Joined(
+                SessionEventKind.RoomJoined,
+                Membership(RoomRole.Player),
+                null,
+                isAuthority: true
+            ),
+            SessionEvent.AuthorityChanged(false),
+            SessionEvent.AuthorityChanged(true),
+        };
+
+        private static readonly bool[] TrackSeedBroadcastExpected = { true, false, true };
+
+        private static readonly SessionEvent[] TrackLeaveSpectatorFacts =
+        {
+            SessionEvent.Joined(
+                SessionEventKind.RoomJoined,
+                Membership(RoomRole.Player),
+                null,
+                isAuthority: false
+            ),
+            SessionEvent.AuthorityChanged(true),
+            SessionEvent.From(SessionEventKind.RoomLeft),
+            SessionEvent.Joined(SessionEventKind.SpectatorJoined, Membership(RoomRole.Spectator)),
+        };
+
+        private static readonly bool[] TrackLeaveSpectatorExpected = { false, true, false, false };
+
+        private static readonly SessionEvent[] TrackReconnectTerminalFacts =
+        {
+            SessionEvent.Joined(
+                SessionEventKind.RoomJoined,
+                Membership(RoomRole.Player),
+                null,
+                isAuthority: true
+            ),
+            SessionEvent.Joined(
+                SessionEventKind.Reconnected,
+                Membership(RoomRole.Player),
+                null,
+                isAuthority: false
+            ),
+            SessionEvent.From(SessionEventKind.Disconnected),
+        };
+
+        private static readonly bool[] TrackReconnectTerminalExpected = { true, false, false };
+
+        private static readonly TestCaseData[] AuthorityTrackingCases = new[]
+        {
+            new TestCaseData(TrackSeedBroadcastFacts, TrackSeedBroadcastExpected).SetName(
+                "BaselineSeedThenBroadcastUpdates"
+            ),
+            new TestCaseData(TrackLeaveSpectatorFacts, TrackLeaveSpectatorExpected).SetName(
+                "LeaveClearsAndSpectatorBaselineIsNeverAuthority"
+            ),
+            new TestCaseData(TrackReconnectTerminalFacts, TrackReconnectTerminalExpected).SetName(
+                "ReconnectBaselineRotatesAndTerminalClears"
+            ),
+        };
+
+        [TestCaseSource(nameof(RequestAuthorityAdmissionCases))]
+        public void RequestAuthorityAdmissionMatrix(
+            bool authed,
+            RoomRole? role,
+            bool isAuthority,
+            bool becomeAuthority,
+            AdmissionError expected
+        )
+        {
+            SignalFishStateMachine machine = authed ? AuthenticatedAtLeast() : Fresh();
+            if (role is not null)
+            {
+                SessionEventKind kind =
+                    role == RoomRole.Player
+                        ? SessionEventKind.RoomJoined
+                        : SessionEventKind.SpectatorJoined;
+                machine.Apply(
+                    SessionEvent.Joined(
+                        kind,
+                        Membership(role.GetValueOrDefault()),
+                        null,
+                        isAuthority
+                    )
+                );
+            }
+
+            AdmissionError error = default;
+            Assert.That(
+                machine.TryAdmit(ClientCommand.RequestAuthority, becomeAuthority, out error),
+                Is.EqualTo(expected == default(AdmissionError))
+            );
+            Assert.That(error, Is.EqualTo(expected));
+        }
+
         [Test]
         public void PhaseProgressionTableMatchesRustPhaseOrdering()
         {
@@ -674,6 +804,35 @@ namespace SignalFish.Client.Tests.Core
         }
 
         // --- Helpers -----------------------------------------------------------------
+        [TestCaseSource(nameof(AuthorityTrackingCases))]
+        public void AuthorityTrackingFollowsBaselinesAndBroadcasts(
+            SessionEvent[] facts,
+            bool[] expected
+        )
+        {
+            SignalFishStateMachine machine = AuthenticatedAtLeast();
+            for (int i = 0; i < facts.Length; i++)
+            {
+                machine.Apply(facts[i]);
+                Assert.That(
+                    machine.IsAuthority,
+                    Is.EqualTo(expected[i]),
+                    FormattableString.Invariant($"after fact {i} ({facts[i].Kind})")
+                );
+            }
+
+            Assert.That(machine.CreateSnapshot().IsAuthority, Is.EqualTo(expected[^1]));
+        }
+
+        [Test]
+        public void RequestAuthorityIsNeverFenced()
+        {
+            Assert.That(
+                SignalFishStateMachine.PendingOperationFor(ClientCommand.RequestAuthority),
+                Is.Null
+            );
+        }
+
         private static RoomMembership Membership(RoomRole role)
         {
             return new RoomMembership(role, PlayerId, RoomId, RoomCode);

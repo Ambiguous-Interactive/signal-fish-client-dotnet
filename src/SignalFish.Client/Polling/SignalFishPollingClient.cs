@@ -266,6 +266,34 @@ namespace SignalFish.Client.Polling
             return SendPayloadless(ClientCommand.SetReady, EnvelopeWriter.WritePlayerReady);
         }
 
+        /// <summary>
+        /// Requests (or relinquishes) the room authority; the answers arrive
+        /// as <c>AuthorityResponse</c> and, on a move, <c>AuthorityChanged</c>
+        /// (also mirrored in <see cref="Snapshot"/>). Refused for spectators
+        /// and for a relinquish while not holding the authority.
+        /// </summary>
+        public CommandSend SendAuthorityRequest(bool becomeAuthority)
+        {
+            if (
+                !AdmitForSend(
+                    ClientCommand.RequestAuthority,
+                    becomeAuthority,
+                    out AdmissionError refusal
+                )
+            )
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            _sendBuffer.Reset();
+            EnvelopeWriter.WriteAuthorityRequest(
+                _sendBuffer,
+                new AuthorityRequestMessage(becomeAuthority)
+            );
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
         /// <summary>Requests the game start (readiness and authority rules apply server-side).</summary>
         public CommandSend SendStartGame()
         {
@@ -314,13 +342,22 @@ namespace SignalFish.Client.Polling
         /// </summary>
         private bool AdmitForSend(ClientCommand command, out AdmissionError refusal)
         {
+            return AdmitForSend(command, becomeAuthority: true, out refusal);
+        }
+
+        private bool AdmitForSend(
+            ClientCommand command,
+            bool becomeAuthority,
+            out AdmissionError refusal
+        )
+        {
             if (!_connectCalled || _terminal)
             {
                 refusal = AdmissionError.NotConnected;
                 return false;
             }
 
-            return _machine.TryAdmit(command, out refusal);
+            return _machine.TryAdmit(command, becomeAuthority, out refusal);
         }
 
         /// <summary>Encodes and dispatches a payload-less command.</summary>

@@ -45,4 +45,9 @@ Checked items are covered by `tests/SignalFish.Client.E2E`
       (local 1006). Reconnect-after-partition lands with M4.4
       reconnection.
 - [ ] Reconnect, v3 negotiation, v3 dynamics, v3 delivery classes, v3 gap
-      lifecycle — land with their milestones (M4.4+, M6).
+      lifecycle — land with their milestones (M4.4+, M6). Floor note: the
+      reconnection token rides `RoomJoined`/`Reconnected` only on v3+
+      deployments (the v2 wire omits it — `docs/concepts/reconnection.md`
+      in the server repo), so the *live-server* reconnection scenario
+      waits for the v3 E2E work (M6.6); the v2-floor procedure is fully
+      covered by the golden-driven integration tests.

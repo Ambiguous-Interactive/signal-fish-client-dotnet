@@ -105,6 +105,14 @@ namespace SignalFish.Client.Tests.Core
                     GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "Error"),
                     SessionEvent.From(SessionEventKind.ServerError)
                 ),
+                (
+                    @"{""type"":""AuthorityChanged"",""data"":{""authority_player"":""0f8fad5b-d9cb-469f-a165-70867728950e"",""you_are_authority"":true}}",
+                    SessionEvent.AuthorityChanged(true)
+                ),
+                (
+                    @"{""type"":""AuthorityChanged"",""data"":{""authority_player"":null,""you_are_authority"":false}}",
+                    SessionEvent.AuthorityChanged(false)
+                ),
             };
 
             foreach ((string wire, SessionEvent expected) in rows)
@@ -129,7 +137,6 @@ namespace SignalFish.Client.Tests.Core
                     "v2-server-messages.jsonl",
                     "AuthenticationError"
                 ),
-                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "AuthorityChanged"),
                 GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "GameStarting"),
                 GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "Pong"),
             };

@@ -237,6 +237,56 @@ namespace SignalFish.Client.E2E
         }
 
         /// <summary>
+        /// Joins a room as a spectator (with an optional sealed-room
+        /// password) and waits for the typed confirmation.
+        /// </summary>
+        internal static async Task<RoomMembership> JoinSpectatorAsync(
+            SignalFishPollingClient client,
+            string gameName,
+            string spectatorName,
+            string roomCode,
+            string? password = null
+        )
+        {
+            CommandSend send = client.SendJoinAsSpectator(
+                new JoinAsSpectatorMessage(gameName, roomCode, spectatorName, password)
+            );
+            if (!send.Accepted)
+            {
+                throw new InvalidOperationException($"JoinAsSpectator refused: {send.Refusal}");
+            }
+
+            PollEvent joined = await WaitForEventAsync(
+                    client,
+                    e =>
+                        e.Kind == PollEventKind.SpectatorJoined
+                        || e.Kind == PollEventKind.SpectatorJoinFailed
+                )
+                .ConfigureAwait(false);
+            if (joined.Kind != PollEventKind.SpectatorJoined)
+            {
+                throw new InvalidOperationException(
+                    $"JoinAsSpectator failed: {joined.Failure.ErrorCode} ({joined.Failure.Reason})"
+                );
+            }
+
+            return joined.Membership;
+        }
+
+        /// <summary>Leaves spectator mode and waits for the typed confirmation.</summary>
+        internal static async Task LeaveSpectatorAsync(SignalFishPollingClient client)
+        {
+            CommandSend send = client.SendLeaveSpectator();
+            if (!send.Accepted)
+            {
+                throw new InvalidOperationException($"LeaveSpectator refused: {send.Refusal}");
+            }
+
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.SpectatorLeft)
+                .ConfigureAwait(false);
+        }
+
+        /// <summary>
         /// Compares a relayed game-data payload with the expected JSON by
         /// value: the server relays the JSON value (it re-serializes), not
         /// the sender's exact bytes. Both sides normalize through
