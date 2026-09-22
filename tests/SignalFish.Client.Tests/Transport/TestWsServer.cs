@@ -289,7 +289,7 @@ namespace SignalFish.Client.Tests.Transport
                 {
                     if (UpgradeGate != null)
                     {
-                        await UpgradeGate.Task;
+                        await UpgradeGate.Task.WaitAsync(_shutdown.Token);
                     }
 
                     await WriteUpgradeResponseAsync(stream, key);
@@ -300,7 +300,7 @@ namespace SignalFish.Client.Tests.Transport
                 {
                     if (ClientConfigGate != null)
                     {
-                        await ClientConfigGate.Task;
+                        await ClientConfigGate.Task.WaitAsync(_shutdown.Token);
                     }
 
                     await WriteHttpResponseAsync(stream, path);

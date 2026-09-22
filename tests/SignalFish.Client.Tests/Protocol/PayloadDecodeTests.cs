@@ -140,7 +140,7 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void AuthorityChangedMissingOrNullPlayerKeyRejectsDecode()
+        public void AuthorityChangedMissingOrWrongTypedPlayerKeyRejectsDecode()
         {
             byte[] missing = Encoding.UTF8.GetBytes(
                 @"{""type"":""AuthorityChanged"",""data"":{""you_are_authority"":false}}"

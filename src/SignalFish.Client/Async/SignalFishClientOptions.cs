@@ -1,7 +1,6 @@
 namespace SignalFish.Client.Async
 {
     using System;
-    using System.Text;
     using SignalFish.Client.Reconnection;
 
     /// <summary>
@@ -186,32 +185,29 @@ namespace SignalFish.Client.Async
         /// </summary>
         public override string ToString()
         {
-            StringBuilder builder = new StringBuilder();
-            builder
-                .Append(nameof(EventCapacity))
-                .Append('=')
-                .Append(EventCapacity)
-                .Append(", ")
-                .Append(nameof(CommandCapacity))
-                .Append('=')
-                .Append(CommandCapacity)
-                .Append(", ")
-                .Append(nameof(AppId))
-                .Append('=')
-                .Append(AppId ?? "<none>")
-                .Append(", ")
-                .Append(nameof(ConnectToken))
-                .Append('=')
-                .Append(ConnectToken is null ? "<none>" : "<redacted>")
-                .Append(", ")
-                .Append(nameof(SdkVersion))
-                .Append('=')
-                .Append(SdkVersion)
-                .Append(", ")
-                .Append(nameof(Platform))
-                .Append('=')
-                .Append(Platform);
-            return builder.ToString();
+            return nameof(EventCapacity)
+                + "="
+                + EventCapacity
+                + ", "
+                + nameof(CommandCapacity)
+                + "="
+                + CommandCapacity
+                + ", "
+                + nameof(AppId)
+                + "="
+                + (AppId ?? "<none>")
+                + ", "
+                + nameof(ConnectToken)
+                + "="
+                + (ConnectToken is null ? "<none>" : "<redacted>")
+                + ", "
+                + nameof(SdkVersion)
+                + "="
+                + SdkVersion
+                + ", "
+                + nameof(Platform)
+                + "="
+                + Platform;
         }
     }
 }

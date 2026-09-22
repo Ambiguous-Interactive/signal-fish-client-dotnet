@@ -401,6 +401,34 @@ namespace SignalFish.Client.Tests.Polling
         }
 
         [Test]
+        public async Task MalformedAuthorityChangedIsAViolationAndTracksNothing()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndSettle(client);
+            EnqueueGolden(transport, "Authenticated", "RoomJoined");
+            Assert.That(client.Poll(), Is.EqualTo(2));
+            DrainAll(client);
+            Assert.That(client.Snapshot.IsAuthority, Is.True);
+
+            // A wrong-typed authority_player is a violation, not a seat change.
+            EnqueueWire(
+                transport,
+                @"{""type"":""AuthorityChanged"",""data"":{""authority_player"":7,""you_are_authority"":false}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.ProtocolViolation));
+            Assert.That(pollEvent.Violation, Is.EqualTo(MessageKind.AuthorityChanged));
+            Assert.That(
+                client.Snapshot.IsAuthority,
+                Is.True,
+                "fail-closed: the tracked seat is untouched by a malformed broadcast"
+            );
+        }
+
+        [Test]
         public async Task MalformedGameplayPayloadIsAProtocolViolation()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =

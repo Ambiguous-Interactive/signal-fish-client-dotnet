@@ -70,6 +70,14 @@ fixed a decoder bug (#54). One deliverable PR.
   accepts the full message); auto-credentials are the async client's
   reconnect-round concern. Revisit with M7 if Unity samples want
   config-carried credentials there.
+- Adversarial review round (zero blockers; all findings applied): the
+  authority E2E now waits for `AuthorityResponse`+`AuthorityChanged` in
+  one combined wait (no server delivery-order pinning); a spurious
+  authority broadcast outside a confirmed membership is ignored
+  (fail-closed, like the membership facts) with a new violation-path test
+  pinning "malformed broadcast tracks nothing"; both `TestWsServer` gates
+  now link their wait to the shutdown token; the misleading decode-test
+  name and the options-`ToString` style were aligned.
 
 ## Leftover (tracked as issues)
 

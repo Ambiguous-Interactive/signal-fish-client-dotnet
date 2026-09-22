@@ -268,7 +268,17 @@ namespace SignalFish.Client.Core
                     // Informational only: the fence stays armed (fail-closed).
                     break;
                 case SessionEventKind.AuthorityChanged:
-                    // The broadcast is the source of truth; apply it verbatim.
+                    /*
+                        The broadcast is the source of truth, but only for a
+                        live seat: applying it outside a confirmed membership
+                        would report an authority with no room (fail-closed,
+                        matching the membership facts).
+                    */
+                    if (!_membership.IsPresent)
+                    {
+                        break;
+                    }
+
                     _isAuthority = sessionEvent.IsAuthority;
                     break;
                 case SessionEventKind.Disconnected:

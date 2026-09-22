@@ -364,17 +364,19 @@ namespace SignalFish.Client.E2E
             Assert.That(alice.Snapshot.IsAuthority, Is.True, "the creator holds authority");
             Assert.That(bob.Snapshot.IsAuthority, Is.False);
 
-            // Bob claims the seat.
+            /*
+                Bob claims the seat; the answer and the broadcast may arrive
+                in either order, so classify both from one combined wait.
+            */
             Assert.That(bob.SendAuthorityRequest(true).Accepted, Is.True);
-            PollEvent bobAnswer = await E2EHarness.WaitForEventAsync(
+            List<PollEvent> bobEvents = await E2EHarness.WaitForEventsAsync(
                 bob,
-                e => e.Kind == PollEventKind.AuthorityResponse
+                e => e.Kind is PollEventKind.AuthorityResponse or PollEventKind.AuthorityChanged,
+                2
             );
+            PollEvent bobAnswer = bobEvents.First(e => e.Kind == PollEventKind.AuthorityResponse);
             Assert.That(bobAnswer.AuthorityResponse.Granted, Is.True);
-            PollEvent bobMove = await E2EHarness.WaitForEventAsync(
-                bob,
-                e => e.Kind == PollEventKind.AuthorityChanged
-            );
+            PollEvent bobMove = bobEvents.First(e => e.Kind == PollEventKind.AuthorityChanged);
             Assert.That(bobMove.AuthorityChanged.YouAreAuthority, Is.True);
             Assert.That(bob.Snapshot.IsAuthority, Is.True);
 
