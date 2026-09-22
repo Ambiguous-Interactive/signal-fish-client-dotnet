@@ -35,3 +35,30 @@ Budget policy: codec hot paths must stay **zero-alloc steady-state** (gate
 tests fail the build otherwise) and within ~2x of these means. Regression
 checks run locally or on the scheduled bench workflow (PLAN.md M9.4) — not on
 PR CI, to keep CI time flat.
+
+## Baseline — 2026-09-22 (session 020, M4.1 bounded-queue spike)
+
+Environment: BenchmarkDotNet 0.15.8, .NET SDK 10.0.401 / .NET 8.0.31 runtime,
+Ubuntu 24.04 container, Arm64 (RyuJIT armv8.0-a).
+
+The spike pits the shipped hand-rolled `BoundedQueue<int>` against a
+`System.Threading.Channels` adapter on the same `IBoundedQueue<T>` interface
+(the adapter lives in the bench project only — the library stays
+zero-dependency). One `TryRoundtrip` operation is 1000 enqueue+dequeue pairs;
+one `AwaitHandoff` operation is 200 park-a-producer-then-free-a-slot
+handoffs.
+
+| Method                 | Mean     | Allocated |
+| ---------------------- | -------- | --------: |
+| HandRolledTryRoundtrip | 65.78 us | 0 B       |
+| ChannelsTryRoundtrip   | 65.83 us | 0 B       |
+| HandRolledAwaitHandoff | 23.55 us | 72 B      |
+| ChannelsAwaitHandoff   | 23.69 us | 72 B      |
+
+Decision (plan M4.1): the hand-rolled queue is at parity with Channels on
+both the fail-fast and awaiting paths, so the zero-dependency default costs
+nothing; the `IBoundedQueue<T>` abstraction keeps a Channels swap-in honest
+(the adapter proves it compiles and performs against the same contract).
+
+Budget policy: fail-fast enqueue/dequeue must stay 0 B (allocation-gate test
+`FailFastRoundtripAllocatesNothing`); means within ~2x of the table above.

@@ -33,5 +33,12 @@ namespace SignalFish.Client.Core
 
         /// <summary>Command requires a different room role (player vs spectator).</summary>
         WrongRoomRole = 6,
+
+        /// <summary>
+        /// The bounded command queue is full: fail-fast sends queue nothing
+        /// (the message is not silently dropped); a Reliable send variant
+        /// waits for a slot instead.
+        /// </summary>
+        SendBufferFull = 7,
     }
 }

@@ -71,6 +71,40 @@ dotnet_diagnostic.CA1815.severity = none
 dotnet_diagnostic.CA1028.severity = none
 dotnet_diagnostic.CA1815.severity = none
 
+# Bounded-queue naming (scoped to the queue itself): IBoundedQueue and
+# BoundedQueue are the PLAN.md-mandated names for the channel-free
+# event/command channels (locked zero-dependency decision); CA1711's
+# reserve-the-suffix rule does not apply to a hand-rolled type that
+# deliberately is not System.Collections.Queue.
+[src/SignalFish.Client/Async/BoundedQueue.cs]
+dotnet_diagnostic.CA1711.severity = none
+[src/SignalFish.Client/Core/IBoundedQueue.cs]
+dotnet_diagnostic.CA1711.severity = none
+
+# QueueRead is a boundary envelope (item-or-end-of-stream) that is never
+# compared, so Equals/== overrides would be dead weight.
+[src/SignalFish.Client/Core/QueueRead.cs]
+dotnet_diagnostic.CA1815.severity = none
+
+# Async-client conventions (scoped to src/SignalFish.Client/Async/):
+# - CA1031: best-effort teardown paths (send failures, receive faults,
+#   disposal) must swallow anything — a dead wire can fault with any
+#   exception, and the session folds it into the terminal event. This is
+#   the design, mirroring the polling client.
+# - CA1859: the event/command queues are held as IBoundedQueue<T> on
+#   purpose — the abstraction is the M4.1 swap-in contract (plan: hand-
+#   rolled default, alternatives kept behind the interface).
+# - CA2213: the queues are IAsyncDisposable but not IDisposable; disposal
+#   happens via await in DisposeAsync, which the analyzer's IDisposable
+#   dataflow cannot see.
+[src/SignalFish.Client/Async/SignalFishClient.cs]
+dotnet_diagnostic.CA1031.severity = none
+dotnet_diagnostic.CA1859.severity = none
+dotnet_diagnostic.CA2213.severity = none
+
+[src/SignalFish.Client/Async/BoundedQueue.cs]
+dotnet_diagnostic.CA1859.severity = none
+
 # The polling client's ping send and best-effort teardown complete off the
 # game thread and must never surface exceptions into an unobserved task
 # (the fire-and-forget is the design); failures fold back into the next
@@ -103,3 +137,12 @@ trim_trailing_whitespace = false
 
 [Makefile]
 indent_style = tab
+
+# Perf-tooling conventions (scoped to tests/SignalFish.Client.PerfTests/):
+# - CA1711: ChannelsBoundedQueue is the M4.1 spike's comparison arm over
+#   System.Threading.Channels; the suffix mirrors the type it benchmarks.
+# - CA1001: BenchmarkDotNet owns benchmark-class lifecycle via GlobalSetup/
+#   iteration cleanup; the queue fields are intentionally left to it.
+[tests/SignalFish.Client.PerfTests/BoundedQueueBenchmarks.cs]
+dotnet_diagnostic.CA1711.severity = none
+dotnet_diagnostic.CA1001.severity = none

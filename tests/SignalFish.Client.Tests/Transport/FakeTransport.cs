@@ -23,6 +23,9 @@ namespace SignalFish.Client.Tests.Transport
         /// <summary>Gets a value indicating whether the transport is connected.</summary>
         public bool IsConnected => Volatile.Read(ref _state) == StateConnected;
 
+        /// <summary>Gets how many times <see cref="ConnectAsync"/> was called.</summary>
+        public int ConnectCount => Volatile.Read(ref _connectCount);
+
         /// <summary>Gets the frames sent so far, in order, as UTF-8 text (for assertions).</summary>
         public IReadOnlyList<string> SentText
         {
@@ -45,9 +48,24 @@ namespace SignalFish.Client.Tests.Transport
         private readonly Queue<TransportFrame> _incoming = new Queue<TransportFrame>();
         private readonly List<byte[]> _sent = new List<byte[]>();
         private TaskCompletionSource<TransportFrame>? _pendingReceive;
+        private TaskCompletionSource<bool>? _sendGate;
         private int _state = StateNew;
+        private int _connectCount;
         private bool _closeDelivered;
         private int _closeCode;
+
+        /// <summary>
+        /// Holds every send (after recording it) until the gate completes —
+        /// scripts a stalled wire so callers can observe send-queue
+        /// backpressure deterministically.
+        /// </summary>
+        public void HoldSendsUntil(TaskCompletionSource<bool> sendGate)
+        {
+            lock (_gate)
+            {
+                _sendGate = sendGate;
+            }
+        }
 
         /// <summary>Scripts an inbound text frame.</summary>
         public void EnqueueText(string text)
@@ -127,6 +145,7 @@ namespace SignalFish.Client.Tests.Transport
         /// <inheritdoc />
         public Task ConnectAsync(Uri uri, CancellationToken ct = default)
         {
+            Interlocked.Increment(ref _connectCount);
             if (Interlocked.CompareExchange(ref _state, StateConnected, StateNew) != StateNew)
             {
                 throw new InvalidOperationException(
@@ -140,7 +159,10 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         /// <inheritdoc />
-        public ValueTask<int> SendAsync(ReadOnlyMemory<byte> frame, CancellationToken ct = default)
+        public async ValueTask<int> SendAsync(
+            ReadOnlyMemory<byte> frame,
+            CancellationToken ct = default
+        )
         {
             int state = Volatile.Read(ref _state);
             ObjectDisposedException.ThrowIf(state == StateDisposed, typeof(FakeTransport));
@@ -152,12 +174,19 @@ namespace SignalFish.Client.Tests.Transport
                 );
             }
 
+            TaskCompletionSource<bool>? sendGate;
             lock (_gate)
             {
                 _sent.Add(frame.ToArray());
+                sendGate = _sendGate;
             }
 
-            return new ValueTask<int>(frame.Length);
+            if (sendGate is not null)
+            {
+                await sendGate.Task;
+            }
+
+            return frame.Length;
         }
 
         /// <inheritdoc />
@@ -196,6 +225,18 @@ namespace SignalFish.Client.Tests.Transport
         /// <inheritdoc />
         public ValueTask DisposeAsync()
         {
+            TaskCompletionSource<bool>? sendGate;
+            lock (_gate)
+            {
+                sendGate = _sendGate;
+                _sendGate = null;
+            }
+
+            /*
+                Disposal aborts a stalled wire, so held sends complete like
+                a real transport's aborted socket would.
+            */
+            sendGate?.TrySetResult(true);
             Abort();
             Interlocked.Exchange(ref _state, StateDisposed);
             return default;
