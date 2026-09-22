@@ -6,6 +6,7 @@ namespace SignalFish.Client.E2E
     using SignalFish.Client.Core;
     using SignalFish.Client.Polling;
     using SignalFish.Client.Protocol;
+    using SignalFish.Client.Transport;
 
     /// <summary>
     /// The server's client-author conformance checklist (items 1-7 of
@@ -392,6 +393,136 @@ namespace SignalFish.Client.E2E
             Assert.That(dropped.Kind, Is.EqualTo(PollEventKind.Disconnected));
             Assert.That(silent.Phase, Is.EqualTo(ConnectionPhase.Terminal));
             Assert.That(silent.IsConnected, Is.False);
+        }
+
+        /// <summary>
+        /// Item 7 (partition drill, client→server severed): with the
+        /// outbound direction cut by the proxy, the server's liveness
+        /// reaper ends the session and its typed close code reaches the
+        /// client through the still-open server→client direction. The
+        /// client surfaces that close and reaches terminal — never a
+        /// half-alive session. Which reaper fires (ping-timeout vs
+        /// idle-timeout) depends on the server build, so either liveness
+        /// code proves the point: the server's diagnosis arrived, not a
+        /// synthetic local 1006.
+        /// </summary>
+        [Test]
+        public async Task BlockedClientToServerEndsInTypedServerLivenessClose()
+        {
+            /*
+                Only the server can end this session (no pings, no local
+                liveness): whatever ends it must arrive over the surviving
+                direction. CI runs the server with ~3 s liveness timers.
+            */
+            (SignalFishPollingClient silent, PartitionProxy proxy) =
+                await E2EHarness.ConnectProxiedAuthenticatedClientAsync(
+                    new PollingClientOptions(
+                        heartbeatIntervalMilliseconds: int.MaxValue,
+                        heartbeatTimeoutMilliseconds: int.MaxValue
+                    )
+                );
+
+            try
+            {
+                await E2EHarness.JoinRoomAsync(silent, E2EHarness.GameName(), "silent");
+
+                proxy.ClientToServerBlocked = true;
+
+                PollEvent dropped = await E2EHarness.WaitForEventAsync(
+                    silent,
+                    e => e.Kind == PollEventKind.Disconnected,
+                    TimeSpan.FromSeconds(20)
+                );
+                Assert.That(
+                    dropped.Close.Kind,
+                    Is.AnyOf(TransportCloseKind.ActivityTimeout, TransportCloseKind.IdleTimeout),
+                    $"the server's typed liveness close must arrive through the open "
+                        + $"direction (got {dropped.Close})"
+                );
+                Assert.That(silent.Phase, Is.EqualTo(ConnectionPhase.Terminal));
+                Assert.That(silent.IsConnected, Is.False);
+            }
+            finally
+            {
+                await silent.DisposeAsync();
+                await proxy.DisposeAsync();
+            }
+        }
+
+        /// <summary>
+        /// Item 7 (partition drill, server→client severed): the client's
+        /// sends still "succeed" — and genuinely do carry end-to-end, the
+        /// server relaying them to a directly-connected peer — but the
+        /// client's own liveness clock declares death (local 1006) instead
+        /// of trusting one-way outbound progress as healthy.
+        /// </summary>
+        [Test]
+        public async Task BlockedServerToClientIsDeclaredDeadByLocalLiveness()
+        {
+            /*
+                Alice pings every 500 ms (the server never reaps her: the
+                outbound direction carries the pings) and declares death
+                after 2 s without any server frame. Death must be her own
+                verdict — the 1006 liveness close, not a server code.
+            */
+            (SignalFishPollingClient alice, PartitionProxy proxy) =
+                await E2EHarness.ConnectProxiedAuthenticatedClientAsync(
+                    new PollingClientOptions(
+                        heartbeatIntervalMilliseconds: 500,
+                        heartbeatTimeoutMilliseconds: 2_000
+                    )
+                );
+            SignalFishPollingClient bob = await E2EHarness.ConnectAuthenticatedClientAsync();
+
+            try
+            {
+                string gameName = E2EHarness.GameName();
+                RoomMembership aliceSeat = await E2EHarness.JoinRoomAsync(alice, gameName, "alice");
+                await E2EHarness.JoinRoomAsync(bob, gameName, "bob", roomCode: aliceSeat.RoomCode);
+
+                proxy.ServerToClientBlocked = true;
+
+                /*
+                    The unaffected direction still carries data: alice's
+                    relay crosses the partition (outbound only) and reaches
+                    bob, who sits outside it.
+                */
+                Assert.That(
+                    E2EHarness.SendRelayPayload(alice, @"{""dir"": ""out""}").Accepted,
+                    Is.True
+                );
+                PollEvent received = await E2EHarness.WaitForEventAsync(
+                    bob,
+                    e => e.Kind == PollEventKind.GameData
+                );
+                Assert.That(received.GameData.FromPlayer, Is.EqualTo(aliceSeat.PlayerId));
+                Assert.That(
+                    E2EHarness.PayloadJsonEquals(
+                        received.GameData.Payload.Span,
+                        @"{""dir"": ""out""}"
+                    ),
+                    Is.True
+                );
+
+                PollEvent dropped = await E2EHarness.WaitForEventAsync(
+                    alice,
+                    e => e.Kind == PollEventKind.Disconnected,
+                    TimeSpan.FromSeconds(10)
+                );
+                Assert.That(
+                    dropped.Close.Kind,
+                    Is.EqualTo(TransportCloseKind.Abnormal),
+                    $"a locally-declared liveness death must surface as 1006 "
+                        + $"(got {dropped.Close})"
+                );
+                Assert.That(alice.Phase, Is.EqualTo(ConnectionPhase.Terminal));
+            }
+            finally
+            {
+                await alice.DisposeAsync();
+                await bob.DisposeAsync();
+                await proxy.DisposeAsync();
+            }
         }
 
         private static async Task LeaveAsync(SignalFishPollingClient client)

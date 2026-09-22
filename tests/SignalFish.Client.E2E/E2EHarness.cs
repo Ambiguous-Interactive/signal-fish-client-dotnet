@@ -29,11 +29,16 @@ namespace SignalFish.Client.E2E
             }
         }
 
+        /// <summary>Gets the live server's base URL without a trailing slash.</summary>
+        internal static Uri BaseUrl
+        {
+            get { return new Uri(Environment.GetEnvironmentVariable(UrlVariable)!.TrimEnd('/')); }
+        }
+
         /// <summary>Gets the v2 relay-floor WebSocket endpoint of the live server.</summary>
         internal static Uri V2Endpoint()
         {
-            string baseUrl = Environment.GetEnvironmentVariable(UrlVariable)!.TrimEnd('/');
-            return new Uri(baseUrl + "/v2/ws");
+            return new Uri(BaseUrl, "v2/ws");
         }
     }
 
@@ -57,6 +62,36 @@ namespace SignalFish.Client.E2E
         }
 
         /// <summary>
+        /// Connects a client whose whole socket path runs through a fresh
+        /// in-process partition proxy (the caller disposes the proxy after
+        /// the client). The directional-liveness drill severs each proxy
+        /// direction to reproduce one-way partitions.
+        /// </summary>
+        internal static async Task<(
+            SignalFishPollingClient Client,
+            PartitionProxy Proxy
+        )> ConnectProxiedClientAsync(PollingClientOptions? options = null)
+        {
+            PartitionProxy proxy = PartitionProxy.Start(E2EEnvironment.BaseUrl);
+            try
+            {
+                WebSocketTransport transport = new WebSocketTransport();
+                SignalFishPollingClient client = new SignalFishPollingClient(
+                    transport,
+                    SystemClock.Instance,
+                    options
+                );
+                await client.ConnectAsync(proxy.ClientV2Endpoint()).ConfigureAwait(false);
+                return (client, proxy);
+            }
+            catch
+            {
+                await proxy.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Connects and completes the handshake: the client's own admission
         /// policy requires a confirmed <c>Authenticated</c> before directed
         /// room operations, so every scenario joins through this path.
@@ -67,19 +102,34 @@ namespace SignalFish.Client.E2E
         {
             SignalFishPollingClient client = await ConnectClientAsync(options)
                 .ConfigureAwait(false);
-            CommandSend send = client.SendAuthenticate(
-                new AuthenticateMessage(appId: "e2e-dotnet-app")
-            );
-            if (!send.Accepted)
-            {
-                throw new InvalidOperationException($"Authenticate refused: {send.Refusal}");
-            }
-
-            await WaitForEventAsync(client, e => e.Kind == PollEventKind.Authenticated)
-                .ConfigureAwait(false);
-            await WaitForEventAsync(client, e => e.Kind == PollEventKind.ProtocolInfo)
-                .ConfigureAwait(false);
+            await HandshakeAsync(client).ConfigureAwait(false);
             return client;
+        }
+
+        /// <summary>
+        /// The proxied connect plus the handshake (see
+        /// <see cref="ConnectAuthenticatedClientAsync"/>): the drill
+        /// scenarios join through it, so the client's admission fence is
+        /// satisfied before the partition starts.
+        /// </summary>
+        internal static async Task<(
+            SignalFishPollingClient Client,
+            PartitionProxy Proxy
+        )> ConnectProxiedAuthenticatedClientAsync(PollingClientOptions? options = null)
+        {
+            (SignalFishPollingClient client, PartitionProxy proxy) =
+                await ConnectProxiedClientAsync(options).ConfigureAwait(false);
+            try
+            {
+                await HandshakeAsync(client).ConfigureAwait(false);
+                return (client, proxy);
+            }
+            catch
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+                await proxy.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
         }
 
         /// <summary>Polls until the matching event arrives; a timeout fails with the phase.</summary>
@@ -224,6 +274,23 @@ namespace SignalFish.Client.E2E
             }
 
             return null;
+        }
+
+        /// <summary>Authenticates and waits for the handshake's two answers.</summary>
+        private static async Task HandshakeAsync(SignalFishPollingClient client)
+        {
+            CommandSend send = client.SendAuthenticate(
+                new AuthenticateMessage(appId: "e2e-dotnet-app")
+            );
+            if (!send.Accepted)
+            {
+                throw new InvalidOperationException($"Authenticate refused: {send.Refusal}");
+            }
+
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.Authenticated)
+                .ConfigureAwait(false);
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.ProtocolInfo)
+                .ConfigureAwait(false);
         }
     }
 }
