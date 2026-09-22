@@ -1,0 +1,42 @@
+# Server Conformance
+
+The client is validated against the server's client-author conformance
+checklist (`docs/guides/building-a-client.md` in the server repo). Each
+scenario runs the real client stack — `SignalFishPollingClient` over
+`WebSocketTransport` — against the live server in open mode.
+
+Run it locally with Docker: `pwsh -NoProfile -File scripts/run-e2e.ps1`.
+CI runs the same suite whenever a PR or main push touches the client or
+the suite (`e2e.yml`, service container). Items 1-7 were verified against
+the live server by this suite; its first CI run is the standing green
+evidence.
+
+## Checklist status
+
+Checked items are covered by `tests/SignalFish.Client.E2E`
+(`ServerConformanceTests`).
+
+- [x] **Handshake policy + join + relay** — open-mode optional
+      `Authenticate` first (answered by `Authenticated` + `ProtocolInfo`),
+      room create + join, `GameData` round-trip in both directions with
+      sender identity, clean `LeaveRoom`.
+- [x] **Two-player lobby + start** — both players ready, `all_ready`
+      observed, `StartGame`, both seats see `GameStarting`.
+- [x] **StartGame rejection** — `GAME_START_NOT_READY` for a premature
+      authority start; `GAME_START_FORBIDDEN` for a non-authority start in
+      an authority room; both surfaced as typed `error_code` data.
+- [x] **`all_ready` invalidation** — a later joiner (unready, no corrective
+      broadcast) invalidates a cached `all_ready: true`, the next start
+      fails with `GAME_START_NOT_READY`, and the lobby recovers once the
+      joiner readies.
+- [x] **Error handling** — `ROOM_FULL` on a join past the room ceiling;
+      `ROOM_NOT_FOUND` on a spectator join to a missing room.
+- [x] **Heartbeat** — a client pinging every second outlives the server's
+      ping timeout in silence and still relays afterwards.
+- [ ] **Directional liveness** — the silent-client half is covered (a
+        client that stops writing is dropped by the server's reapers and
+        reaches a terminal session). The full bidirectional partition
+        drill (blocking each direction independently through a proxy)
+        remains open.
+- [ ] Reconnect, v3 negotiation, v3 dynamics, v3 delivery classes, v3 gap
+      lifecycle — land with their milestones (M4.4+, M6).
