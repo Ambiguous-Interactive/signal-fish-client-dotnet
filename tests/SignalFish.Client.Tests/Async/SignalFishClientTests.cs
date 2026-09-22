@@ -509,6 +509,55 @@ namespace SignalFish.Client.Tests.Async
             await client.DisposeAsync();
         }
 
+        [Test]
+        public async Task AuthorityRequestSendsGoldenWireAndTracksTheSeat()
+        {
+            (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed();
+            await ConnectJoinRoom(client, transport);
+            Assert.That(
+                client.Snapshot.IsAuthority,
+                Is.True,
+                "the golden baseline holds authority"
+            );
+
+            CommandSend relinquish = client.SendAuthorityRequest(becomeAuthority: false);
+            Assert.That(relinquish.Accepted, Is.True);
+            await WaitForAsync(
+                () =>
+                    transport.SentText[^1]
+                    == @"{""type"": ""AuthorityRequest"", ""data"": {""become_authority"": false}}",
+                "relinquish on the wire"
+            );
+
+            EnqueueGolden(transport, "AuthorityChanged");
+            Assert.That(
+                (await NextEventAsync(client)).Kind,
+                Is.EqualTo(PollEventKind.AuthorityChanged)
+            );
+            Assert.That(client.Snapshot.IsAuthority, Is.False);
+
+            CommandSend refused = client.SendAuthorityRequest(false);
+            Assert.That(refused.Refusal, Is.EqualTo(AdmissionError.AuthorityRequired));
+            await client.DisposeAsync();
+        }
+
+        [Test]
+        public void OptionsToStringRedactsTheConnectToken()
+        {
+            SignalFishClientOptions options = new SignalFishClientOptions(
+                appId: "mb_app_abc123",
+                connectToken: "sfct_v1.secret-token-value"
+            );
+            string text = options.ToString();
+            Assert.That(text, Does.Contain("AppId=mb_app_abc123"));
+            Assert.That(text, Does.Contain("ConnectToken=<redacted>"));
+            Assert.That(text, Does.Not.Contain("sfct_v1"));
+            Assert.That(
+                new SignalFishClientOptions().ToString(),
+                Does.Contain("ConnectToken=<none>")
+            );
+        }
+
         private static GameDataMessage Payload(int index)
         {
             return new GameDataMessage(Encoding.UTF8.GetBytes("{\"n\": " + index + "}"));

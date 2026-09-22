@@ -191,6 +191,12 @@ namespace SignalFish.Client.Tests.Transport
         /// </summary>
         public TaskCompletionSource<bool>? ClientConfigGate { get; set; }
 
+        /// <summary>
+        /// When set, the 101 upgrade response is withheld until the gate is
+        /// completed — lets tests park a connect inside the upgrade.
+        /// </summary>
+        public TaskCompletionSource<bool>? UpgradeGate { get; set; }
+
         /// <summary>Gets the HTTP request paths observed so far (probe assertions).</summary>
         public ConcurrentQueue<string> HttpRequestPaths { get; } = new ConcurrentQueue<string>();
 
@@ -281,6 +287,11 @@ namespace SignalFish.Client.Tests.Transport
 
                 if (key != null)
                 {
+                    if (UpgradeGate != null)
+                    {
+                        await UpgradeGate.Task.WaitAsync(_shutdown.Token);
+                    }
+
                     await WriteUpgradeResponseAsync(stream, key);
                     _connections.Enqueue(new TestWsConnection(client));
                     _connectionSignal.Release();
@@ -289,7 +300,7 @@ namespace SignalFish.Client.Tests.Transport
                 {
                     if (ClientConfigGate != null)
                     {
-                        await ClientConfigGate.Task;
+                        await ClientConfigGate.Task.WaitAsync(_shutdown.Token);
                     }
 
                     await WriteHttpResponseAsync(stream, path);

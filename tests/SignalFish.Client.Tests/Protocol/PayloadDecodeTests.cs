@@ -17,6 +17,22 @@ namespace SignalFish.Client.Tests
     [TestFixture]
     public class PayloadDecodeTests
     {
+        private static readonly TestCaseData[] SealedRoomFailureWires =
+        {
+            new TestCaseData(
+                @"{""type"":""SpectatorJoinFailed"",""data"":{""reason"":""password required"",""error_code"":""PASSWORD_REQUIRED""}}",
+                "passwordless join to a sealed room"
+            ).SetName("SealedRoomWithoutPassword"),
+            new TestCaseData(
+                @"{""type"":""SpectatorJoinFailed"",""data"":{""reason"":""wrong password"",""error_code"":""PASSWORD_REQUIRED""}}",
+                "wrong password join to a sealed room"
+            ).SetName("SealedRoomWithWrongPassword"),
+            new TestCaseData(
+                @"{""type"":""SpectatorJoinFailed"",""data"":{""reason"":""password refused"",""error_code"":""PASSWORD_REQUIRED""}}",
+                "password presented to an open room"
+            ).SetName("OpenRoomWithPassword"),
+        };
+
         [Test]
         public void AuthenticatedGoldenFixtureDecodesIdentityAndRateLimits()
         {
@@ -98,6 +114,49 @@ namespace SignalFish.Client.Tests
                 Is.EqualTo(new Guid("00000000-0000-0000-0000-00000000000a"))
             );
             Assert.That(message.YouAreAuthority, Is.False);
+        }
+
+        [Test]
+        public void AuthorityChangedNullableAuthorityPlayerDecodesAsVacated()
+        {
+            /*
+                The spec declares authority_player required-but-nullable: an
+                explicit JSON null is a legal "the seat vacated" broadcast,
+                never a decode failure (#54).
+            */
+            byte[] wire = Encoding.UTF8.GetBytes(
+                @"{""type"":""AuthorityChanged"",""data"":{""authority_player"":null,""you_are_authority"":false}}"
+            );
+            EnvelopeEvent envelope = EnvelopeReader.Decode(wire);
+            Assert.That(
+                AuthorityChangedMessage.TryDecode(
+                    envelope.Data,
+                    out AuthorityChangedMessage message
+                ),
+                Is.True
+            );
+            Assert.That(message.AuthorityPlayer, Is.Null);
+            Assert.That(message.YouAreAuthority, Is.False);
+        }
+
+        [Test]
+        public void AuthorityChangedMissingOrWrongTypedPlayerKeyRejectsDecode()
+        {
+            byte[] missing = Encoding.UTF8.GetBytes(
+                @"{""type"":""AuthorityChanged"",""data"":{""you_are_authority"":false}}"
+            );
+            Assert.That(
+                AuthorityChangedMessage.TryDecode(EnvelopeReader.Decode(missing).Data, out _),
+                Is.False
+            );
+
+            byte[] wrongType = Encoding.UTF8.GetBytes(
+                @"{""type"":""AuthorityChanged"",""data"":{""authority_player"":7,""you_are_authority"":false}}"
+            );
+            Assert.That(
+                AuthorityChangedMessage.TryDecode(EnvelopeReader.Decode(wrongType).Data, out _),
+                Is.False
+            );
         }
 
         // --- Golden fixtures: players and game start ------------------------
@@ -559,6 +618,58 @@ namespace SignalFish.Client.Tests
             Assert.That(RoomSnapshot.TryDecode(Bytes(data), out _), Is.False);
         }
 
+        // --- M5.1: password sealing and join-failure indistinguishability ---
+        [Test]
+        public void PasswordCarryingMessagesRedactTheSecretInToString()
+        {
+            JoinRoomMessage join = new JoinRoomMessage(
+                "my-game",
+                "Alice",
+                roomCode: "ABCD",
+                password: "hunter2"
+            );
+            string joinText = join.ToString();
+            Assert.That(joinText, Does.Contain("GameName=my-game"));
+            Assert.That(joinText, Does.Contain("RoomCode=ABCD"));
+            Assert.That(joinText, Does.Contain("Password=<redacted>"));
+            Assert.That(joinText, Does.Not.Contain("hunter2"));
+
+            JoinAsSpectatorMessage spectate = new JoinAsSpectatorMessage(
+                "my-game",
+                "ABCD",
+                "Watcher",
+                "hunter2"
+            );
+            string spectateText = spectate.ToString();
+            Assert.That(spectateText, Does.Contain("SpectatorName=Watcher"));
+            Assert.That(spectateText, Does.Contain("Password=<redacted>"));
+            Assert.That(spectateText, Does.Not.Contain("hunter2"));
+
+            Assert.That(
+                new JoinRoomMessage("my-game", "Alice").ToString(),
+                Does.Contain("Password=<none>")
+            );
+        }
+
+        [TestCaseSource(nameof(SealedRoomFailureWires))]
+        public void PasswordFailuresAreIndistinguishableToTheSender(string wire, string because)
+        {
+            /*
+                Missing password, wrong password, and a password presented
+                to an open room all arrive as the same typed code — the
+                client surfaces it as data and never distinguishes them.
+            */
+            EnvelopeEvent envelope = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(wire));
+            Assert.That(
+                FailureMessage.TryDecode(envelope.Data, out FailureMessage failure),
+                Is.True,
+                because
+            );
+            Assert.That(failure.ErrorCode, Is.EqualTo("PASSWORD_REQUIRED"), because);
+        }
+
+        private static ReadOnlyMemory<byte> Bytes(string json) => Encoding.UTF8.GetBytes(json);
+
         private static EnvelopeEvent DecodeFixtureEnvelope(string wireType)
         {
             string line = GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", wireType);
@@ -566,8 +677,6 @@ namespace SignalFish.Client.Tests
             Assert.That(envelope.Kind, Is.EqualTo(EnvelopeEventKind.Message));
             return envelope;
         }
-
-        private static ReadOnlyMemory<byte> Bytes(string json) => Encoding.UTF8.GetBytes(json);
 
         // --- Golden fixtures: handshake and lobby ---------------------------
     }

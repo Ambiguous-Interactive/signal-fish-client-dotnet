@@ -44,5 +44,19 @@ Checked items are covered by `tests/SignalFish.Client.E2E`
       end-to-end until the client's own liveness clock declares death
       (local 1006). Reconnect-after-partition lands with M4.4
       reconnection.
+- [x] **Spectator flow + sealed rooms** (M5.1) — a password-sealed room
+      refuses passwordless and wrong-password joins with the same
+      `PASSWORD_REQUIRED` code (missing vs wrong is indistinguishable to
+      the sender), admits the correct one, and the spectator leave
+      confirms.
+- [x] **Authority claim + gated start** (M5.2) — an authority-enabled room
+      hands the seat to a claiming player (`AuthorityResponse` +
+      `AuthorityChanged`, mirrored in both snapshots) and only the holder
+      can start the game (`GAME_START_FORBIDDEN` for the old authority).
 - [ ] Reconnect, v3 negotiation, v3 dynamics, v3 delivery classes, v3 gap
-      lifecycle — land with their milestones (M4.4+, M6).
+      lifecycle — land with their milestones (M4.4+, M6). Floor note: the
+      reconnection token rides `RoomJoined`/`Reconnected` only on v3+
+      deployments (the v2 wire omits it — `docs/concepts/reconnection.md`
+      in the server repo), so the *live-server* reconnection scenario
+      waits for the v3 E2E work (M6.6); the v2-floor procedure is fully
+      covered by the golden-driven integration tests.

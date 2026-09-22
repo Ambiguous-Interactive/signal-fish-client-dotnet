@@ -44,5 +44,8 @@ namespace SignalFish.Client.Core
 
         /// <summary>Identify the app (and optionally negotiate v3) before any application message.</summary>
         Authenticate = 10,
+
+        /// <summary>Request to become (or relinquish) the room authority (player role).</summary>
+        RequestAuthority = 11,
     }
 }

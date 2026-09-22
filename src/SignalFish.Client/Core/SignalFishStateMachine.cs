@@ -71,12 +71,19 @@ namespace SignalFish.Client.Core
             get { return _pendingOperation; }
         }
 
+        /// <summary>True while this connection is the confirmed room authority.</summary>
+        public bool IsAuthority
+        {
+            get { return _isAuthority; }
+        }
+
         private bool _connected;
         private bool _transportReady;
         private bool _authenticated;
         private RoomMembership _membership;
         private PendingRoomOperation _pendingOperation;
         private string? _reconnectionToken;
+        private bool _isAuthority;
         private bool _terminal;
 
         /// <summary>Creates the machine in the connecting phase (constructed-live, Rust parity).</summary>
@@ -100,7 +107,8 @@ namespace SignalFish.Client.Core
                 _membership.IsPresent ? _membership.PlayerId : null,
                 _membership.IsPresent ? _membership.RoomId : null,
                 _membership.IsPresent ? _membership.RoomCode : null,
-                _reconnectionToken
+                _reconnectionToken,
+                _isAuthority
             );
         }
 
@@ -130,14 +138,22 @@ namespace SignalFish.Client.Core
 
         /// <summary>
         /// Decides whether <paramref name="command"/> may be sent now.
-        /// Returns true when admitted; otherwise false with
-        /// <paramref name="error"/> describing the refusal (assigned just
-        /// before return). Pure: arming is a separate step so a failed
-        /// enqueue never wedges the fence.
+        /// <paramref name="becomeAuthority"/> only matters for
+        /// <see cref="ClientCommand.RequestAuthority"/> (a relinquish
+        /// additionally requires holding the authority). Returns true when
+        /// admitted; otherwise false with <paramref name="error"/>
+        /// describing the refusal (assigned just before return). Pure: arming
+        /// is a separate step so a failed enqueue never wedges the fence.
         /// </summary>
         public bool TryAdmit(ClientCommand command, out AdmissionError error)
         {
-            error = Admit(command);
+            return TryAdmit(command, becomeAuthority: true, out error);
+        }
+
+        /// <summary>The flag-carrying form; see the two-argument overload.</summary>
+        public bool TryAdmit(ClientCommand command, bool becomeAuthority, out AdmissionError error)
+        {
+            error = Admit(command, becomeAuthority);
             return error == default(AdmissionError);
         }
 
@@ -210,6 +226,12 @@ namespace SignalFish.Client.Core
                         spectator baselines carry none and clear it.
                     */
                     _reconnectionToken = sessionEvent.ReconnectionToken;
+                    /*
+                        Player baselines carry the receiving player's
+                        is_authority (the room creator holds it); spectator
+                        baselines can never hold it.
+                    */
+                    _isAuthority = sessionEvent.IsAuthority;
                     ReleaseIfPending(release);
                     break;
                 case SessionEventKind.RoomLeft:
@@ -230,6 +252,7 @@ namespace SignalFish.Client.Core
 
                     _membership = default;
                     _reconnectionToken = null;
+                    _isAuthority = false;
                     ReleaseIfPending(LeaveRelease(sessionEvent.Kind));
                     break;
                 case SessionEventKind.RoomJoinFailed:
@@ -244,6 +267,20 @@ namespace SignalFish.Client.Core
                 case SessionEventKind.ServerError:
                     // Informational only: the fence stays armed (fail-closed).
                     break;
+                case SessionEventKind.AuthorityChanged:
+                    /*
+                        The broadcast is the source of truth, but only for a
+                        live seat: applying it outside a confirmed membership
+                        would report an authority with no room (fail-closed,
+                        matching the membership facts).
+                    */
+                    if (!_membership.IsPresent)
+                    {
+                        break;
+                    }
+
+                    _isAuthority = sessionEvent.IsAuthority;
+                    break;
                 case SessionEventKind.Disconnected:
                     ClearSession();
                     break;
@@ -256,7 +293,7 @@ namespace SignalFish.Client.Core
             }
         }
 
-        private AdmissionError Admit(ClientCommand command)
+        private AdmissionError Admit(ClientCommand command, bool becomeAuthority)
         {
             if (!_connected)
             {
@@ -308,6 +345,25 @@ namespace SignalFish.Client.Core
                     return _membership.Role == RoomRole.Player
                         ? default
                         : AdmissionError.WrongRoomRole;
+                case ClientCommand.RequestAuthority:
+                    if (!_membership.IsPresent)
+                    {
+                        return AdmissionError.NotInRoom;
+                    }
+
+                    if (_membership.Role != RoomRole.Player)
+                    {
+                        return AdmissionError.WrongRoomRole;
+                    }
+
+                    /*
+                        Rust parity: relinquishing without holding the
+                        authority is refused locally (the server would deny
+                        it anyway, but the local verdict is deterministic).
+                    */
+                    return becomeAuthority || _isAuthority
+                        ? default
+                        : AdmissionError.AuthorityRequired;
                 default:
                     throw new ArgumentException(
                         "Undefined client command value: " + (byte)command,
@@ -367,6 +423,7 @@ namespace SignalFish.Client.Core
             _membership = default;
             _pendingOperation = default(PendingRoomOperation);
             _reconnectionToken = null;
+            _isAuthority = false;
         }
 
         private static bool IsDirected(ClientCommand command)

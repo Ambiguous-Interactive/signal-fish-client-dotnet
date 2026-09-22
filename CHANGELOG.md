@@ -8,7 +8,27 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
-- Opt-in automatic reconnection (M4.5): `SignalFishClientOptions` accepts a
+- Authentication credentials (M5.3): `SignalFishClientOptions` accepts
+  `AppId` and an optional `ConnectToken` (a tenant credential, redacted to
+  presence in `ToString`), with `SdkVersion`/`Platform` defaulting from
+  `SignalFishClientInfo`. Every automatic reconnect round re-authenticates
+  with these credentials — required on allowlisted deployments, where an
+  anonymous fresh connection would be refused before a seat reclaim.
+
+- Authority tracking and requests (M5.2): `SendAuthorityRequest(true/false)`
+  on both clients (player role; relinquishing without holding the authority
+  is refused locally, matching the Rust client), `AuthorityChanged` now
+  feeds the session state, and `ClientSnapshot.IsAuthority` reports the
+  confirmed holder — seeded by `RoomJoined`/`Reconnected` baselines and
+  updated by every broadcast. `AuthorityChanged.authority_player` is
+  spec-nullable: an explicit JSON `null` now decodes as the vacated seat
+  instead of surfacing a protocol violation.
+
+- Spectator passwords sealed (M5.1): `JoinRoomMessage`/`JoinAsSpectatorMessage`
+  redact the join password in `ToString` (presence, never value), and the
+  sealed-room failures (missing password, wrong password, password on an
+  open room) are pinned to surface as the same `PASSWORD_REQUIRED` code —
+  indistinguishable to the sender, as the protocol intends.
 
 - Opt-in automatic reconnection (M4.5): `SignalFishClientOptions` accepts a
   `ReconnectPolicy` — a transport factory plus a deterministic exponential

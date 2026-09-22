@@ -159,6 +159,51 @@ namespace SignalFish.Client.E2E
             );
         }
 
+        /// <summary>
+        /// Polls until <paramref name="count"/> events matching
+        /// <paramref name="match"/> have arrived, returning them in arrival
+        /// order. One combined wait avoids pinning a server's delivery
+        /// order across sequential single-event waits (a discarded
+        /// non-matching frame cannot eat a later match).
+        /// </summary>
+        internal static async Task<List<PollEvent>> WaitForEventsAsync(
+            SignalFishPollingClient client,
+            Func<PollEvent, bool> match,
+            int count,
+            TimeSpan? timeout = null
+        )
+        {
+            List<PollEvent> collected = new List<PollEvent>();
+            TimeSpan budget = timeout ?? DefaultEventTimeout;
+            Stopwatch clock = Stopwatch.StartNew();
+            while (collected.Count < count && clock.Elapsed < budget)
+            {
+                client.Poll();
+                PollEvent? matched = TakeMatching(client, match);
+                while (matched is not null)
+                {
+                    collected.Add(matched.GetValueOrDefault());
+                    matched = collected.Count < count ? TakeMatching(client, match) : null;
+                }
+
+                if (collected.Count < count)
+                {
+                    await Task.Delay(10).ConfigureAwait(false);
+                }
+            }
+
+            if (collected.Count < count)
+            {
+                throw new TimeoutException(
+                    $"Only {collected.Count} of {count} matching events within "
+                        + $"{budget.TotalSeconds:F0}s (phase {client.Phase}, "
+                        + $"pending {client.PendingEventCount})."
+                );
+            }
+
+            return collected;
+        }
+
         /// <summary>Joins (creating on first join) and returns the confirmed membership.</summary>
         internal static async Task<RoomMembership> JoinRoomAsync(
             SignalFishPollingClient client,
@@ -234,6 +279,56 @@ namespace SignalFish.Client.E2E
         )
         {
             return client.SendGameData(new GameDataMessage(Encoding.UTF8.GetBytes(payloadJson)));
+        }
+
+        /// <summary>
+        /// Joins a room as a spectator (with an optional sealed-room
+        /// password) and waits for the typed confirmation.
+        /// </summary>
+        internal static async Task<RoomMembership> JoinSpectatorAsync(
+            SignalFishPollingClient client,
+            string gameName,
+            string spectatorName,
+            string roomCode,
+            string? password = null
+        )
+        {
+            CommandSend send = client.SendJoinAsSpectator(
+                new JoinAsSpectatorMessage(gameName, roomCode, spectatorName, password)
+            );
+            if (!send.Accepted)
+            {
+                throw new InvalidOperationException($"JoinAsSpectator refused: {send.Refusal}");
+            }
+
+            PollEvent joined = await WaitForEventAsync(
+                    client,
+                    e =>
+                        e.Kind == PollEventKind.SpectatorJoined
+                        || e.Kind == PollEventKind.SpectatorJoinFailed
+                )
+                .ConfigureAwait(false);
+            if (joined.Kind != PollEventKind.SpectatorJoined)
+            {
+                throw new InvalidOperationException(
+                    $"JoinAsSpectator failed: {joined.Failure.ErrorCode} ({joined.Failure.Reason})"
+                );
+            }
+
+            return joined.Membership;
+        }
+
+        /// <summary>Leaves spectator mode and waits for the typed confirmation.</summary>
+        internal static async Task LeaveSpectatorAsync(SignalFishPollingClient client)
+        {
+            CommandSend send = client.SendLeaveSpectator();
+            if (!send.Accepted)
+            {
+                throw new InvalidOperationException($"LeaveSpectator refused: {send.Refusal}");
+            }
+
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.SpectatorLeft)
+                .ConfigureAwait(false);
         }
 
         /// <summary>

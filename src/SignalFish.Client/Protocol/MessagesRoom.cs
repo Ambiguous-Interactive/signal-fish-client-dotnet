@@ -248,6 +248,27 @@ namespace SignalFish.Client.Protocol
             !left.Equals(right);
 
         /// <summary>
+        /// Log-safe form: the password is redacted to presence
+        /// (<c>&lt;redacted&gt;</c>/<c>&lt;none&gt;</c>), never its value.
+        /// </summary>
+        public override string ToString()
+        {
+            return nameof(GameName)
+                + "="
+                + GameName
+                + ", "
+                + nameof(RoomCode)
+                + "="
+                + RoomCode
+                + ", "
+                + nameof(SpectatorName)
+                + "="
+                + SpectatorName
+                + ", Password="
+                + (Password is null ? "<none>" : "<redacted>");
+        }
+
+        /// <summary>
         /// Decodes the <c>data</c> object of a <c>JoinAsSpectator</c>
         /// envelope (the <see cref="EnvelopeEvent.Data"/> slice). Unknown
         /// fields are skipped. Returns <see langword="false"/> for malformed
@@ -548,6 +569,27 @@ namespace SignalFish.Client.Protocol
         /// <inheritdoc />
         public static bool operator !=(JoinRoomMessage left, JoinRoomMessage right) =>
             !left.Equals(right);
+
+        /// <summary>
+        /// Log-safe form: the password is redacted to presence
+        /// (<c>&lt;redacted&gt;</c>/<c>&lt;none&gt;</c>), never its value.
+        /// </summary>
+        public override string ToString()
+        {
+            return nameof(GameName)
+                + "="
+                + GameName
+                + ", "
+                + nameof(PlayerName)
+                + "="
+                + PlayerName
+                + ", "
+                + nameof(RoomCode)
+                + "="
+                + (RoomCode ?? "<none>")
+                + ", Password="
+                + (Password is null ? "<none>" : "<redacted>");
+        }
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>JoinRoom</c> envelope (the

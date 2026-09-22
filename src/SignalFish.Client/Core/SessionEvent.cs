@@ -17,37 +17,58 @@ namespace SignalFish.Client.Core
         /// </summary>
         public string? ReconnectionToken { get; }
 
+        /// <summary>
+        /// Whether this connection holds the room authority: the baseline's
+        /// <c>is_authority</c> for join/reconnect kinds, the broadcast's
+        /// <c>you_are_authority</c> for <see cref="SessionEventKind.AuthorityChanged"/>.
+        /// </summary>
+        public bool IsAuthority { get; }
+
         private SessionEvent(
             SessionEventKind kind,
             RoomMembership membership,
-            string? reconnectionToken
+            string? reconnectionToken,
+            bool isAuthority
         )
         {
             Kind = kind;
             Membership = membership;
             ReconnectionToken = reconnectionToken;
+            IsAuthority = isAuthority;
         }
 
         /// <summary>Creates an event with no payload (liveness, failures, teardown).</summary>
         public static SessionEvent From(SessionEventKind kind)
         {
-            return new SessionEvent(kind, default, null);
+            return new SessionEvent(kind, default, null, false);
         }
 
         /// <summary>Creates the server-authenticated event (payload-less on the v2 wire).</summary>
         public static SessionEvent Authenticated()
         {
-            return new SessionEvent(SessionEventKind.Authenticated, default, null);
+            return new SessionEvent(SessionEventKind.Authenticated, default, null, false);
         }
 
         /// <summary>Creates a membership-confirming event (join/reconnect kinds).</summary>
         public static SessionEvent Joined(
             SessionEventKind kind,
             RoomMembership membership,
-            string? reconnectionToken = null
+            string? reconnectionToken = null,
+            bool isAuthority = false
         )
         {
-            return new SessionEvent(kind, membership, reconnectionToken);
+            return new SessionEvent(kind, membership, reconnectionToken, isAuthority);
+        }
+
+        /// <summary>Creates the authority-moved event.</summary>
+        public static SessionEvent AuthorityChanged(bool youAreAuthority)
+        {
+            return new SessionEvent(
+                SessionEventKind.AuthorityChanged,
+                default,
+                null,
+                youAreAuthority
+            );
         }
 
         public static bool operator ==(SessionEvent left, SessionEvent right)
@@ -64,6 +85,7 @@ namespace SignalFish.Client.Core
         {
             return Kind == other.Kind
                 && Membership == other.Membership
+                && IsAuthority == other.IsAuthority
                 && string.Equals(
                     ReconnectionToken,
                     other.ReconnectionToken,
@@ -83,6 +105,7 @@ namespace SignalFish.Client.Core
                 int hash = 17;
                 hash = (hash * 31) + (int)Kind;
                 hash = (hash * 31) + Membership.GetHashCode();
+                hash = (hash * 31) + IsAuthority.GetHashCode();
                 hash =
                     (hash * 31) + (ReconnectionToken?.GetHashCode(StringComparison.Ordinal) ?? 0);
                 return hash;

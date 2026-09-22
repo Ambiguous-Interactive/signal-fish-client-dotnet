@@ -33,6 +33,7 @@ namespace SignalFish.Client.Core
                 case MessageKind.SpectatorJoinFailed:
                 case MessageKind.ReconnectionFailed:
                 case MessageKind.Error:
+                case MessageKind.AuthorityChanged:
                     return true;
                 default:
                     return false;
@@ -48,9 +49,9 @@ namespace SignalFish.Client.Core
         /// </summary>
         internal static bool TryMap(EnvelopeEvent envelope, out SessionEvent sessionEvent)
         {
+            sessionEvent = default;
             if (envelope.Kind != EnvelopeEventKind.Message)
             {
-                sessionEvent = default;
                 return false;
             }
 
@@ -95,6 +96,19 @@ namespace SignalFish.Client.Core
                 case MessageKind.ReconnectionFailed:
                     sessionEvent = SessionEvent.From(SessionEventKind.ReconnectionFailed);
                     return true;
+                case MessageKind.AuthorityChanged:
+                    if (
+                        !AuthorityChangedMessage.TryDecode(
+                            envelope.Data,
+                            out AuthorityChangedMessage authorityChanged
+                        )
+                    )
+                    {
+                        return false;
+                    }
+
+                    sessionEvent = SessionEvent.AuthorityChanged(authorityChanged.YouAreAuthority);
+                    return true;
                 case MessageKind.Error:
                     // Informational only: the fence stays armed (fail-closed).
                     sessionEvent = SessionEvent.From(SessionEventKind.ServerError);
@@ -123,7 +137,8 @@ namespace SignalFish.Client.Core
                 sessionEvent = SessionEvent.Joined(
                     kind,
                     new RoomMembership(role, joined.PlayerId, joined.RoomId, joined.RoomCode),
-                    joined.ReconnectionToken
+                    joined.ReconnectionToken,
+                    joined.Snapshot.IsAuthority
                 );
                 return true;
             }

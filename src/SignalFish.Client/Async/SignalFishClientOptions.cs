@@ -9,7 +9,8 @@ namespace SignalFish.Client.Async
     /// events are never dropped), a 1024-command bounded queue (a full
     /// queue fails fast sends; Reliable variants wait), a 64 KiB inbound
     /// per-frame bound, and the ~30 s ping with a 2x-ping liveness
-    /// timeout.
+    /// timeout. Also carries the authentication credentials the client
+    /// sends on every (re)connect handshake.
     /// </summary>
     public sealed class SignalFishClientOptions
     {
@@ -70,6 +71,28 @@ namespace SignalFish.Client.Async
         /// </summary>
         public ReconnectPolicy? ReconnectPolicy { get; }
 
+        /// <summary>
+        /// Gets the public app ID sent on every <c>Authenticate</c>
+        /// (<c>null</c> omits it — open deployments accept the handshake
+        /// without one).
+        /// </summary>
+        public string? AppId { get; }
+
+        /// <summary>
+        /// Gets the optional tenant credential minted by the deployment's
+        /// control plane, sent on every <c>Authenticate</c>
+        /// (<c>null</c> omits it). A secret: <see cref="ToString"/>
+        /// redacts it; rotate by issuing a fresh token and building new
+        /// options.
+        /// </summary>
+        public string? ConnectToken { get; }
+
+        /// <summary>Gets the SDK version string sent on every <c>Authenticate</c>.</summary>
+        public string SdkVersion { get; }
+
+        /// <summary>Gets the platform token sent on every <c>Authenticate</c>.</summary>
+        public string Platform { get; }
+
         /// <summary>Initializes the options; every parameter has the documented default.</summary>
         public SignalFishClientOptions(
             int eventCapacity = DefaultEventCapacity,
@@ -79,7 +102,11 @@ namespace SignalFish.Client.Async
             int heartbeatTimeoutMilliseconds = DefaultHeartbeatTimeoutMilliseconds,
             int commandsPerWake = DefaultCommandsPerWake,
             int shutdownTimeoutMilliseconds = DefaultShutdownTimeoutMilliseconds,
-            ReconnectPolicy? reconnectPolicy = null
+            ReconnectPolicy? reconnectPolicy = null,
+            string? appId = null,
+            string? connectToken = null,
+            string? sdkVersion = SignalFishClientInfo.SdkVersion,
+            string? platform = SignalFishClientInfo.Platform
         )
         {
             if (eventCapacity < 1)
@@ -146,6 +173,41 @@ namespace SignalFish.Client.Async
             CommandsPerWake = commandsPerWake;
             ShutdownTimeoutMilliseconds = shutdownTimeoutMilliseconds;
             ReconnectPolicy = reconnectPolicy;
+            AppId = appId;
+            ConnectToken = connectToken;
+            SdkVersion = sdkVersion ?? SignalFishClientInfo.SdkVersion;
+            Platform = platform ?? SignalFishClientInfo.Platform;
+        }
+
+        /// <summary>
+        /// Log-safe form: the connect token is redacted to presence
+        /// (<c>&lt;redacted&gt;</c>/<c>&lt;none&gt;</c>), never its value.
+        /// </summary>
+        public override string ToString()
+        {
+            return nameof(EventCapacity)
+                + "="
+                + EventCapacity
+                + ", "
+                + nameof(CommandCapacity)
+                + "="
+                + CommandCapacity
+                + ", "
+                + nameof(AppId)
+                + "="
+                + (AppId ?? "<none>")
+                + ", "
+                + nameof(ConnectToken)
+                + "="
+                + (ConnectToken is null ? "<none>" : "<redacted>")
+                + ", "
+                + nameof(SdkVersion)
+                + "="
+                + SdkVersion
+                + ", "
+                + nameof(Platform)
+                + "="
+                + Platform;
         }
     }
 }

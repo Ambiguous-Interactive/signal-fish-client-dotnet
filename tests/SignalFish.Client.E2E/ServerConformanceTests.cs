@@ -283,6 +283,159 @@ namespace SignalFish.Client.E2E
         }
 
         /// <summary>
+        /// M5.1: a password-sealed room refuses passwordless and wrong-
+        /// password joins with the same PASSWORD_REQUIRED code (missing vs
+        /// wrong is indistinguishable to the sender), accepts the correct
+        /// one, and the spectator lifecycle runs end to end.
+        /// </summary>
+        [Test]
+        public async Task SealedRoomGateSpectatorFlowByPassword()
+        {
+            string gameName = E2EHarness.GameName();
+            string password = "hunter2-" + new string(Guid.NewGuid().ToString("N").AsSpan(0, 6));
+
+            // Creating the room with a password seals it.
+            SignalFishPollingClient alice = await E2EHarness.ConnectAuthenticatedClientAsync();
+            CommandSend seal = alice.SendJoinRoom(
+                new JoinRoomMessage(gameName, "alice", password: password)
+            );
+            Assert.That(seal.Accepted, Is.True);
+            await E2EHarness.WaitForEventAsync(alice, e => e.Kind == PollEventKind.RoomJoined);
+
+            SignalFishPollingClient watcher = await E2EHarness.ConnectAuthenticatedClientAsync();
+
+            // Passwordless join to the sealed room.
+            CommandSend bare = watcher.SendJoinAsSpectator(
+                new JoinAsSpectatorMessage(gameName, alice.Snapshot.RoomCode!, "watcher")
+            );
+            Assert.That(bare.Accepted, Is.True);
+            PollEvent required = await E2EHarness.WaitForEventAsync(
+                watcher,
+                e => e.Kind == PollEventKind.SpectatorJoinFailed
+            );
+            Assert.That(required.Failure.ErrorCode, Is.EqualTo("PASSWORD_REQUIRED"));
+
+            // Wrong password: same code, indistinguishable.
+            CommandSend wrong = watcher.SendJoinAsSpectator(
+                new JoinAsSpectatorMessage(
+                    gameName,
+                    alice.Snapshot.RoomCode!,
+                    "watcher",
+                    password + "-wrong"
+                )
+            );
+            Assert.That(wrong.Accepted, Is.True);
+            PollEvent indistinct = await E2EHarness.WaitForEventAsync(
+                watcher,
+                e => e.Kind == PollEventKind.SpectatorJoinFailed
+            );
+            Assert.That(indistinct.Failure.ErrorCode, Is.EqualTo("PASSWORD_REQUIRED"));
+
+            // The correct password admits the spectator; leave confirms.
+            RoomMembership seat = await E2EHarness.JoinSpectatorAsync(
+                watcher,
+                gameName,
+                "watcher",
+                alice.Snapshot.RoomCode!,
+                password
+            );
+            Assert.That(seat.Role, Is.EqualTo(RoomRole.Spectator));
+            await E2EHarness.LeaveSpectatorAsync(watcher);
+
+            await alice.DisposeAsync();
+            await watcher.DisposeAsync();
+        }
+
+        /// <summary>
+        /// M5.2: an authority-enabled room clears the seat on a release
+        /// (the vacated broadcast carries a null authority player), a
+        /// claiming player then takes it (AuthorityResponse +
+        /// AuthorityChanged, mirrored in the snapshots), and only the
+        /// holder can start the game.
+        /// </summary>
+        [Test]
+        public async Task AuthorityClaimMovesTheSeatAndGatesTheStart()
+        {
+            SignalFishPollingClient alice = await E2EHarness.ConnectAuthenticatedClientAsync();
+            SignalFishPollingClient bob = await E2EHarness.ConnectAuthenticatedClientAsync();
+
+            string gameName = E2EHarness.GameName();
+            await E2EHarness.JoinRoomAsync(alice, gameName, "alice", supportsAuthority: true);
+            await E2EHarness.JoinRoomAsync(bob, gameName, "bob", roomCode: alice.Snapshot.RoomCode);
+
+            Assert.That(alice.Snapshot.IsAuthority, Is.True, "the creator holds authority");
+            Assert.That(bob.Snapshot.IsAuthority, Is.False);
+
+            /*
+                Alice releases: the answer grants, and the room-wide
+                broadcast carries the vacated seat (authority_player null —
+                the spec-nullable form) with you_are_authority false for
+                everyone, including the releaser. The two frames are
+                unordered, so both come from one combined wait.
+            */
+            Assert.That(alice.SendAuthorityRequest(false).Accepted, Is.True);
+            List<PollEvent> aliceEvents = await E2EHarness.WaitForEventsAsync(
+                alice,
+                e => e.Kind is PollEventKind.AuthorityResponse or PollEventKind.AuthorityChanged,
+                2
+            );
+            PollEvent aliceAnswer = aliceEvents.First(e =>
+                e.Kind == PollEventKind.AuthorityResponse
+            );
+            Assert.That(aliceAnswer.AuthorityResponse.Granted, Is.True);
+            PollEvent aliceRelease = aliceEvents.First(e =>
+                e.Kind == PollEventKind.AuthorityChanged
+            );
+            Assert.That(aliceRelease.AuthorityChanged.AuthorityPlayer, Is.Null);
+            Assert.That(aliceRelease.AuthorityChanged.YouAreAuthority, Is.False);
+            Assert.That(alice.Snapshot.IsAuthority, Is.False);
+            await E2EHarness.WaitForEventAsync(
+                bob,
+                e =>
+                    e.Kind == PollEventKind.AuthorityChanged
+                    && e.AuthorityChanged.AuthorityPlayer is null
+            );
+            Assert.That(bob.Snapshot.IsAuthority, Is.False);
+
+            /*
+                With the seat vacant, bob's claim is granted; the answer
+                and the broadcast may arrive in either order, so classify
+                both from one combined wait.
+            */
+            Assert.That(bob.SendAuthorityRequest(true).Accepted, Is.True);
+            List<PollEvent> bobEvents = await E2EHarness.WaitForEventsAsync(
+                bob,
+                e => e.Kind is PollEventKind.AuthorityResponse or PollEventKind.AuthorityChanged,
+                2
+            );
+            PollEvent bobAnswer = bobEvents.First(e => e.Kind == PollEventKind.AuthorityResponse);
+            Assert.That(bobAnswer.AuthorityResponse.Granted, Is.True);
+            PollEvent bobMove = bobEvents.First(e => e.Kind == PollEventKind.AuthorityChanged);
+            Assert.That(bobMove.AuthorityChanged.YouAreAuthority, Is.True);
+            Assert.That(bob.Snapshot.IsAuthority, Is.True);
+
+            // The old authority can no longer start the game...
+            await E2EHarness.SetReadyAsync(alice);
+            await E2EHarness.SetReadyAsync(bob, expectAllReady: true);
+            Assert.That(alice.SendStartGame().Accepted, Is.True);
+            PollEvent aliceRefused = await E2EHarness.WaitForEventAsync(
+                alice,
+                e =>
+                    e.Kind == PollEventKind.ServerError
+                    && e.Failure.ErrorCode is "GAME_START_FORBIDDEN" or "GAME_START_NOT_READY"
+            );
+            Assert.That(aliceRefused.Failure.ErrorCode, Is.EqualTo("GAME_START_FORBIDDEN"));
+
+            // ...but the holder can.
+            Assert.That(bob.SendStartGame().Accepted, Is.True);
+            await E2EHarness.WaitForEventAsync(bob, e => e.Kind == PollEventKind.GameStarting);
+            await E2EHarness.WaitForEventAsync(alice, e => e.Kind == PollEventKind.GameStarting);
+
+            await alice.DisposeAsync();
+            await bob.DisposeAsync();
+        }
+
+        /// <summary>
         /// Item 6: a client that heartbeats survives an idle window longer
         /// than the server's ping timeout and stays usable afterwards.
         /// </summary>

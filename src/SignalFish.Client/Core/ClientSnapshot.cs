@@ -41,6 +41,9 @@ namespace SignalFish.Client.Core
         /// </summary>
         public string? ReconnectionToken { get; }
 
+        /// <summary>True while this connection is the confirmed room authority.</summary>
+        public bool IsAuthority { get; }
+
         /// <summary>Initializes a new snapshot.</summary>
         public ClientSnapshot(
             bool connected,
@@ -50,7 +53,8 @@ namespace SignalFish.Client.Core
             Guid? playerId,
             Guid? roomId,
             string? roomCode,
-            string? reconnectionToken
+            string? reconnectionToken,
+            bool isAuthority = false
         )
         {
             Connected = connected;
@@ -61,6 +65,7 @@ namespace SignalFish.Client.Core
             RoomId = roomId;
             RoomCode = roomCode;
             ReconnectionToken = reconnectionToken;
+            IsAuthority = isAuthority;
         }
 
         public static bool operator ==(ClientSnapshot left, ClientSnapshot right)
@@ -86,7 +91,8 @@ namespace SignalFish.Client.Core
                     ReconnectionToken,
                     other.ReconnectionToken,
                     StringComparison.Ordinal
-                );
+                )
+                && IsAuthority == other.IsAuthority;
         }
 
         public override bool Equals(object obj)
@@ -108,6 +114,7 @@ namespace SignalFish.Client.Core
                 hash = (hash * 31) + (RoomCode?.GetHashCode(StringComparison.Ordinal) ?? 0);
                 hash =
                     (hash * 31) + (ReconnectionToken?.GetHashCode(StringComparison.Ordinal) ?? 0);
+                hash = (hash * 31) + IsAuthority.GetHashCode();
                 return hash;
             }
         }
@@ -131,6 +138,10 @@ namespace SignalFish.Client.Core
                 + Authenticated
                 + ", Role="
                 + (Role?.ToString() ?? "<none>")
+                + ", "
+                + nameof(IsAuthority)
+                + "="
+                + IsAuthority
                 + ", ReconnectionToken="
                 + (ReconnectionToken is null ? "<none>" : "<redacted>");
         }

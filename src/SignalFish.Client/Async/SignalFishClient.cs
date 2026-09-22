@@ -310,6 +310,23 @@ namespace SignalFish.Client.Async
             );
         }
 
+        /// <summary>
+        /// Requests (or relinquishes) the room authority; the answers arrive
+        /// as <c>AuthorityResponse</c> and, on a move, <c>AuthorityChanged</c>
+        /// (also mirrored in <see cref="Snapshot"/>). Refused for spectators
+        /// and for a relinquish while not holding the authority.
+        /// </summary>
+        public CommandSend SendAuthorityRequest(bool becomeAuthority)
+        {
+            return QueueCommand(
+                ClientCommand.RequestAuthority,
+                static (FrameBufferWriter writer, AuthorityRequestMessage payload) =>
+                    EnvelopeWriter.WriteAuthorityRequest(writer, payload),
+                new AuthorityRequestMessage(becomeAuthority),
+                becomeAuthority
+            );
+        }
+
         /// <summary>Requests the game start (readiness and authority rules apply server-side).</summary>
         public CommandSend SendStartGame()
         {
@@ -627,13 +644,14 @@ namespace SignalFish.Client.Async
         private CommandSend QueueCommand<TState>(
             ClientCommand command,
             Action<FrameBufferWriter, TState> write,
-            TState state
+            TState state,
+            bool becomeAuthority = true
         )
         {
             lock (_gate)
             {
                 ThrowIfDisposed();
-                AdmissionError refusal = AdmissionRefusal(command);
+                AdmissionError refusal = AdmissionRefusal(command, becomeAuthority);
                 if (refusal != default(AdmissionError))
                 {
                     return CommandSend.Refused(refusal);
@@ -667,15 +685,31 @@ namespace SignalFish.Client.Async
         /// first — the machine alone cannot see the connect call — then the
         /// machine's own precedence applies.
         /// </summary>
-        private AdmissionError AdmissionRefusal(ClientCommand command)
+        private AdmissionError AdmissionRefusal(ClientCommand command, bool becomeAuthority = true)
         {
             if (!_connectCalled || _terminal || _severed)
             {
                 return AdmissionError.NotConnected;
             }
 
-            _machine.TryAdmit(command, out AdmissionError refusal);
+            _machine.TryAdmit(command, becomeAuthority, out AdmissionError refusal);
             return refusal;
+        }
+
+        /// <summary>
+        /// The per-round handshake payload: the credentials configured on
+        /// the options (app id, SDK identity, optional tenant token), so a
+        /// reconnect round re-authenticates exactly like the caller's
+        /// explicit first handshake must have.
+        /// </summary>
+        private AuthenticateMessage BuildHandshakeMessage()
+        {
+            return new AuthenticateMessage(
+                appId: _options.AppId,
+                sdkVersion: _options.SdkVersion,
+                platform: _options.Platform,
+                connectToken: _options.ConnectToken
+            );
         }
 
         private void ThrowIfDisposed()
@@ -1096,11 +1130,11 @@ namespace SignalFish.Client.Async
                     /*
                         The fresh connection re-runs the handshake
                         immediately, so the seat reclaim can follow the
-                        Authenticated fact; the payload-less v2 handshake
-                        carries no parameters (credentials arrive with M5.3).
+                        Authenticated fact; the handshake carries the
+                        configured credentials (M5.3).
                     */
                     _pingBuffer.Reset();
-                    EnvelopeWriter.WriteAuthenticate(_pingBuffer, new AuthenticateMessage());
+                    EnvelopeWriter.WriteAuthenticate(_pingBuffer, BuildHandshakeMessage());
                     _commands.TryEnqueue(_pingBuffer.WrittenSpan.ToArray());
                 }
             }
