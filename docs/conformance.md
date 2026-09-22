@@ -7,9 +7,8 @@ scenario runs the real client stack — `SignalFishPollingClient` over
 
 Run it locally with Docker: `pwsh -NoProfile -File scripts/run-e2e.ps1`.
 CI runs the same suite whenever a PR or main push touches the client or
-the suite (`e2e.yml`, service container). Items 1-7 were verified against
-the live server by this suite; its first CI run is the standing green
-evidence.
+the suite (`e2e.yml`, service container). All seven scenarios pass against
+the live server (first verified on PR #44's `e2e` run).
 
 ## Checklist status
 

@@ -60,7 +60,9 @@ function Wait-ForServer {
             try {
                 $null = $client.GetAsync("$BaseUrl/v2/client-config").GetAwaiter().GetResult()
                 return $true
-            } catch [System.Net.Http.HttpRequestException] {
+            } catch {
+                # Refused, timed out (TaskCanceled/Timeout), or reset: the
+                # listener is not answering yet; retry until the deadline.
                 Start-Sleep -Milliseconds 500
             }
         }

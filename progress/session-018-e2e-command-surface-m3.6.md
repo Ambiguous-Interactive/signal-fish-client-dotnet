@@ -58,6 +58,12 @@ CI-driven; local validation covers everything up to the wire.
 - E2E suite builds clean under `-warnaserror`.
 - All six convention lints, CSharpier, file-size lint, and the automation
   self-tests: green locally.
+- **First live run (PR #44 `e2e` job): 7/7 scenarios pass.** Two defects
+  surfaced only against the real server and were fixed with root causes:
+  the relay contract is by JSON value, not byte-verbatim (the server
+  re-serializes payloads), and the server's startup validation rejects
+  `slow_consumer_timeout_ms >= ping_timeout` (timeout inversion), so the
+  short-liveness harness sets it explicitly.
 
 ## Notes / follow-ups
 
