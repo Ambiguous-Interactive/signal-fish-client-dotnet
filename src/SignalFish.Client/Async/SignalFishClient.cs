@@ -478,11 +478,12 @@ namespace SignalFish.Client.Async
         /// abrupt socket close on the wire; only the leave sequencing is
         /// graceful. A zero budget, a session already terminal, and a
         /// client never connected all tear down immediately. The final
-        /// <c>Disconnected</c> is delivered exactly once — with a policy
-        /// that is the last connection death's own marker (synthesized at
-        /// end-of-stream only if that marker could not be queued) — and
-        /// sends after this throw <see cref="ObjectDisposedException"/>
-        /// from the moment disposal starts.
+        /// <c>Disconnected</c> is delivered exactly once: a policy
+        /// session's last connection death delivers its own marker
+        /// (synthesized at end-of-stream only if that marker could not be
+        /// queued), and disposing a live connection synthesizes one. Sends
+        /// after this throw <see cref="ObjectDisposedException"/> from the
+        /// moment disposal starts.
         /// </summary>
         public async ValueTask DisposeAsync()
         {
@@ -862,10 +863,7 @@ namespace SignalFish.Client.Async
                         break;
                     }
 
-                    if (TryIssueAutoReconnect())
-                    {
-                        continue;
-                    }
+                    TryIssueAutoReconnect();
 
                     await DrainCommandsAsync().ConfigureAwait(false);
                     if (_terminal || _severed)
@@ -958,11 +956,13 @@ namespace SignalFish.Client.Async
 
         /// <summary>
         /// Consumes a retained seat once the fresh connection reaches the
-        /// authenticated phase: the same directed reconnect the manual
-        /// procedure prescribes. True when the command was issued (the
-        /// caller restarts the round iteration).
+        /// authenticated phase and no directed operation is in flight: the
+        /// same directed reconnect the manual procedure prescribes. The
+        /// call never restarts the caller's iteration — a refused reclaim
+        /// keeps the seat and retries are paced by later iterations (a
+        /// frame, a wake, a heartbeat), never by a same-condition spin.
         /// </summary>
-        private bool TryIssueAutoReconnect()
+        private void TryIssueAutoReconnect()
         {
             ReconnectMessage? seat = null;
             lock (_gate)
@@ -975,23 +975,36 @@ namespace SignalFish.Client.Async
                     && _machine.IsAuthenticated
                 )
                 {
-                    _autoSeatPending = false;
-                    seat = new ReconnectMessage(
-                        _autoSeat.PlayerId.ToString(),
-                        _autoSeat.RoomId.ToString(),
-                        _autoSeat.Token
-                    );
+                    if (_machine.Membership.IsPresent)
+                    {
+                        /*
+                            A confirmed membership this round did not reclaim
+                            (a deliberate application join) supersedes the
+                            retained seat.
+                        */
+                        _autoSeatPending = false;
+                    }
+                    else if (_machine.PendingOperation == default(PendingRoomOperation))
+                    {
+                        _autoSeatPending = false;
+                        seat = new ReconnectMessage(
+                            _autoSeat.PlayerId.ToString(),
+                            _autoSeat.RoomId.ToString(),
+                            _autoSeat.Token
+                        );
+                    }
                 }
             }
 
             if (seat is null)
             {
-                return false;
+                return;
             }
 
+            CommandSend verdict;
             try
             {
-                SendReconnect(seat.GetValueOrDefault());
+                verdict = SendReconnect(seat.GetValueOrDefault());
             }
             catch (ObjectDisposedException)
             {
@@ -999,9 +1012,21 @@ namespace SignalFish.Client.Async
                     Disposal raced the issue; the attempt is lost with the
                     round, like any command still queued at the death.
                 */
+                return;
             }
 
-            return true;
+            /*
+                A refused reclaim (a full send queue, for example) never
+                went out: the seat stays retained for a later iteration
+                instead of being dropped with this round.
+            */
+            if (!verdict.Accepted)
+            {
+                lock (_gate)
+                {
+                    _autoSeatPending = true;
+                }
+            }
         }
 
         /// <summary>
@@ -1061,9 +1086,11 @@ namespace SignalFish.Client.Async
                         The death marker is per-round: this round owes its
                         own terminal Disconnected if it dies (a marker lost
                         to a concurrent finalization falls back to the
-                        synthesized one).
+                        synthesized one), and a previous death's close must
+                        not leak into this round's bookkeeping.
                     */
                     _disconnectedDelivered = false;
+                    _severClose = default;
                     _commands = new BoundedQueue<byte[]>(_options.CommandCapacity);
 
                     /*
@@ -1386,16 +1413,17 @@ namespace SignalFish.Client.Async
         /// <summary>
         /// The one-shot terminal delivery: once the session is terminal and
         /// the completed queue drained, the first consumer to ask receives
-        /// the synthesized <c>Disconnected</c> — unless the connection's
-        /// own <c>Disconnected</c> was already enqueued by
-        /// <see cref="Sever"/> (a reconnecting session delivers it as a
-        /// regular event); every later read sees the plain end-of-stream.
+        /// the synthesized <c>Disconnected</c> — for a live connection
+        /// ended by disposal, or when the dying round's own marker could
+        /// not be queued; a delivered round marker already IS the death's
+        /// terminal Disconnected. Every later read sees the plain
+        /// end-of-stream.
         /// </summary>
         private PollEvent? ConsumeTerminal()
         {
             lock (_gate)
             {
-                if (!_terminal || _terminalDelivered || _disconnectedDelivered)
+                if (!_terminal || _terminalDelivered || (_disconnectedDelivered && _severed))
                 {
                     return null;
                 }

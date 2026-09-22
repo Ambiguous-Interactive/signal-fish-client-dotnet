@@ -64,6 +64,25 @@ while (client.DrainEvents(ref enumerator)) { Handle(enumerator.Current); }
 - Never block waiting for `Pong`; track it as outstanding-ping state in the
   driver loop.
 
+## Driver-loop liveness
+
+- **Never restart an iteration on a condition the loop itself re-arms.**
+  Restore-on-refusal plus an unconditional `continue`/re-check is a
+  livelock: the restarted iteration re-triggers on the same state and
+  never reaches the code that would clear it (drain, receive, heartbeat).
+  A refused automatic action keeps its retry state but falls through, so
+  retries are paced by external progress (a frame, a wake, a deadline).
+- Gate a re-attempt on the *actual blocker*, not just the trigger flag:
+  e.g. a directed operation is futile while a fence is held
+  (`PendingOperation != default`), so wait for the fence instead of
+  refusing every iteration.
+- When a confirmed foreign state supersedes the trigger (a retained
+  reclaim seat vs. a deliberate application join), clear the trigger
+  instead of retrying forever.
+- Red-green a liveness fix with a refusal that is deterministic and
+  persistent (e.g. a capacity-1 command queue refilled before the retry):
+  the red state must visibly fail to progress, not just differ.
+
 ## Testing threading behavior
 
 - Deterministic virtual time for timers/backoff (inject `ISignalFishClock`;
