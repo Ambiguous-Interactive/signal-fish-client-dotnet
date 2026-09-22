@@ -9,6 +9,26 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-22 - session 017b: PR feedback round - silent snupkg skip in nuget.org publish (bugbot finding)
+
+- Trigger: Cursor Bugbot flagged the nuget.org push as invalid. Bot's
+  mechanism was wrong (two paths parse and both nupkg push); executing the
+  command on the CI-pinned SDK 8.0.425 exposed a worse truth: a positional
+  `.snupkg` is silently skipped (exit 0, no warning) — symbols would never
+  reach nuget.org. A prior sub-agent's "empirically confirmed" defense of
+  the one-command form was itself wrong.
+- Findings: (1) `dotnet nuget push` (SDK 8) silently ignores `.snupkg`
+  positional args; symbol publish needs an explicit snupkg push (nuget.org
+  documented flow). (2) Verification must observe effects, not exit codes
+  or success output. (3) Tag-only/schedule-only workflows never self-verify
+  in CI — their `run:` commands are the class that ships untested.
+- Applied: release.yml nuget.org step split into explicit nupkg + snupkg
+  pushes with the evidence in a comment; `address-pr-feedback` skill step 3
+  gained the execute-on-pinned-toolchain / verify-effects / re-execute-
+  claims rules and the sweep-table row for never-exercised workflow
+  commands.
+- Open: none.
+
 ## 2026-09-22 - session 017: M3.5 snapshot + SSOT/KISS/SOLID doctrine (issue #23)
 
 - Trigger: issue #23 (aggressive SSOT/KISS/SOLID) + M3.5. Audit found the

@@ -62,6 +62,21 @@ For each finding: open the cited file:line, reproduce the failure if cheap
 if the reviewer misread, the code is probably not clear enough; consider a
 comment or rename.
 
+Reproduction rules that have caught real bugs:
+
+- **Execute the cited command on the CI-pinned toolchain** (pin with a
+  `global.json` if the local SDK differs), not whatever is newest locally —
+  parser shapes and semantics drift between SDKs.
+- **Verify effects, not exit codes.** A command can parse, exit 0, print
+  success, and silently skip its input (real case: `dotnet nuget push
+  a.nupkg a.snupkg` accepted both paths, pushed one, skipped the symbol
+  package without a warning). Observe what actually happened — files
+  written, requests served, artifacts produced.
+- **Re-execute any "empirically confirmed" claim yourself** before
+  trusting it — bot findings and sub-agent verdicts alike are hypotheses;
+  neither has executed anything. If two sources disagree, run the
+  experiment; one cheap local run outranks both.
+
 ### 4. Sweep for the class
 
 Findings are instances of failure classes. After verifying one, grep the
@@ -75,6 +90,7 @@ codebase for siblings:
 | Hook blesses a file CI rejects | Every gate's hook selector vs its linter's accepted inputs vs CI's trigger (see [add-quality-gate](../add-quality-gate/SKILL.md)) |
 | Generator/switch breaks after enum renumbering | Every numeric enum construction (`(Enum)(byte % N)`), ordinal loop, and sentinel-guard added in the same change — test/fuzz generators and perf harnesses included |
 | Repro artifact lands in the repo tree | Tracked files matching fuzz/crash/seed patterns; artifacts belong in gitignored persistence dirs (`.fuzz/`), never the repo root |
+| Workflow `run:` command is wrong (fails or silently no-ops) | Every `run:` line in tag-only/schedule-only workflows — those jobs never self-verify in CI, so PR review is their only execution check; run each new command locally on the CI-pinned toolchain and confirm its effect |
 
 Fix every sibling in the same change. One-off fixes guarantee the reviewer
 finds the sibling next round.

@@ -73,14 +73,22 @@ jobs:
       # no NuGet symbol-publish endpoint, so pushing it there fails.
 
       # Optional: nuget.org publishing happens only when the NUGET_API_KEY
-      # secret is populated (see docs/releasing.md).
+      # secret is populated (see docs/releasing.md). Two explicit pushes:
+      # passing "dist/*.nupkg" "dist/*.snupkg" to one command parses fine
+      # but silently skips the .snupkg (verified on SDK 8.0.425) — symbols
+      # are published only by pushing the .snupkg explicitly, per
+      # https://learn.microsoft.com/en-us/nuget/create-packages/symbol-packages-snupkg
       - name: Publish to NuGet.org
         if: env.NUGET_API_KEY != ''
-        run: >
-          dotnet nuget push "dist/*.nupkg" "dist/*.snupkg"
-          --source https://api.nuget.org/v3/index.json
-          --api-key "$NUGET_API_KEY"
-          --skip-duplicate
+        run: |
+          dotnet nuget push "dist/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate
+          dotnet nuget push "dist/*.snupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate
 
       - name: Create GitHub release with package assets
         env:

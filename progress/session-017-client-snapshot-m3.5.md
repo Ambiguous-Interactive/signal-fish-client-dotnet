@@ -64,3 +64,14 @@ Advance the plan to M3.5 (red-green) and drive open-issue debt to zero
   surface rides with it (as noted in M3.4).
 - M4.4 can now consume `Snapshot.ReconnectionToken` for the persisted
   reconnect triple.
+
+## PR feedback round (post-opening)
+
+- Cursor Bugbot flagged the nuget.org push as invalid. Executed the command
+  on the CI-pinned SDK 8.0.425: multi-path parsing is fine (bot's mechanism
+  wrong), but a positional `.snupkg` is **silently skipped** (exit 0) —
+  symbols would never have reached nuget.org. Fixed with explicit nupkg +
+  snupkg pushes (release.yml), evidence recorded in a comment there.
+  Knowledge folded into the `address-pr-feedback` skill (execute on pinned
+  toolchain; verify effects not exit codes; re-execute sub-agent/bot
+  claims) and the improvement log.
