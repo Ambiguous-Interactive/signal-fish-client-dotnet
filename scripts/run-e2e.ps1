@@ -96,6 +96,7 @@ try {
             -e SIGNAL_FISH__SERVER__PING_TIMEOUT='3' `
             -e SIGNAL_FISH__WEBSOCKET__IDLE_TIMEOUT_SECS='3' `
             -e SIGNAL_FISH__WEBSOCKET__SERVER_PING_INTERVAL_SECS='0' `
+            -e SIGNAL_FISH__WEBSOCKET__SLOW_CONSUMER_TIMEOUT_MS='2000' `
             $Image | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "docker run failed (exit $LASTEXITCODE)."

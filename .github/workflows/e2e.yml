@@ -38,10 +38,12 @@ jobs:
           # Short liveness timers so the heartbeat and silent-client
           # scenarios finish in seconds instead of minutes. Server Ping
           # probes are off: a silent client must not survive on automatic
-          # Pong replies.
+          # Pong replies. The slow-consumer deadline must stay under the
+          # ping timeout (server startup validates the inversion).
           SIGNAL_FISH__SERVER__PING_TIMEOUT: '3'
           SIGNAL_FISH__WEBSOCKET__IDLE_TIMEOUT_SECS: '3'
           SIGNAL_FISH__WEBSOCKET__SERVER_PING_INTERVAL_SECS: '0'
+          SIGNAL_FISH__WEBSOCKET__SLOW_CONSUMER_TIMEOUT_MS: '2000'
         ports:
           - 3536:3536
     steps:
