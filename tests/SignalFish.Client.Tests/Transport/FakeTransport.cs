@@ -51,6 +51,7 @@ namespace SignalFish.Client.Tests.Transport
         private TaskCompletionSource<bool>? _sendGate;
         private int _state = StateNew;
         private int _connectCount;
+        private int _doomedCloseCode;
         private bool _closeDelivered;
         private int _closeCode;
 
@@ -94,7 +95,9 @@ namespace SignalFish.Client.Tests.Transport
             pending?.TrySetResult(new TransportFrame(payload, isText));
         }
 
-        /// <summary>Scripts the server-initiated close with a raw close code.</summary>
+        /// <summary>
+        /// Scripts the server-initiated close with a raw close code.
+        /// </summary>
         public void EnqueueClose(int code)
         {
             lock (_gate)
@@ -102,6 +105,40 @@ namespace SignalFish.Client.Tests.Transport
                 _closeCode = code;
                 _state = StateClosed;
             }
+        }
+
+        /// <summary>
+        /// Arms the close to land right after <see cref="ConnectAsync"/>:
+        /// the handshake succeeds, then every send fails and the first
+        /// receive delivers the close frame — a connection that dies
+        /// immediately (a retryable reconnect round).
+        /// </summary>
+        public void DoomWithClose(int code)
+        {
+            lock (_gate)
+            {
+                _closeCode = code;
+                _doomedCloseCode = code;
+            }
+        }
+
+        /// <summary>
+        /// Fails every send held by <see cref="HoldSendsUntil"/> with a
+        /// typed close and marks the connection closed — a wire death
+        /// while a send is parked mid-flight.
+        /// </summary>
+        public void FailHeldSends(int code)
+        {
+            TaskCompletionSource<bool>? sendGate;
+            lock (_gate)
+            {
+                _closeCode = code;
+                _state = StateClosed;
+                sendGate = _sendGate;
+                _sendGate = null;
+            }
+
+            sendGate?.TrySetException(new TransportClosedException(new TransportClose(code)));
         }
 
         /// <summary>
@@ -153,6 +190,11 @@ namespace SignalFish.Client.Tests.Transport
                         $"{nameof(FakeTransport)} can connect at most once (state {_state})."
                     )
                 );
+            }
+
+            if (Volatile.Read(ref _doomedCloseCode) != 0)
+            {
+                Volatile.Write(ref _state, StateClosed);
             }
 
             return Task.CompletedTask;

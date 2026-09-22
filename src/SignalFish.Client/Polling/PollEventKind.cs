@@ -100,5 +100,20 @@ namespace SignalFish.Client.Polling
 
         /// <summary>The frame was malformed; carries the bounded decode error.</summary>
         DecodeFailed = 26,
+
+        /// <summary>
+        /// The opt-in reconnect policy scheduled an attempt (carries the
+        /// attempt number and the deterministic wait). Produced only by the
+        /// async client; the polling client is caller-driven and never
+        /// emits it.
+        /// </summary>
+        Reconnecting = 27,
+
+        /// <summary>
+        /// The reconnect attempt budget ran out (carries attempts spent and
+        /// the last close reason); the session ends after it. Produced only
+        /// by the async client.
+        /// </summary>
+        ReconnectAbandoned = 28,
     }
 }

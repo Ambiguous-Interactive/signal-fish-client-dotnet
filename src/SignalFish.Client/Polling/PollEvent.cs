@@ -3,6 +3,7 @@ namespace SignalFish.Client.Polling
     using System;
     using SignalFish.Client.Core;
     using SignalFish.Client.Protocol;
+    using SignalFish.Client.Reconnection;
     using SignalFish.Client.Transport;
 
     /// <summary>
@@ -110,6 +111,13 @@ namespace SignalFish.Client.Polling
         /// <summary>The dropped spectator; meaningful only for <see cref="PollEventKind.SpectatorDisconnected"/>.</summary>
         public SpectatorDisconnectedMessage SpectatorDisconnected { get; }
 
+        /// <summary>
+        /// The automatic-reconnection scheduling details; meaningful only
+        /// for <see cref="PollEventKind.Reconnecting"/> and
+        /// <see cref="PollEventKind.ReconnectAbandoned"/>.
+        /// </summary>
+        public ReconnectStatus Reconnect { get; }
+
         /// <summary>The complete raw frame, as received (advanced inspection; empty for synthetic events).</summary>
         public ReadOnlyMemory<byte> Raw { get; }
 
@@ -135,6 +143,7 @@ namespace SignalFish.Client.Polling
             SpectatorLeftMessage spectatorLeft,
             NewSpectatorJoinedMessage newSpectator,
             SpectatorDisconnectedMessage spectatorDisconnected,
+            ReconnectStatus reconnect,
             ReadOnlyMemory<byte> raw
         )
         {
@@ -159,6 +168,7 @@ namespace SignalFish.Client.Polling
             SpectatorLeft = spectatorLeft;
             NewSpectator = newSpectator;
             SpectatorDisconnected = spectatorDisconnected;
+            Reconnect = reconnect;
             Raw = raw;
         }
 
@@ -175,6 +185,7 @@ namespace SignalFish.Client.Polling
                 default,
                 0,
                 null,
+                default,
                 default,
                 default,
                 default,
@@ -216,6 +227,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
                 default
             );
         }
@@ -233,6 +245,7 @@ namespace SignalFish.Client.Polling
                 default,
                 0,
                 null,
+                default,
                 default,
                 default,
                 default,
@@ -279,6 +292,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
                 raw
             );
         }
@@ -300,6 +314,7 @@ namespace SignalFish.Client.Polling
                 default,
                 0,
                 null,
+                default,
                 default,
                 default,
                 default,
@@ -341,6 +356,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
                 raw
             );
         }
@@ -358,6 +374,7 @@ namespace SignalFish.Client.Polling
                 default,
                 0,
                 typeText,
+                default,
                 default,
                 default,
                 default,
@@ -403,6 +420,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
                 raw
             );
         }
@@ -424,6 +442,7 @@ namespace SignalFish.Client.Polling
                 0,
                 null,
                 payload,
+                default,
                 default,
                 default,
                 default,
@@ -467,6 +486,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
                 raw
             );
         }
@@ -490,6 +510,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
                 default,
                 default,
                 default,
@@ -531,6 +552,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
                 raw
             );
         }
@@ -560,6 +582,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
                 raw
             );
         }
@@ -582,6 +605,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 playerId,
+                default,
                 default,
                 default,
                 default,
@@ -621,6 +645,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
                 raw
             );
         }
@@ -648,6 +673,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
                 default,
                 default,
                 default,
@@ -685,6 +711,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
                 raw
             );
         }
@@ -714,6 +741,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
                 default,
                 default,
                 default,
@@ -749,6 +777,7 @@ namespace SignalFish.Client.Polling
                 payload,
                 default,
                 default,
+                default,
                 raw
             );
         }
@@ -780,6 +809,7 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
                 default,
                 raw
             );
@@ -813,7 +843,68 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
                 raw
+            );
+        }
+
+        /// <summary>Creates the reconnect-scheduled marker (no wire frame behind it).</summary>
+        internal static PollEvent FromReconnecting(int attempt, long backoffMilliseconds)
+        {
+            return new PollEvent(
+                PollEventKind.Reconnecting,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                0,
+                null,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                new ReconnectStatus(attempt, backoffMilliseconds, null),
+                default
+            );
+        }
+
+        /// <summary>Creates the reconnect-abandoned marker (no wire frame behind it).</summary>
+        internal static PollEvent FromReconnectAbandoned(int attempts, string? lastReason)
+        {
+            return new PollEvent(
+                PollEventKind.ReconnectAbandoned,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                0,
+                null,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                new ReconnectStatus(attempts, 0, lastReason),
+                default
             );
         }
     }
