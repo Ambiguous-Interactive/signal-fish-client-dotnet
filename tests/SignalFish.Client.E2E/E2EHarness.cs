@@ -1,9 +1,9 @@
 namespace SignalFish.Client.E2E
 {
     using System;
-    using System.Collections.Generic;
     using System.Diagnostics;
     using System.Text;
+    using System.Text.Json.Nodes;
     using System.Threading.Tasks;
     using SignalFish.Client.Core;
     using SignalFish.Client.Polling;
@@ -184,6 +184,21 @@ namespace SignalFish.Client.E2E
         )
         {
             return client.SendGameData(new GameDataMessage(Encoding.UTF8.GetBytes(payloadJson)));
+        }
+
+        /// <summary>
+        /// Compares a relayed game-data payload with the expected JSON by
+        /// value: the server relays the JSON value (it re-serializes), not
+        /// the sender's exact bytes. Both sides normalize through
+        /// <see cref="JsonNode.ToJsonString"/> (compact, same key order).
+        /// </summary>
+        internal static bool PayloadJsonEquals(ReadOnlySpan<byte> payload, string expectedJson)
+        {
+            JsonNode? actual = JsonNode.Parse(payload.ToArray());
+            JsonNode? expected = JsonNode.Parse(expectedJson);
+            return actual is not null
+                && expected is not null
+                && actual.ToJsonString() == expected.ToJsonString();
         }
 
         internal static string GameName()

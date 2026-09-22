@@ -1,7 +1,6 @@
 namespace SignalFish.Client.E2E
 {
     using System;
-    using System.Text;
     using System.Threading.Tasks;
     using NUnit.Framework;
     using SignalFish.Client.Core;
@@ -72,8 +71,9 @@ namespace SignalFish.Client.E2E
             );
             Assert.That(bobReceived.GameData.FromPlayer, Is.EqualTo(aliceSeat.PlayerId));
             Assert.That(
-                Encoding.UTF8.GetString(bobReceived.GameData.Payload.Span),
-                Is.EqualTo(@"{""n"": 1}")
+                E2EHarness.PayloadJsonEquals(bobReceived.GameData.Payload.Span, @"{""n"": 1}"),
+                Is.True,
+                "the relayed payload must match the sent JSON value"
             );
 
             Assert.That(E2EHarness.SendRelayPayload(bob, @"{""n"": 2}").Accepted, Is.True);
@@ -334,8 +334,12 @@ namespace SignalFish.Client.E2E
                 e => e.Kind == PollEventKind.GameData
             );
             Assert.That(
-                Encoding.UTF8.GetString(received.GameData.Payload.Span),
-                Is.EqualTo(@"{""after"": ""idle""}")
+                E2EHarness.PayloadJsonEquals(
+                    received.GameData.Payload.Span,
+                    @"{""after"": ""idle""}"
+                ),
+                Is.True,
+                "relay must still carry payloads after the idle window"
             );
 
             await alice.DisposeAsync();
