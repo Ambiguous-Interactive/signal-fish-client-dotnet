@@ -9,6 +9,49 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-22 - session 022: M4.5 opt-in reconnect policy - three adversarial rounds
+
+- Trigger: PLAN.md M4.5 + M4 gate. Three sub-agent review rounds; two
+  majors found and fixed post-implementation, plus minors.
+- Findings: (1) nonblocking `TryEnqueue` for scheduling markers silently
+  drops them under event-queue backpressure — the never-drop contract must
+  hold for synthetic events too; blocking enqueue is safe because disposal
+  completes the queue. (2) In a reconnecting session, applying the
+  `Disconnected` fact to the machine leaves `Phase == Terminal`
+  mid-session — phase-gated consumers stop draining and stall the session;
+  a fresh machine per round (plus a severed-admission check) keeps the
+  phase truthful. (3) Seat capture at sever must be OR-ed with the pending
+  seat: a capture from a membership-less machine (death before
+  re-authentication) must not clobber a retained seat, while an
+  issued-but-unanswered reclaim still loses it. (4) Session-sticky flags
+  that gate one-shot deliveries need per-round resets when rounds repeat.
+- Applied: driver session/round split, blocking marker enqueues, machine
+  swap at sever, seat OR-semantics, `FinalizeLocked` prefers observed
+  death close, `FakeTransport.DoomWithClose`/`FailHeldSends`.
+- Open: none.
+
+## 2026-09-22 - session 022b: PR #51 feedback - refused-reclaim livelock (restore+restart class)
+
+- Trigger: Bugbot High on the fix commit: restoring `_autoSeatPending` on
+  a refused reclaim while still restarting the round iteration made a
+  persistent refusal (fence held, full queue) a same-condition hot loop —
+  drain, receive, and heartbeat never ran again.
+- Findings: (1) restore-on-refusal + unconditional iteration restart is a
+  livelock class: an automatic retry must be paced by external progress
+  (a frame, a wake, a heartbeat deadline), never by a same-condition
+  `continue`. (2) Re-attempt guards must test the actual blocker
+  (`PendingOperation == default`), not just the trigger flag. (3) A
+  trigger that a confirmed foreign state supersedes (membership from a
+  deliberate join) must be cleared, not retried forever. (4) Sweep: every
+  other `continue` in src/ is progress-guaranteed (parser position
+  advances, frame consumed, cancelled waiter skipped).
+- Applied: fence guard + supersede-clear in `TryIssueAutoReconnect`,
+  fall-through instead of restart, deterministic red-green test
+  (capacity-1 queue forces a real `SendBufferFull` refusal; recovery is
+  asserted; the red state cannot complete at all). Rules folded into
+  async-threading and reconnection skills.
+- Open: none.
+
 ## 2026-09-22 - session 017b: PR feedback round - silent snupkg skip in nuget.org publish (bugbot finding)
 
 - Trigger: Cursor Bugbot flagged the nuget.org push as invalid. Bot's
@@ -27,21 +70,6 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   gained the execute-on-pinned-toolchain / verify-effects / re-execute-
   claims rules and the sweep-table row for never-exercised workflow
   commands.
-- Open: none.
-
-## 2026-09-22 - session 017: M3.5 snapshot + SSOT/KISS/SOLID doctrine (issue #23)
-
-- Trigger: issue #23 (aggressive SSOT/KISS/SOLID) + M3.5. Audit found the
-  doctrine already structurally enforced (pointer-file rule, generated
-  index, server-wins fact chain, six convention lints) but never stated as
-  rules agents must apply.
-- Applied: "Design Principles" block added to `.llm/context.md`, each
-  principle bound to its existing enforcement (rule numbers, lints, truth
-  chain). New principle-level finding from M3.5: the reconnection-token
-  fact existed only in skills, not in code — capture it in
-  `ClientSnapshot.ReconnectionToken` with Rust-parity lifecycle (baseline
-  capture, reconnect rotation, spectator/leave/terminal clears, ToString
-  redaction).
 - Open: none.
 
 ## 2026-09-21 - session 014: issue-debt round (server spec adoption, test-name + comment-form gates)
@@ -95,31 +123,6 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   unchanged; appended MessageKinds keep ordinals stable (fuzz seeds).
 - Open: fold (2) into json-serialization skill when next edited (300-line
   cap).
-
-## 2026-09-21 - session 012: PR #30 feedback verification + sentinel-sweep leftovers
-
-- Trigger: request to re-fetch all PR #30/#27 feedback (human + bugbot),
-  verify the dispositions landed on main, and sweep for sibling issues.
-- Evidence: all 5 PR #30 threads + 2 PR #27 threads verified fixed on main
-  (leave fence, `RoomCode` nullability, 13 enum sentinels, `this.` lint
-  wiring, fuzz generator, dispose-during-connect, receive-cap clamp);
-  build green, 287 tests x 2 TFMs. Sweep then found 3 leftovers: (1) a
-  test-internal enum (`JKind`) kept a *valid* member at 0 — the session-011
-  sweep counted only `src/` enums; (2) the 5-byte bugbot repro seed was
-  committed at the repo root (`crash-*.bin`, tracked in 4c7da9d) — the
-  standalone-replay technique writes artifacts wherever the shell CWD is;
-  (3) an exhaustive switch over a sentinel-bearing enum (`Render(JNode)`)
-  silently rendered nothing for an unset kind.
-- Findings: (1) sentinel sweeps must include test projects; the rule is
-  project-wide but the inventory habit was src-scoped. (2) repro/crash
-  artifacts belong in gitignored persistence dirs; `crash-*.bin` is now
-  ignored repo-wide and the seed lives in `.fuzz/crashes/`. (3) once
-  `default(T)` is a distinct non-valid value, every switch over that enum
-  must be fail-closed (throw on undefined), mirroring `Admit`/`Apply`.
-- Applied: `JKind` sentinel + renumber + fail-closed `Render` default;
-  `.gitignore` `crash-*.bin`; rules folded into api-design (sweep scope +
-  fail-closed switches), create-test (artifact location), and an
-  address-pr-feedback sweep-table row.
 
 ## 2026-09-20 - session 011: polling core (M3.1/M3.2) + enum-default and this.-ban project sweep
 
@@ -239,10 +242,3 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   scratch span. (4) struct ctors must normalize ignored fields or `Equals`
   contradicts the wire.
 - Open: fold (1)+(2) into json-serialization when next edited (300-line cap).
-
-## 2026-09-19 - session 005: M1.2 envelope codec + devcontainer carry-forward
-
-- Findings: C# 9 relational patterns need explicit `LangVersion` on
-  netstandard2.1; netstandard2.1 lacks Range-based `Slice` and parameterless
-  `GetOffsetAndLength()`; stateful loop-exit flags beat switch-breaks in
-  parsers. Open: none.

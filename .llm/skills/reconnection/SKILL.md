@@ -43,6 +43,11 @@ metadata:
 
 - Deterministic exponential backoff (no jitter) on consecutive failures; reset on any
   successful server response (`Authenticated` / `Reconnected`).
+- An automatic reclaim that is *refused* (fence held, queue full) keeps
+  the retained seat and retries only when the blocker can have cleared —
+  paced by processed frames or wakes, never by a same-condition loop
+  restart (see
+  [async-threading](../async-threading/SKILL.md) driver-loop liveness).
 - Treat close codes 4002 (slow consumer) and 1009 (message too big) as
   congestion: back off **before** reconnecting — see
   [websocket-transport](../websocket-transport/SKILL.md).

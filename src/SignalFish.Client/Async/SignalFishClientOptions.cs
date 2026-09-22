@@ -1,6 +1,7 @@
 namespace SignalFish.Client.Async
 {
     using System;
+    using SignalFish.Client.Reconnection;
 
     /// <summary>
     /// Buffers and heartbeat timing for <see cref="SignalFishClient"/>:
@@ -63,6 +64,12 @@ namespace SignalFish.Client.Async
         /// </summary>
         public int ShutdownTimeoutMilliseconds { get; }
 
+        /// <summary>
+        /// Gets the opt-in automatic-reconnection policy; <c>null</c>
+        /// (the default) keeps recovery fully manual.
+        /// </summary>
+        public ReconnectPolicy? ReconnectPolicy { get; }
+
         /// <summary>Initializes the options; every parameter has the documented default.</summary>
         public SignalFishClientOptions(
             int eventCapacity = DefaultEventCapacity,
@@ -71,7 +78,8 @@ namespace SignalFish.Client.Async
             int heartbeatIntervalMilliseconds = DefaultHeartbeatIntervalMilliseconds,
             int heartbeatTimeoutMilliseconds = DefaultHeartbeatTimeoutMilliseconds,
             int commandsPerWake = DefaultCommandsPerWake,
-            int shutdownTimeoutMilliseconds = DefaultShutdownTimeoutMilliseconds
+            int shutdownTimeoutMilliseconds = DefaultShutdownTimeoutMilliseconds,
+            ReconnectPolicy? reconnectPolicy = null
         )
         {
             if (eventCapacity < 1)
@@ -137,6 +145,7 @@ namespace SignalFish.Client.Async
             HeartbeatTimeoutMilliseconds = heartbeatTimeoutMilliseconds;
             CommandsPerWake = commandsPerWake;
             ShutdownTimeoutMilliseconds = shutdownTimeoutMilliseconds;
+            ReconnectPolicy = reconnectPolicy;
         }
     }
 }
