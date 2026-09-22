@@ -20,10 +20,14 @@ namespace SignalFish.Client.Async
     /// (state machine) and queuing are one atomic step per send: a refused
     /// command never touches the wire and never wedges a fence. Frames are
     /// processed strictly in arrival order, so the event stream order is
-    /// deterministic under concurrency. Reconnection stays manual (see the
-    /// Rust client's recovery procedure); the graceful staged shutdown is
-    /// plan M4.3 — <see cref="DisposeAsync"/> currently performs the
-    /// immediate teardown.
+    /// deterministic under concurrency. Disposing inside a room stages a
+    /// graceful shutdown (the role's leave first, then teardown, bounded
+    /// by <see cref="SignalFishClientOptions.ShutdownTimeoutMilliseconds"/>),
+    /// and reconnection stays manual: persist the seat triple with
+    /// <see cref="ReconnectContext.TryCapture"/> at every join/reconnect,
+    /// rebuild over a fresh transport, authenticate, then
+    /// <see cref="SendReconnect"/> — classify
+    /// <c>ReconnectionFailed</c> with <see cref="ReconnectRecovery.Classify"/>.
     /// </summary>
     public sealed class SignalFishClient : IAsyncDisposable
     {
@@ -127,6 +131,7 @@ namespace SignalFish.Client.Async
         private Task? _loopTask;
         private long _lastServerFrameMs;
         private long _lastPingMs;
+        private long _disposeRequestedMs = -1;
         private TransportClose _teardownClose;
         private bool _terminal;
         private bool _terminalDelivered;
@@ -439,9 +444,18 @@ namespace SignalFish.Client.Async
         }
 
         /// <summary>
-        /// Stops the session (idempotent): tears down with a normal close,
-        /// stops the driver loop, and completes the event stream. Sends
-        /// after this throw <see cref="ObjectDisposedException"/>.
+        /// Stops the session (idempotent). Disposing inside a room stages
+        /// a graceful shutdown within the configured budget: the role's
+        /// leave goes out first and the teardown waits for its typed
+        /// confirmation (or aborts at the budget, whichever comes first —
+        /// a pending directed operation or a full command queue skips the
+        /// stage). The transport is disposed either way, which is an
+        /// abrupt socket close on the wire; only the leave sequencing is
+        /// graceful. A zero budget, a session already terminal, and a
+        /// client never connected all tear down immediately. The
+        /// terminal <c>Disconnected</c> is still delivered exactly once,
+        /// and sends after this throw <see cref="ObjectDisposedException"/>
+        /// from the moment disposal starts.
         /// </summary>
         public async ValueTask DisposeAsync()
         {
@@ -455,9 +469,51 @@ namespace SignalFish.Client.Async
 
                 _disposed = true;
                 loop = _loopTask;
+
+                /*
+                    The leave stage rides the same single-writer queue as
+                    every command; a pending directed fence or a full
+                    queue skips it (the budget abort covers the wait).
+                */
+                if (
+                    !_terminal
+                    && loop is not null
+                    && _options.ShutdownTimeoutMilliseconds > 0
+                    && _machine.PendingOperation == default(PendingRoomOperation)
+                    && _machine.Membership.IsPresent
+                    && TryEnqueueGracefulLeave()
+                )
+                {
+                    Volatile.Write(ref _disposeRequestedMs, _clock.ElapsedMilliseconds);
+                }
             }
 
-            Teardown(new TransportClose(0));
+            SignalWake();
+
+            if (Volatile.Read(ref _disposeRequestedMs) >= 0 && loop is not null)
+            {
+                /*
+                    Graceful window: the loop closes itself on the typed
+                    confirmation or at its clock deadline; this real-time
+                    bound covers a loop parked outside its own checks (a
+                    stalled send, an event queue nobody drains).
+                */
+                Task finished = await Task.WhenAny(
+                        loop,
+                        Task.Delay(_options.ShutdownTimeoutMilliseconds)
+                    )
+                    .ConfigureAwait(false);
+                if (finished != loop)
+                {
+                    Teardown(new TransportClose(0));
+                }
+            }
+
+            if (!_terminal)
+            {
+                Teardown(new TransportClose(0));
+            }
+
             _shutdownSource?.Cancel();
 
             if (loop is not null)
@@ -482,6 +538,62 @@ namespace SignalFish.Client.Async
                 The source is collected with the client.
             */
             _wake.Dispose();
+        }
+
+        /// <summary>
+        /// Encodes and queues the role's leave frame, arming its fence.
+        /// Requires the gate, a confirmed membership, and no pending
+        /// directed operation; false means the graceful stage is skipped.
+        /// </summary>
+        private bool TryEnqueueGracefulLeave()
+        {
+            RoomRole role = _machine.Membership.Role;
+            _sendBuffer.Reset();
+            if (role == RoomRole.Player)
+            {
+                EnvelopeWriter.WriteLeaveRoom(_sendBuffer);
+            }
+            else if (role == RoomRole.Spectator)
+            {
+                EnvelopeWriter.WriteLeaveSpectator(_sendBuffer);
+            }
+            else
+            {
+                return false;
+            }
+
+            if (!_commands.TryEnqueue(_sendBuffer.WrittenSpan.ToArray()))
+            {
+                return false;
+            }
+
+            _machine.Arm(
+                role == RoomRole.Player
+                    ? PendingRoomOperation.LeavePlayer
+                    : PendingRoomOperation.LeaveSpectator
+            );
+            return true;
+        }
+
+        /// <summary>
+        /// True when the graceful stage is over from the loop's seat: the
+        /// leave was confirmed (membership cleared) or the budget ran
+        /// out. The caller performs the teardown.
+        /// </summary>
+        private bool ShouldFinishGracefulClose()
+        {
+            lock (_gate)
+            {
+                long requested = Volatile.Read(ref _disposeRequestedMs);
+                if (_terminal || requested < 0)
+                {
+                    return false;
+                }
+
+                return !_machine.Membership.IsPresent
+                    || _clock.ElapsedMilliseconds - requested
+                        >= _options.ShutdownTimeoutMilliseconds;
+            }
         }
 
         private CommandSend QueueCommand<TState>(
@@ -577,6 +689,16 @@ namespace SignalFish.Client.Async
             {
                 while (!_terminal)
                 {
+                    if (ShouldFinishGracefulClose())
+                    {
+                        /*
+                            The leave was confirmed (or never staged) or
+                            the shutdown budget spent: end the session.
+                        */
+                        Teardown(new TransportClose(0));
+                        break;
+                    }
+
                     await DrainCommandsAsync().ConfigureAwait(false);
                     if (_terminal)
                     {
@@ -623,6 +745,18 @@ namespace SignalFish.Client.Async
                     long untilDeath =
                         (_lastServerFrameMs + _options.HeartbeatTimeoutMilliseconds) - now;
                     long waitTicks = Math.Min(Math.Max(untilPing, 0), Math.Max(untilDeath, 0));
+
+                    /*
+                        The graceful window caps the park: an idle loop must
+                        wake at the shutdown deadline to close the session.
+                    */
+                    long requested = Volatile.Read(ref _disposeRequestedMs);
+                    if (requested >= 0)
+                    {
+                        long untilClose = _options.ShutdownTimeoutMilliseconds - (now - requested);
+                        waitTicks = Math.Min(waitTicks, Math.Max(untilClose, 0));
+                    }
+
                     int waitMilliseconds = waitTicks > int.MaxValue ? int.MaxValue : (int)waitTicks;
                     Task heartbeat = _clock.DelayAsync(waitMilliseconds, shutdown);
                     await Task.WhenAny(receive, wakeWait, heartbeat).ConfigureAwait(false);

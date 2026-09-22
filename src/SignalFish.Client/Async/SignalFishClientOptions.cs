@@ -30,6 +30,9 @@ namespace SignalFish.Client.Async
         /// <summary>The default per-wake command-send budget.</summary>
         public const int DefaultCommandsPerWake = 64;
 
+        /// <summary>The default graceful shutdown budget in milliseconds.</summary>
+        public const int DefaultShutdownTimeoutMilliseconds = 1_000;
+
         /// <summary>Gets the event-queue capacity; a full queue pauses the driver loop until drained.</summary>
         public int EventCapacity { get; }
 
@@ -52,6 +55,14 @@ namespace SignalFish.Client.Async
         /// <summary>Gets the maximum number of queued commands sent per driver-loop wake.</summary>
         public int CommandsPerWake { get; }
 
+        /// <summary>
+        /// Gets the graceful shutdown budget in milliseconds: disposing
+        /// inside a room first sends the role's leave and waits up to this
+        /// long for the typed confirmation before aborting the connection.
+        /// Zero aborts immediately.
+        /// </summary>
+        public int ShutdownTimeoutMilliseconds { get; }
+
         /// <summary>Initializes the options; every parameter has the documented default.</summary>
         public SignalFishClientOptions(
             int eventCapacity = DefaultEventCapacity,
@@ -59,7 +70,8 @@ namespace SignalFish.Client.Async
             int maxFrameBytes = DefaultMaxFrameBytes,
             int heartbeatIntervalMilliseconds = DefaultHeartbeatIntervalMilliseconds,
             int heartbeatTimeoutMilliseconds = DefaultHeartbeatTimeoutMilliseconds,
-            int commandsPerWake = DefaultCommandsPerWake
+            int commandsPerWake = DefaultCommandsPerWake,
+            int shutdownTimeoutMilliseconds = DefaultShutdownTimeoutMilliseconds
         )
         {
             if (eventCapacity < 1)
@@ -110,12 +122,21 @@ namespace SignalFish.Client.Async
                 );
             }
 
+            if (shutdownTimeoutMilliseconds < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(shutdownTimeoutMilliseconds),
+                    "The shutdown budget cannot be negative."
+                );
+            }
+
             EventCapacity = eventCapacity;
             CommandCapacity = commandCapacity;
             MaxFrameBytes = maxFrameBytes;
             HeartbeatIntervalMilliseconds = heartbeatIntervalMilliseconds;
             HeartbeatTimeoutMilliseconds = heartbeatTimeoutMilliseconds;
             CommandsPerWake = commandsPerWake;
+            ShutdownTimeoutMilliseconds = shutdownTimeoutMilliseconds;
         }
     }
 }
