@@ -244,21 +244,7 @@ namespace SignalFish.Client.Tests.Async
             await AdvanceUntilAsync(clock, () => CountPings(transport) >= 1, 250);
             Assert.That(CountPings(transport), Is.GreaterThanOrEqualTo(1));
 
-            for (
-                int attempt = 0;
-                attempt < 400 && client.Phase != ConnectionPhase.Terminal;
-                attempt++
-            )
-            {
-                clock.Advance(250);
-                await Task.Delay(1);
-            }
-
-            Assert.That(
-                client.Phase,
-                Is.EqualTo(ConnectionPhase.Terminal),
-                $"connected={client.IsConnected} pendingEvents={client.PendingEventCount} pings={CountPings(transport)} sent={transport.SentText.Count}"
-            );
+            await AdvanceUntilAsync(clock, () => client.Phase == ConnectionPhase.Terminal, 250);
 
             PollEvent disconnected = await NextEventAsync(client);
             Assert.That(disconnected.Kind, Is.EqualTo(PollEventKind.Disconnected));
@@ -270,6 +256,90 @@ namespace SignalFish.Client.Tests.Async
 
             PollEvent? endOfStream = await client.DequeueEventAsync();
             Assert.That(endOfStream, Is.Null, "the event stream ends after Disconnected");
+        }
+
+        [Test]
+        public async Task HeartbeatKeepsTheIntervalCadenceAndRespectsTheBoundary()
+        {
+            (SignalFishClient client, FakeTransport transport, VirtualClock clock) = BuildTimed(
+                new SignalFishClientOptions(
+                    heartbeatIntervalMilliseconds: 1_000,
+                    heartbeatTimeoutMilliseconds: 10_000
+                )
+            );
+            await ConnectSettledAsync(client);
+
+            /*
+                Deadline-aware virtual time makes every step deterministic:
+                an advance that stops short of the next deadline releases
+                nothing, so the loop never even wakes.
+            */
+            clock.Advance(999);
+            Assert.That(CountPings(transport), Is.EqualTo(0), "no ping before the interval");
+
+            await AdvanceUntilAsync(clock, () => CountPings(transport) >= 1, 1);
+            Assert.That(CountPings(transport), Is.EqualTo(1), "the first ping at the interval");
+
+            clock.Advance(999);
+            Assert.That(
+                CountPings(transport),
+                Is.EqualTo(1),
+                "no second ping inside the next interval"
+            );
+
+            await AdvanceUntilAsync(clock, () => CountPings(transport) >= 2, 1);
+            Assert.That(CountPings(transport), Is.EqualTo(2), "one ping per interval");
+
+            await client.DisposeAsync();
+        }
+
+        [Test]
+        public async Task TerminalDisconnectedDeliversExactlyOnceEvenUnderFullQueue()
+        {
+            (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed(
+                new SignalFishClientOptions(eventCapacity: 4)
+            );
+            await ConnectSettledAsync(client);
+
+            /*
+                Fill the queue past capacity and never drain: the loop parks
+                mid-enqueue. Disposing under that backpressure must still
+                yield exactly one terminal Disconnected, last.
+            */
+            for (int frame = 0; frame < 20; frame++)
+            {
+                transport.Enqueue(RelayFrame(frame), isText: true);
+            }
+
+            await WaitForAsync(
+                () => client.PendingEventCount >= 3,
+                "the loop parked on the full queue"
+            );
+            await client.DisposeAsync();
+
+            List<PollEvent> drained = new List<PollEvent>();
+            PollEvent? pollEvent;
+            while ((pollEvent = await client.DequeueEventAsync()) is not null)
+            {
+                drained.Add(pollEvent.GetValueOrDefault());
+            }
+
+            Assert.That(drained, Is.Not.Empty, "the buffered events survive the teardown");
+            Assert.That(
+                drained[drained.Count - 1].Kind,
+                Is.EqualTo(PollEventKind.Disconnected),
+                "the terminal event is delivered last"
+            );
+            Assert.That(drained[drained.Count - 1].Close.Code, Is.EqualTo(0));
+
+            int disconnects = 0;
+            foreach (PollEvent delivered in drained)
+            {
+                disconnects += delivered.Kind == PollEventKind.Disconnected ? 1 : 0;
+            }
+
+            Assert.That(disconnects, Is.EqualTo(1), "exactly one terminal event");
+            Assert.That(client.PendingEventCount, Is.EqualTo(0));
         }
 
         [Test]

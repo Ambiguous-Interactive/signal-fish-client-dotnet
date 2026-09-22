@@ -23,6 +23,9 @@ namespace SignalFish.Client.Tests.Transport
         /// <summary>Gets a value indicating whether the transport is connected.</summary>
         public bool IsConnected => Volatile.Read(ref _state) == StateConnected;
 
+        /// <summary>Gets how many times <see cref="ConnectAsync"/> was called.</summary>
+        public int ConnectCount => Volatile.Read(ref _connectCount);
+
         /// <summary>Gets the frames sent so far, in order, as UTF-8 text (for assertions).</summary>
         public IReadOnlyList<string> SentText
         {
@@ -47,6 +50,7 @@ namespace SignalFish.Client.Tests.Transport
         private TaskCompletionSource<TransportFrame>? _pendingReceive;
         private TaskCompletionSource<bool>? _sendGate;
         private int _state = StateNew;
+        private int _connectCount;
         private bool _closeDelivered;
         private int _closeCode;
 
@@ -141,6 +145,7 @@ namespace SignalFish.Client.Tests.Transport
         /// <inheritdoc />
         public Task ConnectAsync(Uri uri, CancellationToken ct = default)
         {
+            Interlocked.Increment(ref _connectCount);
             if (Interlocked.CompareExchange(ref _state, StateConnected, StateNew) != StateNew)
             {
                 throw new InvalidOperationException(

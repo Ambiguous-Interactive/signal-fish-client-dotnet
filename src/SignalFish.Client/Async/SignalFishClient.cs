@@ -127,7 +127,9 @@ namespace SignalFish.Client.Async
         private Task? _loopTask;
         private long _lastServerFrameMs;
         private long _lastPingMs;
+        private TransportClose _teardownClose;
         private bool _terminal;
+        private bool _terminalDelivered;
         private bool _connectCalled;
         private bool _disposed;
 
@@ -158,6 +160,12 @@ namespace SignalFish.Client.Async
                 throw new ArgumentNullException(nameof(endpoint));
             }
 
+            /*
+                The connect slot is claimed before the transport handshake
+                (polling-client parity): a failed connect leaves the client
+                unusable, as documented, and concurrent calls lose cleanly
+                instead of both reaching the transport.
+            */
             lock (_gate)
             {
                 ThrowIfDisposed();
@@ -167,6 +175,8 @@ namespace SignalFish.Client.Async
                         "ConnectAsync may be called once per client."
                     );
                 }
+
+                _connectCalled = true;
             }
 
             await _transport.ConnectAsync(endpoint, ct).ConfigureAwait(false);
@@ -174,12 +184,22 @@ namespace SignalFish.Client.Async
             CancellationTokenSource shutdown = new CancellationTokenSource();
             lock (_gate)
             {
+                if (_disposed)
+                {
+                    /*
+                        Dispose raced the handshake: teardown already ran
+                        (the transport was disposed with the session), so
+                        just drop the fresh shutdown source.
+                    */
+                    shutdown.Dispose();
+                    return;
+                }
+
                 _shutdownSource = shutdown;
                 _machine.Apply(SessionEvent.From(SessionEventKind.TransportReady));
                 long now = _clock.ElapsedMilliseconds;
                 _lastServerFrameMs = now;
                 _lastPingMs = now;
-                _connectCalled = true;
             }
 
             _events.TryEnqueue(PollEvent.TransportReady());
@@ -323,7 +343,17 @@ namespace SignalFish.Client.Async
             CancellationToken ct = default
         )
         {
+            /*
+                The fail-fast attempt is one atomic step under the gate (a
+                dead session can never report Admitted); the waiting path
+                re-checks the session after the slot is granted, because a
+                teardown may complete the queue while the caller parks.
+                SignalWake stays outside the gate — a Release can inline the
+                loop's continuation, which must not run inside a critical
+                section it also locks.
+            */
             byte[] frame;
+            bool queued;
             lock (_gate)
             {
                 ThrowIfDisposed();
@@ -336,9 +366,10 @@ namespace SignalFish.Client.Async
                 _sendBuffer.Reset();
                 EnvelopeWriter.WriteGameData(_sendBuffer, message);
                 frame = _sendBuffer.WrittenSpan.ToArray();
+                queued = _commands.TryEnqueue(frame);
             }
 
-            if (_commands.TryEnqueue(frame))
+            if (queued)
             {
                 SignalWake();
                 return CommandSend.Admitted;
@@ -349,30 +380,57 @@ namespace SignalFish.Client.Async
                 return CommandSend.Refused(AdmissionError.NotConnected);
             }
 
+            lock (_gate)
+            {
+                if (_terminal)
+                {
+                    return CommandSend.Refused(AdmissionError.NotConnected);
+                }
+            }
+
             SignalWake();
             return CommandSend.Admitted;
         }
 
         /// <summary>
         /// Consumes the oldest pending event without waiting. Returns false
-        /// when no event is buffered right now.
+        /// when nothing is buffered right now.
         /// </summary>
         public bool TryDequeueEvent(out PollEvent pollEvent)
         {
-            return _events.TryDequeue(out pollEvent);
+            if (_events.TryDequeue(out pollEvent!))
+            {
+                return true;
+            }
+
+            PollEvent? terminal = ConsumeTerminal();
+            if (terminal is not null)
+            {
+                pollEvent = terminal.GetValueOrDefault();
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
         /// Awaits the next event. Returns null once the session is terminal
-        /// and every event (including <c>Disconnected</c>) was consumed —
-        /// the end-of-stream signal. Consumers must drain continuously: the
-        /// driver loop pauses on a full event queue, so an abandoned
-        /// consumer eventually stalls the session's outbound work.
+        /// and every event was consumed — including the terminal
+        /// <c>Disconnected</c>, which is delivered exactly once, last
+        /// (synthesized from the teardown close if the event queue had no
+        /// room for it). Consumers must drain continuously: the driver loop
+        /// pauses on a full event queue, so an abandoned consumer
+        /// eventually stalls the session's outbound work.
         /// </summary>
         public async ValueTask<PollEvent?> DequeueEventAsync(CancellationToken ct = default)
         {
             QueueRead<PollEvent> read = await _events.DequeueAsync(ct).ConfigureAwait(false);
-            return read.HasValue ? read.Value : null;
+            if (read.HasValue)
+            {
+                return read.Value;
+            }
+
+            return ConsumeTerminal();
         }
 
         /// <summary>
@@ -411,7 +469,13 @@ namespace SignalFish.Client.Async
 
             await _events.DisposeAsync().ConfigureAwait(false);
             await _commands.DisposeAsync().ConfigureAwait(false);
-            _shutdownSource?.Dispose();
+
+            /*
+                The shutdown source stays undisposed on purpose: the quiet
+                transport dispose may still hold registrations on its token,
+                and CTS disposal while callbacks are in flight is a race.
+                The source is collected with the client.
+            */
             _wake.Dispose();
         }
 
@@ -563,6 +627,21 @@ namespace SignalFish.Client.Async
             {
                 // Disposal cancelled the park legs; teardown already ran.
             }
+            finally
+            {
+                /*
+                    Observes the in-flight receive abandoned by exit so a
+                    late fault (the transport dying after teardown) can
+                    never surface as an unobserved task exception.
+                */
+                Task<TransportFrame>? abandoned = receive;
+                abandoned?.ContinueWith(
+                    static finished => _ = finished.Exception,
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted,
+                    TaskScheduler.Default
+                );
+            }
 
             if (!_terminal)
             {
@@ -628,7 +707,10 @@ namespace SignalFish.Client.Async
                 /*
                     Backpressure: a full event queue parks the loop here —
                     events are never dropped, and the pause is what trips
-                    server-side slow-consumer detection.
+                    server-side slow-consumer detection. A false return
+                    means the session went terminal mid-wait (teardown
+                    completed the queue): the in-flight frame is superseded
+                    by the terminal, whose delivery is guaranteed.
                 */
                 await _events.EnqueueAsync(translated.Event).ConfigureAwait(false);
             }
@@ -680,6 +762,18 @@ namespace SignalFish.Client.Async
                 return receive.Result;
             }
 
+            if (receive.IsCanceled)
+            {
+                /*
+                    A canceled receive is the disposal path (the shutdown
+                    token) or a transport that self-cancels; either way the
+                    session ends here. Teardown is idempotent, so the
+                    disposal case (already terminal) is a no-op.
+                */
+                Teardown(new TransportClose(FramePipeline.LivenessCloseCode));
+                return default;
+            }
+
             Exception failure = receive.Exception!.InnerException ?? receive.Exception;
             Teardown(ToClose(failure));
             return default;
@@ -708,18 +802,41 @@ namespace SignalFish.Client.Async
                 }
 
                 _terminal = true;
+                _teardownClose = close;
                 _machine.Apply(SessionEvent.From(SessionEventKind.Disconnected));
             }
 
             /*
-                Best-effort under a full queue: the consumer drain contract
-                frees a slot in practice; the staged shutdown (plan M4.3)
-                bounds the pathological wait.
+                The terminal event is not enqueued (a full queue could drop
+                it): DequeueEventAsync/TryDequeueEvent synthesize it
+                one-shot when the completed queue drains to end-of-stream,
+                so Disconnected is delivered exactly once, last, in every
+                teardown scenario. The staged shutdown (plan M4.3) bounds
+                the drain wait properly.
             */
-            _events.TryEnqueue(PollEvent.Disconnected(close));
             _events.Complete();
             SignalWake();
             _ = DisposeTransportQuietlyAsync();
+        }
+
+        /// <summary>
+        /// The one-shot terminal delivery: once the session is terminal and
+        /// the completed queue drained, the first consumer to ask receives
+        /// the synthesized <c>Disconnected</c>; every later read sees the
+        /// plain end-of-stream.
+        /// </summary>
+        private PollEvent? ConsumeTerminal()
+        {
+            lock (_gate)
+            {
+                if (!_terminal || _terminalDelivered)
+                {
+                    return null;
+                }
+
+                _terminalDelivered = true;
+                return PollEvent.Disconnected(_teardownClose);
+            }
         }
 
         private async Task DisposeTransportQuietlyAsync()
