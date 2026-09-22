@@ -9,6 +9,8 @@ changes (CI, tests, tooling, docs) are not listed.
 ### Added
 
 - Opt-in automatic reconnection (M4.5): `SignalFishClientOptions` accepts a
+
+- Opt-in automatic reconnection (M4.5): `SignalFishClientOptions` accepts a
   `ReconnectPolicy` — a transport factory plus a deterministic exponential
   backoff (no jitter) — and the driver then recovers by itself after a
   retryable disconnect: it waits the computed delay, opens a fresh
@@ -96,6 +98,12 @@ changes (CI, tests, tooling, docs) are not listed.
   forward-compatible events. Zero allocations on known messages.
 - Protocol envelope encoding for every outbound v2/v3 client message.
   Byte-identical to the server's own wire samples.
+- Disposing a client (or transport) on a live connection now performs the
+  WebSocket close handshake: the server observes a client-initiated close
+  (code 1000) instead of an abrupt TCP abort, so connection accounting and
+  clean-vs-abnormal disconnect telemetry classify graceful exits correctly.
+  The handshake is best-effort with a short bounded wait; an unresponsive
+  server or dead wire falls back to the previous abort.
 
 ### Fixed
 

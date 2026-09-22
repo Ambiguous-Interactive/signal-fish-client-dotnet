@@ -20,7 +20,11 @@ Contract highlights:
   serialized; receives are single-reader.
 - The close frame is surfaced exactly once, with the wire close code mapped
   to a `TransportCloseKind` (4000-4007, 1009). After that, receives throw
-  `TransportClosedException`. Dispose is idempotent and race-safe.
+  `TransportClosedException`. Dispose is idempotent and race-safe, and on a
+  live connection it initiates the WebSocket close handshake (close-out
+  code 1000) with a short bounded wait, so the server observes a
+  client-initiated close instead of a TCP abort; if the handshake cannot
+  complete in time the socket is aborted as before.
 
 ## WebSocketTransport
 

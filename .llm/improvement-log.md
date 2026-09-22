@@ -9,6 +9,28 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-22 - session 023: issue #48 - graceful close handshake + merge dedup
+
+- Trigger: issue debt (#48: M4.3's "graceful" shutdown aborted the TCP
+  wire) plus the origin/main merge carrying PR #51's post-review fixes.
+- Findings: (1) a grace claim needs a wire counterpart — the handshake
+  lives in the transport's own `DisposeAsync`, so both clients inherit it
+  with zero new surface; the issue's capability-interface option was
+  rejected as public surface without a capability. (2) Adversarial review
+  caught a dead poll condition (`Disposed` can never CAS to `Closed`, so
+  the exit check never fired) — the honest exit signal was
+  `_closeFrameDelivered`; derive wait-exit conditions from the field that
+  actually records the event, not a state that transition is barred from.
+  (3) The review also verified red-green empirically (tests run against
+  the pre-change code in a worktree), not just asserted.
+- Applied: close-out 1000 + bounded echo window in
+  `WebSocketTransport.DisposeAsync`; prior-state-returning transition
+  (atomic connected-check); `_handshakeActive` gate-dispose guard;
+  duplicate session-022 progress brief deleted (merge shipped two).
+- Open: two pre-existing transport races filed for follow-up (release
+  between receive completion and CloseStatus read; dispose racing
+  connect's socket assignment).
+
 ## 2026-09-22 - session 022: M4.5 opt-in reconnect policy - three adversarial rounds
 
 - Trigger: PLAN.md M4.5 + M4 gate. Three sub-agent review rounds; two
@@ -181,55 +203,6 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   single reader/writer, exactly-once close, idempotent dispose.
 - Applied: M2 landed red-green (262 tests x 2 TFMs); test-scoped CA2007/
   CA2000/CA1031/CA5350 suppressions in .editorconfig. Open: none.
-
-## 2026-09-20 - session 009: SharpFuzz lane (M1.5) + CI trim
-
-- Findings: (1) the libfuzzer-dotnet parent exits on a dead child WITHOUT a
-  crash artifact - fuzz hosts must dump crashing inputs themselves. (2) pwsh
-  native-arg parsing mangles `-flag=value` tokens; splat them. (3) verbatim
-  payloads roundtrip byte-exactly only with clean value tokens. (4) an
-  envelope with no `data` decodes to an empty slice. (5) SharpFuzz.Common.dll
-  needs wildcard instrumentation exclusions; publish output must be wiped
-  between runs. (6) restore scoping is graph-global - `-p:TargetFramework=`
-  strips other TFMs (NETSDK1005); "one SDK per cell" is unachievable while
-  Tests targets net8.0;net10.0.
-- Applied: FuzzTests project, `fuzz-codec.ps1`, weekly `fuzz.yml`, dotnet.yml
-  trim (coverage unchanged). Open: corpus persistence + regression baseline
-  land with M9.4.
-
-## 2026-09-20 - session 008: property tests + perf baseline + changelog
-
-- Findings: (1) FsCheck can emit lone surrogates; `WriteString` maps them to
-  U+FFFD *by design* - generators must exclude them. (2) a ref-struct writer
-  passed by value through recursive helpers silently loses nested writes;
-  pass `ref`. (3) a string roundtrip that slices inner text misses missing
-  quote escaping; assert the scanner consumes rendered bytes exactly. (4)
-  `Encoding.ASCII.GetBytes` maps non-ASCII to `?`; wire strings go through
-  the UTF-8 writer only.
-- Applied: FsCheck suite, BenchmarkDotNet baselines (`docs/benchmarks.md`),
-  CHANGELOG.md, STE user-copy rule (context rule 16). Open: none.
-
-## 2026-09-20 - PR #14 feedback round: gate scope mismatch class
-
-- Findings: (1) a gate lives in three scopes (linter enforced set, hook
-  staged-file selector, CI trigger); the hook must be a superset of the
-  enforced set's accepted inputs. (2) hook self-test cases share the git
-  index - each case must `git reset -q` first or earlier violations mask
-  later cases.
-- Applied: selectors fixed red-green; class captured in
-  [add-quality-gate](./skills/add-quality-gate/SKILL.md) and a sweep row in
-  [address-pr-feedback](./skills/address-pr-feedback/SKILL.md). Open: none.
-
-## 2026-09-20 - repo quality round: analyzers, LINQ ban, CSharpier, nested-pwsh self-test
-
-- Findings: (1) conditional NoWarn must live in `Directory.Build.targets`
-  (props cannot see csproj-body properties). (2) test-scoped analyzer
-  suppressions (CA1707/CA1062/CA1515) plus perf-intentional CA1028/CA1815
-  suppressions with rationale. (3) the LINQ ban is a PowerShell linter -
-  BannedApiAnalyzers would violate the zero-PackageReference rule. (4)
-  version smokes cannot catch arch-mismatched nested binaries; self-test
-  runs the real nested `& pwsh` and asserts the ELF e_machine. (5) decode
-  corpus-wide allocation gate (min delta over 4 passes).
 
 ## 2026-09-20 - envelope writer (M1.3): ref-struct copy hazard caught by red-green
 
