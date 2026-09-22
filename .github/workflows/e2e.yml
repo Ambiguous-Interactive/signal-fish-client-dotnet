@@ -1,0 +1,74 @@
+name: e2e
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - '.github/workflows/e2e.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - '.github/workflows/e2e.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  conformance:
+    # The client-author checklist (items 1-7) against the real server,
+    # exactly as documented for local development (open mode).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      signal-fish:
+        image: ghcr.io/ambiguous-interactive/signal-fish-server:latest
+        env:
+          SIGNAL_FISH__SECURITY__ENFORCE_APP_ID_ALLOWLIST: 'false'
+          SIGNAL_FISH__SECURITY__REQUIRE_METRICS_AUTH: 'false'
+          SIGNAL_FISH__SECURITY__CORS_ORIGINS: '*'
+          # Generous budgets: the suite creates a handful of throwaway rooms.
+          SIGNAL_FISH__RATE_LIMIT__MAX_ROOM_CREATIONS: '100'
+          SIGNAL_FISH__RATE_LIMIT__MAX_JOIN_ATTEMPTS: '100'
+          # Short liveness timers so the heartbeat and silent-client
+          # scenarios finish in seconds instead of minutes. Server Ping
+          # probes are off: a silent client must not survive on automatic
+          # Pong replies. The slow-consumer deadline must stay under the
+          # ping timeout (server startup validates the inversion).
+          SIGNAL_FISH__SERVER__PING_TIMEOUT: '3'
+          SIGNAL_FISH__WEBSOCKET__IDLE_TIMEOUT_SECS: '3'
+          SIGNAL_FISH__WEBSOCKET__SERVER_PING_INTERVAL_SECS: '0'
+          SIGNAL_FISH__WEBSOCKET__SLOW_CONSUMER_TIMEOUT_MS: '2000'
+        ports:
+          - 3536:3536
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '.config/dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Run conformance suite
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/run-e2e.ps1 -ServerUrl ws://localhost:3536
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results
+          path: tests/SignalFish.Client.E2E/TestResults/**/*
+          if-no-files-found: ignore

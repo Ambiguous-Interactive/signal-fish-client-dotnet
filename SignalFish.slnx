@@ -4,6 +4,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj" />
+    <Project Path="tests/SignalFish.Client.E2E/SignalFish.Client.E2E.csproj" />
     <Project Path="tests/SignalFish.Client.PerfTests/SignalFish.Client.PerfTests.csproj" />
     <Project Path="tests/SignalFish.Client.FuzzTests/SignalFish.Client.FuzzTests.csproj" />
   </Folder>

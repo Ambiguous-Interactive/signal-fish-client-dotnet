@@ -13,12 +13,18 @@ namespace SignalFish.Client.Polling
     /// budget from the transport, decodes each frame to at most one
     /// <see cref="PollEvent"/>, applies session facts to the state machine,
     /// and keeps the connection alive on the injected clock (~30 s ping,
-    /// 2x-ping liveness timeout). Zero allocation on an idle poll: the
-    /// single outstanding receive is issued once and re-issued only when a
-    /// frame was actually delivered, so idle polls only observe task
-    /// completion. Not thread-safe — construct, connect, poll, and drain
-    /// on one thread (the game loop's); the ping send completes on the
-    /// thread pool and its failure is folded back into the next poll.
+    /// 2x-ping liveness timeout). Commands (<c>SendJoinRoom</c> and
+    /// siblings) are admitted on the calling thread — a refused command
+    /// never touches the wire — encoded, and handed to the transport
+    /// fire-and-forget; a failed send folds back into the next poll.
+    /// Zero allocation on an idle poll: the single outstanding receive is
+    /// issued once and re-issued only when a frame was actually delivered,
+    /// so idle polls only observe task completion. Not thread-safe —
+    /// construct, connect, send, poll, and drain on one thread (the game
+    /// loop's); async sends complete on the thread pool and their failure
+    /// is folded back into the next poll. The transport serializes
+    /// concurrent sends, so back-to-back commands in one loop tick reach
+    /// the wire in dispatch order on runtimes with FIFO wake-ups.
     /// </summary>
     public sealed class SignalFishPollingClient
     {
@@ -180,6 +186,173 @@ namespace SignalFish.Client.Polling
         {
             Teardown(new TransportClose(0));
             return default;
+        }
+
+        /// <summary>
+        /// Sends the application handshake. In allowlist mode this must be
+        /// the first message; in open mode it is optional but must precede
+        /// every application message when used — the server, not this
+        /// client, rejects a late or repeated handshake.
+        /// </summary>
+        public CommandSend SendAuthenticate(in AuthenticateMessage message)
+        {
+            if (!AdmitForSend(ClientCommand.Authenticate, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            _sendBuffer.Reset();
+            EnvelopeWriter.WriteAuthenticate(_sendBuffer, message);
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
+        /// Joins (or creates) a room as a player and arms the join fence
+        /// until <c>RoomJoined</c> or <c>RoomJoinFailed</c>.
+        /// </summary>
+        public CommandSend SendJoinRoom(in JoinRoomMessage message)
+        {
+            if (!AdmitForSend(ClientCommand.JoinRoom, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            _sendBuffer.Reset();
+            EnvelopeWriter.WriteJoinRoom(_sendBuffer, message);
+            _machine.Arm(PendingRoomOperation.JoinPlayer);
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
+        /// Joins a room as a spectator and arms the spectator-join fence
+        /// until <c>SpectatorJoined</c> or <c>SpectatorJoinFailed</c>.
+        /// </summary>
+        public CommandSend SendJoinAsSpectator(in JoinAsSpectatorMessage message)
+        {
+            if (!AdmitForSend(ClientCommand.JoinAsSpectator, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            _sendBuffer.Reset();
+            EnvelopeWriter.WriteJoinAsSpectator(_sendBuffer, message);
+            _machine.Arm(PendingRoomOperation.JoinSpectator);
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
+        /// Reclaims a prior seat with the server-issued token and arms the
+        /// reconnect fence until <c>Reconnected</c> or
+        /// <c>ReconnectionFailed</c>.
+        /// </summary>
+        public CommandSend SendReconnect(in ReconnectMessage message)
+        {
+            if (!AdmitForSend(ClientCommand.Reconnect, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            _sendBuffer.Reset();
+            EnvelopeWriter.WriteReconnect(_sendBuffer, message);
+            _machine.Arm(PendingRoomOperation.ReconnectPlayer);
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>Toggles this player's readiness flag; the answer arrives as <c>LobbyStateChanged</c>.</summary>
+        public CommandSend SendPlayerReady()
+        {
+            return SendPayloadless(ClientCommand.SetReady, EnvelopeWriter.WritePlayerReady);
+        }
+
+        /// <summary>Requests the game start (readiness and authority rules apply server-side).</summary>
+        public CommandSend SendStartGame()
+        {
+            return SendPayloadless(ClientCommand.StartGame, EnvelopeWriter.WriteStartGame);
+        }
+
+        /// <summary>
+        /// Leaves the current room as a player and arms the leave fence
+        /// until <c>RoomLeft</c>.
+        /// </summary>
+        public CommandSend SendLeaveRoom()
+        {
+            return SendPayloadless(ClientCommand.LeaveRoom, EnvelopeWriter.WriteLeaveRoom);
+        }
+
+        /// <summary>
+        /// Leaves the current room as a spectator and arms the
+        /// spectator-leave fence until <c>SpectatorLeft</c>.
+        /// </summary>
+        public CommandSend SendLeaveSpectator()
+        {
+            return SendPayloadless(
+                ClientCommand.LeaveSpectator,
+                EnvelopeWriter.WriteLeaveSpectator
+            );
+        }
+
+        /// <summary>Relays a game-data payload to the other players (player role only).</summary>
+        public CommandSend SendGameData(in GameDataMessage message)
+        {
+            if (!AdmitForSend(ClientCommand.SendGameData, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            _sendBuffer.Reset();
+            EnvelopeWriter.WriteGameData(_sendBuffer, message);
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
+        /// Synchronous admission on the poll thread; a refused command never
+        /// touches the wire. Sends before <see cref="ConnectAsync"/> are
+        /// refused (the machine alone cannot see the connect call).
+        /// </summary>
+        private bool AdmitForSend(ClientCommand command, out AdmissionError refusal)
+        {
+            if (!_connectCalled || _terminal)
+            {
+                refusal = AdmissionError.NotConnected;
+                return false;
+            }
+
+            return _machine.TryAdmit(command, out refusal);
+        }
+
+        /// <summary>Encodes and dispatches a payload-less command.</summary>
+        private CommandSend SendPayloadless(ClientCommand command, Action<FrameBufferWriter> write)
+        {
+            if (!AdmitForSend(command, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            _sendBuffer.Reset();
+            write(_sendBuffer);
+            PendingRoomOperation? fence = SignalFishStateMachine.PendingOperationFor(command);
+            if (fence is not null)
+            {
+                _machine.Arm(fence.GetValueOrDefault());
+            }
+
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
+        /// Hands the encoded frame to the transport fire-and-forget: the
+        /// copy outlives the next encode on this buffer, and a dead wire
+        /// folds into the next poll.
+        /// </summary>
+        private void DispatchEncodedFrame()
+        {
+            _ = SendFrameAsync(_sendBuffer.WrittenSpan.ToArray());
         }
 
         private void ProcessFrame(TransportFrame frame)
@@ -596,16 +769,10 @@ namespace SignalFish.Client.Polling
         {
             _sendBuffer.Reset();
             EnvelopeWriter.WritePing(_sendBuffer);
-
-            /*
-                Copy the frame: the async send may outlive the next send's
-                Reset on this buffer. One small array per ping (seconds of
-                cadence); failure folds back into the next Poll.
-            */
-            _ = SendPingAsync(_sendBuffer.WrittenSpan.ToArray());
+            DispatchEncodedFrame();
         }
 
-        private async Task SendPingAsync(byte[] frame)
+        private async Task SendFrameAsync(byte[] frame)
         {
             try
             {

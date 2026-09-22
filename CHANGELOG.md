@@ -19,6 +19,16 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Command-send surface on the polling client (M3.6):
+  `SignalFishPollingClient` can now drive a full session —
+  `SendAuthenticate`, `SendJoinRoom`, `SendJoinAsSpectator`, `SendReconnect`,
+  `SendPlayerReady`, `SendStartGame`, `SendLeaveRoom`, `SendLeaveSpectator`,
+  and `SendGameData`. Admission is decided on the calling thread and a
+  refused `CommandSend` names why without touching the wire; accepted
+  commands emit the canonical wire form, and directed room operations arm
+  the same fence the join/leave events release. The handshake is admitted
+  in any live phase; the server arbitrates whether it may still run.
+
 - Session snapshot (M3.5): `SignalFishPollingClient.Snapshot` returns one
   coherent `ClientSnapshot` — connection phase fields, the confirmed room
   identity (role, player, room, code), and the latest reconnection token —
