@@ -122,6 +122,14 @@ namespace SignalFish.Client.Transport
                 != StateConnecting
             )
             {
+                /*
+                    A dispose overlapped the upgrade tail: its release may
+                    have missed this socket (assignment raced the field
+                    read), so this path owns the cleanup. Never leak a
+                    connected socket, whatever the failure.
+                */
+                socket.Dispose();
+                Interlocked.CompareExchange(ref _socket, null, socket);
                 ThrowIfDisposed();
                 throw new TransportClosedException(
                     new TransportClose(Volatile.Read(ref _closeCode))
@@ -363,11 +371,7 @@ namespace SignalFish.Client.Transport
 
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
-                        WebSocketCloseStatus? closeStatus = socket.CloseStatus;
-                        int code = closeStatus.HasValue
-                            ? (int)closeStatus.Value
-                            : AbnormalCloseCode;
-                        return EndWithClose(code);
+                        return EndWithClose(ReadCloseCode(socket));
                     }
 
                     length += result.Count;
@@ -426,10 +430,33 @@ namespace SignalFish.Client.Transport
 
         private int ResolveFaultCode()
         {
-            ClientWebSocket? socket = _socket;
-            return socket != null && socket.CloseStatus.HasValue
-                ? (int)socket.CloseStatus.Value
-                : AbnormalCloseCode;
+            return ReadCloseCode(_socket);
+        }
+
+        /// <summary>
+        /// Reads the observed close code off the socket, or the abnormal
+        /// fallback. Guarded: a concurrent dispose can release the socket
+        /// between a receive completing and this read; on some runtimes
+        /// (netstandard2.1/Mono) reading <c>CloseStatus</c> of a disposed
+        /// socket throws instead of returning null, which must never
+        /// surface as a raw exception in place of the terminal close.
+        /// </summary>
+        private static int ReadCloseCode(ClientWebSocket? socket)
+        {
+            if (socket is null)
+            {
+                return AbnormalCloseCode;
+            }
+
+            try
+            {
+                WebSocketCloseStatus? closeStatus = socket.CloseStatus;
+                return closeStatus.HasValue ? (int)closeStatus.Value : AbnormalCloseCode;
+            }
+            catch (ObjectDisposedException)
+            {
+                return AbnormalCloseCode;
+            }
         }
 
         private void ReleaseResources()

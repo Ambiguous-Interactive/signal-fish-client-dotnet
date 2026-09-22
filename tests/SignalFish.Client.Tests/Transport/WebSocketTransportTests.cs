@@ -18,6 +18,8 @@ namespace SignalFish.Client.Tests.Transport
     [TestFixture]
     public class WebSocketTransportTests
     {
+        private const int Abnormal = 1006;
+
         public static readonly TestCaseData[] CloseCodeCases =
         {
             new TestCaseData(4000, TransportCloseKind.ServerShutdown),
@@ -394,6 +396,71 @@ namespace SignalFish.Client.Tests.Transport
             Assert.That(close.Opcode, Is.EqualTo(0x8));
         }
 
+        [Test]
+        public async Task DisposeMidUpgradeFaultsConnectAndStaysTerminal()
+        {
+            await using TestWsServer server = TestWsServer.Start(null);
+            server.UpgradeGate = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
+            WebSocketTransport transport = new WebSocketTransport();
+
+            Task connect = transport.ConnectAsync(ServerUri(server.Port), TestToken());
+            await WaitForUpgradeArrivalAsync(server);
+            await transport.DisposeAsync();
+            server.UpgradeGate.TrySetResult(true);
+
+            /*
+                Whatever the raced interleave decided, the connect must fault
+                (never complete on a disposed transport) and the transport
+                must stay terminal with idempotent disposal. The underlying
+                TCP teardown timing belongs to ClientWebSocket and is not
+                asserted here.
+            */
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await connect),
+                Throws.TypeOf<ObjectDisposedException>().Or.TypeOf<TransportClosedException>()
+            );
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.ReceiveAsync(TestToken())),
+                Throws.TypeOf<ObjectDisposedException>()
+            );
+            await Assert.ThatAsync(
+                (Func<Task>)(async () => await transport.DisposeAsync()),
+                Throws.Nothing
+            );
+        }
+
+        [Test]
+        public async Task ServerCloseConcurrentWithDisposeStaysGraceful()
+        {
+            for (int round = 0; round < 5; round++)
+            {
+                await using TestWsServer server = TestWsServer.Start(null);
+                WebSocketTransport transport = new WebSocketTransport();
+                await transport.ConnectAsync(ServerUri(server.Port), TestToken());
+                TestWsConnection connection = await server.WaitForConnectionAsync(TestToken());
+
+                Task<TransportFrame> pending = transport.ReceiveAsync(TestToken()).AsTask();
+                await connection.SendCloseAsync(4007);
+                await transport.DisposeAsync();
+
+                /*
+                    Both orderings are legal — the close frame lands before
+                    the release (server code preserved) or after it (abnormal
+                    fallback) — but the pending receive must always end in a
+                    bounded close frame, never a raw exception.
+                */
+                TransportFrame close = await pending;
+                Assert.That(close.IsClose, Is.True);
+                Assert.That(close.Close.Code, Is.AnyOf(4007, Abnormal));
+                await Assert.ThatAsync(
+                    (Func<Task>)(async () => await transport.DisposeAsync()),
+                    Throws.Nothing
+                );
+            }
+        }
+
         private static CancellationToken TestToken()
         {
             CancellationTokenSource cts = new CancellationTokenSource(TestTimeout);
@@ -422,11 +489,22 @@ namespace SignalFish.Client.Tests.Transport
 
         private static async Task WaitForProbeArrivalAsync(TestWsServer server)
         {
+            await WaitForRequestPathAsync(server, "/client-config");
+            return;
+        }
+
+        private static async Task WaitForUpgradeArrivalAsync(TestWsServer server)
+        {
+            await WaitForRequestPathAsync(server, "/ws");
+        }
+
+        private static async Task WaitForRequestPathAsync(TestWsServer server, string suffix)
+        {
             for (int attempt = 0; attempt < 200; attempt++)
             {
                 foreach (string path in server.HttpRequestPaths.ToArray())
                 {
-                    if (path.EndsWith("/client-config", StringComparison.Ordinal))
+                    if (path.EndsWith(suffix, StringComparison.Ordinal))
                     {
                         return;
                     }
@@ -435,7 +513,9 @@ namespace SignalFish.Client.Tests.Transport
                 await Task.Delay(10);
             }
 
-            Assert.Fail("The client-config probe never reached the server.");
+            Assert.Fail(
+                FormattableString.Invariant($"The {suffix} request never reached the server.")
+            );
         }
     }
 }
