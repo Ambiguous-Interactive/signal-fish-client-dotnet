@@ -41,5 +41,8 @@ namespace SignalFish.Client.Core
 
         /// <summary>Relay a game-data payload (player role).</summary>
         SendGameData = 9,
+
+        /// <summary>Identify the app (and optionally negotiate v3) before any application message.</summary>
+        Authenticate = 10,
     }
 }

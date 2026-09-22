@@ -268,6 +268,16 @@ namespace SignalFish.Client.Core
                 return default;
             }
 
+            /*
+                The handshake is admitted in any live phase; whether it may
+                still run is the server's call (it must precede application
+                messages when used).
+            */
+            if (command == ClientCommand.Authenticate)
+            {
+                return default;
+            }
+
             if (IsDirected(command) && !_authenticated)
             {
                 return AdmissionError.NotAuthenticated;
