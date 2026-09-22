@@ -817,20 +817,19 @@ namespace SignalFish.Client.Async
                 _terminal = true;
                 _teardownClose = close;
                 _machine.Apply(SessionEvent.From(SessionEventKind.Disconnected));
-            }
 
-            /*
-                The terminal event is not enqueued (a full queue could drop
-                it): DequeueEventAsync/TryDequeueEvent synthesize it
-                one-shot when the completed queue drains to end-of-stream,
-                so Disconnected is delivered exactly once, last. Completing
-                under the gate closes the window where an in-flight frame
-                could still buffer after a consumer observed the terminal.
-                The staged shutdown (plan M4.3) bounds the drain wait.
-            */
-            lock (_gate)
-            {
+                /*
+                    Terminal state and queue completion are one atomic step:
+                    - no frame can buffer after a consumer can observe the
+                      terminal, so Disconnected is exactly once and last
+                      (synthesized at end-of-stream; the staged shutdown,
+                      plan M4.3, bounds the drain wait);
+                    - parked Reliable senders unblock immediately with the
+                      NotConnected verdict; queued-but-unsent commands are
+                      discarded with the dead connection.
+                */
                 _events.Complete();
+                _commands.Complete();
             }
 
             SignalWake();

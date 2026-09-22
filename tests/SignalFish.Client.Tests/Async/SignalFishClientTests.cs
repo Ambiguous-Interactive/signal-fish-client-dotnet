@@ -351,6 +351,39 @@ namespace SignalFish.Client.Tests.Async
         }
 
         [Test]
+        public async Task TeardownUnblocksAParkedReliableSenderWithNotConnected()
+        {
+            (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed(
+                new SignalFishClientOptions(commandCapacity: 1)
+            );
+            TaskCompletionSource<bool> wire = new TaskCompletionSource<bool>();
+            await ConnectJoinRoom(client, transport);
+
+            transport.HoldSendsUntil(wire);
+            Assert.That(client.SendGameData(Payload(0)).Accepted, Is.True);
+            await WaitForAsync(() => transport.SentText.Count >= 3, "first relay on the wire");
+            Assert.That(client.SendGameData(Payload(1)).Accepted, Is.True);
+
+            Task<CommandSend> reliable = client.SendGameDataReliableAsync(Payload(2));
+            await WaitForAsync(
+                () => client.SendCapacity == 0,
+                "the reliable sender is parked on the full queue"
+            );
+
+            /*
+                A teardown while the sender parks must unblock it with the
+                NotConnected verdict. Disposal tears the session down (and
+                aborts the stalled wire, like a real transport would), so
+                the parked sender, the loop, and the disposal all resolve.
+            */
+            await client.DisposeAsync();
+
+            CommandSend verdict = await reliable;
+            Assert.That(verdict.Accepted, Is.False);
+            Assert.That(verdict.Refusal, Is.EqualTo(AdmissionError.NotConnected));
+        }
+
+        [Test]
         public async Task ServerCloseFrameDeliversTypedDisconnectedOnce()
         {
             (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed();

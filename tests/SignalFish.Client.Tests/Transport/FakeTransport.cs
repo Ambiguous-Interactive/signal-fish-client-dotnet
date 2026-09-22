@@ -225,6 +225,18 @@ namespace SignalFish.Client.Tests.Transport
         /// <inheritdoc />
         public ValueTask DisposeAsync()
         {
+            TaskCompletionSource<bool>? sendGate;
+            lock (_gate)
+            {
+                sendGate = _sendGate;
+                _sendGate = null;
+            }
+
+            /*
+                Disposal aborts a stalled wire, so held sends complete like
+                a real transport's aborted socket would.
+            */
+            sendGate?.TrySetResult(true);
             Abort();
             Interlocked.Exchange(ref _state, StateDisposed);
             return default;
