@@ -91,7 +91,7 @@ namespace SignalFish.Client.Reconnection
                 int hash = 17;
                 hash = (hash * 31) + PlayerId.GetHashCode();
                 hash = (hash * 31) + RoomId.GetHashCode();
-                hash = (hash * 31) + Token.GetHashCode(StringComparison.Ordinal);
+                hash = (hash * 31) + (Token?.GetHashCode(StringComparison.Ordinal) ?? 0);
                 return hash;
             }
         }

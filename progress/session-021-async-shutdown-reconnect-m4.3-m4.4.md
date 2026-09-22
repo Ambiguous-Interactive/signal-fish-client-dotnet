@@ -63,7 +63,7 @@ procedure is now first-class SDK surface.
 
 ## Verification
 
-- 498 tests green on net8.0 + net10.0 (20 new: 13 shutdown/lifecycle, 7
+- 499 tests green on net8.0 + net10.0 (21 new: 13 shutdown/lifecycle, 8
   recovery — plus data-driven cases).
 - `csharpier check` clean; zero-deps / no-LINQ / member-order /
   comment-form / test-names / file-size lints green (aggregator script

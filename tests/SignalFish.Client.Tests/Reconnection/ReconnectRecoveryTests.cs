@@ -125,5 +125,38 @@ namespace SignalFish.Client.Tests.Reconnection
                 (Action)(() => new ReconnectContext(PlayerId, RoomId, null!))
             );
         }
+
+        [Test]
+        public void DefaultAndFailedCaptureContextsStayHashableAndInert()
+        {
+            /*
+                default(ReconnectContext) (and the default TryCapture writes
+                on failure) carries a null token: hashing must not throw,
+                equality must hold, and ToString must stay log-safe.
+            */
+            ReconnectContext inert = default;
+            Assert.DoesNotThrow((Action)(() => inert.GetHashCode()));
+            Assert.That(inert, Is.EqualTo(default(ReconnectContext)));
+            Assert.That(inert.ToString(), Does.Contain("<none>"));
+
+            Assert.That(
+                ReconnectContext.TryCapture(
+                    new ClientSnapshot(
+                        true,
+                        true,
+                        true,
+                        RoomRole.Spectator,
+                        PlayerId,
+                        RoomId,
+                        "ABC123",
+                        null
+                    ),
+                    out ReconnectContext failed
+                ),
+                Is.False
+            );
+            Assert.DoesNotThrow((Action)(() => failed.GetHashCode()));
+            Assert.That(failed, Is.EqualTo(inert));
+        }
     }
 }
