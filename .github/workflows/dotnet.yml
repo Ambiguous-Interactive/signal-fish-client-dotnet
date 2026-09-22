@@ -74,7 +74,6 @@ jobs:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '.config/dotnet-tools.json') }}
           restore-keys: nuget-${{ runner.os }}-
-
       # OS-independent lints and formatting run once, on the coverage cell.
       # One consolidated step invokes all six convention lints in a single
       # pwsh process (scripts/lint-conventions.ps1), so CI wall time stays
@@ -104,12 +103,14 @@ jobs:
       - name: Restore tooling projects
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         run: |
+          dotnet restore tests/SignalFish.Client.E2E/SignalFish.Client.E2E.csproj
           dotnet restore tests/SignalFish.Client.PerfTests/SignalFish.Client.PerfTests.csproj
           dotnet restore tests/SignalFish.Client.FuzzTests/SignalFish.Client.FuzzTests.csproj
 
       # Each cell builds only its framework (the netstandard2.1 library
       # rides along via the project reference); the coverage cell also
-      # compiles the tooling projects as their PR-time build gate.
+      # compiles the E2E (net8-only) and tooling projects as their PR-time
+      # build gate.
       - name: Build test suite
         run: >
           dotnet build tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj
@@ -118,6 +119,7 @@ jobs:
       - name: Build tooling projects
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         run: |
+          dotnet build tests/SignalFish.Client.E2E/SignalFish.Client.E2E.csproj --no-restore -c Release -warnaserror
           dotnet build tests/SignalFish.Client.PerfTests/SignalFish.Client.PerfTests.csproj --no-restore -c Release -warnaserror
           dotnet build tests/SignalFish.Client.FuzzTests/SignalFish.Client.FuzzTests.csproj --no-restore -c Release -warnaserror
 
