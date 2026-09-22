@@ -8,6 +8,21 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Opt-in automatic reconnection (M4.5): `SignalFishClientOptions` accepts a
+  `ReconnectPolicy` — a transport factory plus a deterministic exponential
+  backoff (no jitter) — and the driver then recovers by itself after a
+  retryable disconnect: it waits the computed delay, opens a fresh
+  transport from the factory, re-authenticates, and reclaims a retained
+  player seat with the server-issued token. Each round announces itself
+  with `Reconnecting` (attempt + delay) on the event stream, the attempt
+  budget resets whenever a connection reaches `Authenticated`, close codes
+  classified terminal via `WithTerminalCloseCodes` end the session instead
+  of retrying, and budget exhaustion emits `ReconnectAbandoned` before the
+  stream ends. Between rounds the phase reads `Connecting` (never
+  `Terminal`), the dead connection's queued commands are discarded, and a
+  voluntarily left room is never reclaimed. Without a policy, recovery
+  stays fully manual, unchanged.
+
 - Async client (M4.1/M4.2): `SignalFishClient` — a thread-safe client whose
   background driver loop multiplexes command sends, frame receives, and
   heartbeats over the transport. Commands flow through a bounded queue

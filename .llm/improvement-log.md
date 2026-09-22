@@ -9,6 +9,27 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-22 - session 022: M4.5 opt-in reconnect policy - three adversarial rounds
+
+- Trigger: PLAN.md M4.5 + M4 gate. Three sub-agent review rounds; two
+  majors found and fixed post-implementation, plus minors.
+- Findings: (1) nonblocking `TryEnqueue` for scheduling markers silently
+  drops them under event-queue backpressure — the never-drop contract must
+  hold for synthetic events too; blocking enqueue is safe because disposal
+  completes the queue. (2) In a reconnecting session, applying the
+  `Disconnected` fact to the machine leaves `Phase == Terminal`
+  mid-session — phase-gated consumers stop draining and stall the session;
+  a fresh machine per round (plus a severed-admission check) keeps the
+  phase truthful. (3) Seat capture at sever must be OR-ed with the pending
+  seat: a capture from a membership-less machine (death before
+  re-authentication) must not clobber a retained seat, while an
+  issued-but-unanswered reclaim still loses it. (4) Session-sticky flags
+  that gate one-shot deliveries need per-round resets when rounds repeat.
+- Applied: driver session/round split, blocking marker enqueues, machine
+  swap at sever, seat OR-semantics, `FinalizeLocked` prefers observed
+  death close, `FakeTransport.DoomWithClose`/`FailHeldSends`.
+- Open: none (follow-up surfaces: issues #48, #49).
+
 ## 2026-09-22 - session 017b: PR feedback round - silent snupkg skip in nuget.org publish (bugbot finding)
 
 - Trigger: Cursor Bugbot flagged the nuget.org push as invalid. Bot's
