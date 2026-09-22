@@ -121,7 +121,15 @@ namespace SignalFish.Client.Tests.Async
             Assert.That(client.Membership.PlayerId, Is.EqualTo(GoldenPlayerId));
             Assert.That(client.Snapshot.ReconnectionToken, Is.EqualTo("seat-token-2"));
 
+            /*
+                Disposing the healthy recovered session reports a clean
+                close — the previous death's code must not leak into it.
+            */
             await client.DisposeAsync();
+            PollEvent terminal = await NextEventAsync(client);
+            Assert.That(terminal.Kind, Is.EqualTo(PollEventKind.Disconnected));
+            Assert.That(terminal.Close.Code, Is.EqualTo(0));
+            Assert.That(await client.DequeueEventAsync(), Is.Null);
         }
 
         [Test]
