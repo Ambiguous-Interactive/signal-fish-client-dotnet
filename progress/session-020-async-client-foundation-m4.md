@@ -64,14 +64,15 @@ across the move.
 
 ## Test summary
 
-- 472 tests total (net8.0 + net10.0): +14 bounded queue (order, capacity,
-  waiter hygiene, completion, cancellation, two-producer order stress, 0 B
-  gate), +15 driver loop (transport-ready, golden handshake wire, refusal
-  order, ordered session events, stalled-wire `SendBufferFull`, reliable
-  await, event-queue backpressure without drops, virtual-time heartbeat +
-  liveness 1006, server close 4000, receive fault 4003, dispose semantics,
-  FIFO relay order, concurrent relays), +2 clock (`DelayAsync` completes on
-  advance; cancellation wins over the clock).
+- 474 tests total at HEAD (net8.0 + net10.0): +14 bounded queue (order,
+  capacity, waiter hygiene, completion, cancellation, two-producer order
+  stress, 0 B gate), +17 driver loop (transport-ready, golden handshake
+  wire, refusal order, ordered session events, stalled-wire
+  `SendBufferFull`, reliable await, event-queue backpressure without
+  drops, virtual-time heartbeat + cadence boundary + liveness 1006,
+  server close 4000, receive fault 4003, dispose semantics, FIFO relay
+  order, concurrent relays, terminal-under-full-queue), +2 clock
+  (`DelayAsync` completes on advance; cancellation wins over the clock).
 
 ## Verification
 
@@ -82,6 +83,19 @@ across the move.
   automation self-tests: green.
 - Benchmarks recorded (`docs/benchmarks.md`): queue spike at parity;
   codec budgets untouched.
+
+## Adversarial review (three rounds to zero findings)
+
+Round 1 found two contract-breaking defects (canceled-receive NRE that
+could kill the loop; terminal `Disconnected` droppable under a full
+event queue) plus three minors and two nits. Round 2 verified all fixes
+and found five residuals (teardown/loop tail races, the still-tautological
+connect test, a torn long read, a doc overclaim). Round 3 verified the
+residuals, proved the gate-ordering and TOCTOU safety of the new code,
+and returned SHIP with no findings. The terminal-delivery design that
+survived review: the terminal event is never enqueued — it is
+synthesized one-shot at end-of-stream, so it is exactly-once and last
+even when the queue is full at teardown.
 
 ## Leftovers / follow-ups
 
