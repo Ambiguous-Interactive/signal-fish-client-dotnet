@@ -26,7 +26,7 @@ origin/main (PR #51's post-review fixes) carried forward.
   still exactly one clean 0; a server-typed close still wins over a
   synthetic 0 (`FinalizeLocked` pins it before the transport dispose).
 - Deduplicated the session-022 progress brief (both merge sides shipped
-  one; kept `session-022-optin-reconnect-policy-m4.5.md`).
+  one; kept main's `session-022-reconnect-policy-m4.5.md`).
 
 ## Verification
 
