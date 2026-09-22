@@ -1,8 +1,10 @@
 # Auto-release pipeline for signal-fish-client-dotnet
 #
-# Tag-driven only (v*): packs the library, publishes to GitHub Packages,
+# Tag-driven only (v*): packs the library, publishes to GitHub Packages
+# (always) and nuget.org (when the NUGET_API_KEY secret is populated),
 # and attaches the .nupkg/.snupkg to a GitHub Release as a no-auth
 # fallback. Never runs on branches or PRs, so PR CI time stays flat.
+# Operator runbook: docs/releasing.md.
 
 name: Release
 
@@ -24,6 +26,11 @@ jobs:
     name: Pack, publish, release
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # Mapped at job level because a step's own env is not reliably
+      # readable in that step's `if`. Empty when the secret is unset,
+      # which is exactly what the nuget.org step tests below.
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -64,6 +71,24 @@ jobs:
 
       # The .snupkg rides only on the GitHub Release: GitHub Packages has
       # no NuGet symbol-publish endpoint, so pushing it there fails.
+
+      # Optional: nuget.org publishing happens only when the NUGET_API_KEY
+      # secret is populated (see docs/releasing.md). Two explicit pushes:
+      # passing "dist/*.nupkg" "dist/*.snupkg" to one command parses fine
+      # but silently skips the .snupkg (verified on SDK 8.0.425) — symbols
+      # are published only by pushing the .snupkg explicitly, per
+      # https://learn.microsoft.com/en-us/nuget/create-packages/symbol-packages-snupkg
+      - name: Publish to NuGet.org
+        if: env.NUGET_API_KEY != ''
+        run: |
+          dotnet nuget push "dist/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate
+          dotnet nuget push "dist/*.snupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate
 
       - name: Create GitHub release with package assets
         env:

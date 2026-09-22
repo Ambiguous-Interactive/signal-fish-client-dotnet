@@ -25,25 +25,34 @@ namespace SignalFish.Client.Protocol
         /// </summary>
         public RoomSnapshot Snapshot { get; }
 
+        /// <summary>
+        /// Gets the reconnection token the frame carried (null when
+        /// absent — the v2 wire omits it; tolerant capture).
+        /// </summary>
+        public string? ReconnectionToken { get; }
+
         /// <summary>Initializes a new <see cref="RoomJoinedMessage"/> payload.</summary>
         public RoomJoinedMessage(
             Guid playerId,
             Guid roomId,
             string roomCode,
-            RoomSnapshot? snapshot = null
+            RoomSnapshot? snapshot = null,
+            string? reconnectionToken = null
         )
         {
             PlayerId = playerId;
             RoomId = roomId;
             RoomCode = roomCode;
             Snapshot = snapshot ?? default;
+            ReconnectionToken = reconnectionToken;
         }
 
         /// <inheritdoc />
         public bool Equals(RoomJoinedMessage other) =>
             PlayerId == other.PlayerId
             && RoomId == other.RoomId
-            && AuthenticateMessage.NullableStringEquals(RoomCode, other.RoomCode);
+            && AuthenticateMessage.NullableStringEquals(RoomCode, other.RoomCode)
+            && AuthenticateMessage.NullableStringEquals(ReconnectionToken, other.ReconnectionToken);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is RoomJoinedMessage other && Equals(other);
@@ -55,6 +64,7 @@ namespace SignalFish.Client.Protocol
             hash.Add(PlayerId);
             hash.Add(RoomId);
             hash.Add(RoomCode);
+            hash.Add(ReconnectionToken);
             return hash.ToHashCode();
         }
 
@@ -70,7 +80,10 @@ namespace SignalFish.Client.Protocol
         /// Decodes the <c>data</c> object of a <c>RoomJoined</c> envelope
         /// (the <see cref="EnvelopeEvent.Data"/> slice). Unknown fields are
         /// skipped; a repeated session-critical key is rejected (fail-closed,
-        /// matching the envelope layer's first-wins posture). Returns
+        /// matching the envelope layer's first-wins posture). The
+        /// <c>reconnection_token</c> key is session-critical when present
+        /// (a repeated, non-string, or empty value is rejected; an explicit
+        /// JSON null counts as absent, the canonical wire form). Returns
         /// <see langword="false"/> for malformed input or a missing
         /// session-critical field.
         /// </summary>
@@ -83,8 +96,10 @@ namespace SignalFish.Client.Protocol
             Guid playerId = default;
             Guid roomId = default;
             string? roomCode = null;
+            string? reconnectionToken = null;
             bool playerSeen = false;
             bool roomSeen = false;
+            bool tokenSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -119,6 +134,28 @@ namespace SignalFish.Client.Protocol
                         return false;
                     }
                 }
+                else if (scanner.KeyIs(keyRaw, "reconnection_token"))
+                {
+                    if (tokenSeen)
+                    {
+                        return false;
+                    }
+
+                    tokenSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadString(valueRaw, out reconnectionToken))
+                        {
+                            return false;
+                        }
+
+                        // Fail-closed: an empty string is no credential.
+                        if (reconnectionToken.Length == 0)
+                        {
+                            return false;
+                        }
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -132,7 +169,13 @@ namespace SignalFish.Client.Protocol
             {
                 return false;
             }
-            message = new RoomJoinedMessage(playerId, roomId, roomCode, snapshot);
+            message = new RoomJoinedMessage(
+                playerId,
+                roomId,
+                roomCode,
+                snapshot,
+                reconnectionToken
+            );
             return true;
         }
     }
@@ -141,7 +184,11 @@ namespace SignalFish.Client.Protocol
     /// Session-critical fields of the inbound <c>SpectatorJoined</c> payload
     /// (S→C): the confirmed spectator membership. The remaining v2 fields
     /// (<c>game_name</c>, <c>current_players</c>, …) are tolerated as
-    /// unknown and land with the M3.4 event surface.
+    /// unknown and land with the M3.4 event surface. A stray
+    /// <c>reconnection_token</c> is likewise unknown-field noise: the
+    /// protocol has no spectator reconnect, so it is never mapped
+    /// (unlike <c>RoomJoined</c>/<c>Reconnected</c>, which reject a
+    /// malformed one).
     /// </summary>
     public readonly struct SpectatorJoinedMessage : IEquatable<SpectatorJoinedMessage>
     {

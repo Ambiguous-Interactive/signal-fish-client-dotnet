@@ -76,12 +76,32 @@ namespace SignalFish.Client.Core
         private bool _authenticated;
         private RoomMembership _membership;
         private PendingRoomOperation _pendingOperation;
+        private string? _reconnectionToken;
         private bool _terminal;
 
         /// <summary>Creates the machine in the connecting phase (constructed-live, Rust parity).</summary>
         public SignalFishStateMachine()
         {
             _connected = true;
+        }
+
+        /// <summary>
+        /// One coherent read of the session state (the Rust client's
+        /// snapshot): phase fields, the membership identity, and the
+        /// latest reconnection token as of the same instant.
+        /// </summary>
+        public ClientSnapshot CreateSnapshot()
+        {
+            return new ClientSnapshot(
+                _connected,
+                _transportReady,
+                _authenticated,
+                _membership.IsPresent ? _membership.Role : null,
+                _membership.IsPresent ? _membership.PlayerId : null,
+                _membership.IsPresent ? _membership.RoomId : null,
+                _membership.IsPresent ? _membership.RoomCode : null,
+                _reconnectionToken
+            );
         }
 
         /// <summary>
@@ -184,6 +204,12 @@ namespace SignalFish.Client.Core
                     }
 
                     _membership = sessionEvent.Membership;
+                    /*
+                        The baseline's token replaces the retained one whole:
+                        player baselines carry the (possibly rotated) token;
+                        spectator baselines carry none and clear it.
+                    */
+                    _reconnectionToken = sessionEvent.ReconnectionToken;
                     ReleaseIfPending(release);
                     break;
                 case SessionEventKind.RoomLeft:
@@ -203,6 +229,7 @@ namespace SignalFish.Client.Core
                     }
 
                     _membership = default;
+                    _reconnectionToken = null;
                     ReleaseIfPending(LeaveRelease(sessionEvent.Kind));
                     break;
                 case SessionEventKind.RoomJoinFailed:
@@ -329,6 +356,7 @@ namespace SignalFish.Client.Core
             _authenticated = false;
             _membership = default;
             _pendingOperation = default(PendingRoomOperation);
+            _reconnectionToken = null;
         }
 
         private static bool IsDirected(ClientCommand command)

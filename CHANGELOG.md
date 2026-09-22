@@ -19,6 +19,17 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Session snapshot (M3.5): `SignalFishPollingClient.Snapshot` returns one
+  coherent `ClientSnapshot` — connection phase fields, the confirmed room
+  identity (role, player, room, code), and the latest reconnection token —
+  mirroring the Rust client's snapshot semantics, so multiple reads always
+  describe the same instant. Reconnection tokens arriving on
+  `RoomJoined`/`Reconnected` are now captured and rotated instead of being
+  silently dropped (the credential manual reconnection needs); the token
+  clears on spectator baselines, confirmed exits, and terminal disconnect,
+  and is redacted in `ClientSnapshot.ToString()` so it can never leak
+  through logs.
+
 - Polling client (M3.4): `SignalFishPollingClient` for Unity
   `Update()`-style loops. Every `Poll()` drains up to 64 transport frames
   (configurable) into typed struct events via a fixed-capacity ring buffer
