@@ -45,9 +45,23 @@ namespace SignalFish.Client.Tests.Transport
         private readonly Queue<TransportFrame> _incoming = new Queue<TransportFrame>();
         private readonly List<byte[]> _sent = new List<byte[]>();
         private TaskCompletionSource<TransportFrame>? _pendingReceive;
+        private TaskCompletionSource<bool>? _sendGate;
         private int _state = StateNew;
         private bool _closeDelivered;
         private int _closeCode;
+
+        /// <summary>
+        /// Holds every send (after recording it) until the gate completes —
+        /// scripts a stalled wire so callers can observe send-queue
+        /// backpressure deterministically.
+        /// </summary>
+        public void HoldSendsUntil(TaskCompletionSource<bool> sendGate)
+        {
+            lock (_gate)
+            {
+                _sendGate = sendGate;
+            }
+        }
 
         /// <summary>Scripts an inbound text frame.</summary>
         public void EnqueueText(string text)
@@ -140,7 +154,10 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         /// <inheritdoc />
-        public ValueTask<int> SendAsync(ReadOnlyMemory<byte> frame, CancellationToken ct = default)
+        public async ValueTask<int> SendAsync(
+            ReadOnlyMemory<byte> frame,
+            CancellationToken ct = default
+        )
         {
             int state = Volatile.Read(ref _state);
             ObjectDisposedException.ThrowIf(state == StateDisposed, typeof(FakeTransport));
@@ -152,12 +169,19 @@ namespace SignalFish.Client.Tests.Transport
                 );
             }
 
+            TaskCompletionSource<bool>? sendGate;
             lock (_gate)
             {
                 _sent.Add(frame.ToArray());
+                sendGate = _sendGate;
             }
 
-            return new ValueTask<int>(frame.Length);
+            if (sendGate is not null)
+            {
+                await sendGate.Task;
+            }
+
+            return frame.Length;
         }
 
         /// <inheritdoc />

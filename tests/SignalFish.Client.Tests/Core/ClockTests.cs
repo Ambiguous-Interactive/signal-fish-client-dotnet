@@ -1,6 +1,8 @@
 namespace SignalFish.Client.Tests.Core
 {
     using System;
+    using System.Threading;
+    using System.Threading.Tasks;
     using NUnit.Framework;
     using SignalFish.Client.Core;
 
@@ -62,6 +64,30 @@ namespace SignalFish.Client.Tests.Core
             clock.Advance(1_000);
 
             Assert.That(((ISignalFishClock)clock).ElapsedMilliseconds, Is.EqualTo(1_000));
+        }
+
+        [Test]
+        public async Task VirtualClockDelayCompletesWhenTimeAdvances()
+        {
+            VirtualClock clock = new VirtualClock();
+            Task delay = ((ISignalFishClock)clock).DelayAsync(1_000);
+            Assert.That(delay.IsCompleted, Is.False, "a parked delay waits for the clock");
+
+            clock.Advance(1_000);
+
+            await delay;
+        }
+
+        [Test]
+        public void VirtualClockDelayThrowsWhenCancelledInsteadOfAdvancing()
+        {
+            VirtualClock clock = new VirtualClock();
+            CancellationTokenSource cancellation = new CancellationTokenSource();
+            Task delay = ((ISignalFishClock)clock).DelayAsync(1_000, cancellation.Token);
+
+            cancellation.Cancel();
+
+            Assert.ThrowsAsync<TaskCanceledException>((Func<Task>)(async () => await delay));
         }
     }
 }

@@ -6,6 +6,23 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ## [Unreleased]
 
+### Added
+
+- Async client (M4.1/M4.2): `SignalFishClient` — a thread-safe client whose
+  background driver loop multiplexes command sends, frame receives, and
+  heartbeats over the transport. Commands flow through a bounded queue
+  (fail-fast sends report `SendBufferFull` when full;
+  `SendGameDataReliableAsync` waits for a slot instead, pacing high-rate
+  payloads to actual transport throughput) and events flow through a bounded
+  queue that never drops — a full event queue pauses the loop, which is the
+  backpressure contract. Admission and queueing are one atomic step per
+  send: a refused command never touches the wire and never wedges a fence.
+  Events are dequeued with `DequeueEventAsync` (null after the terminal
+  `Disconnected`) or `TryDequeueEvent`; the loop's timing runs on the
+  injected clock, so virtual-time tests stay deterministic. The new
+  `BoundedQueue<T>`/`IBoundedQueue<T>` pair behind it is channel-free and
+  zero-dependency (benchmarked at parity with `System.Threading.Channels`).
+
 ### Fixed
 
 - `JoinRoom` frames now reproduce the server's published canonical wire form:

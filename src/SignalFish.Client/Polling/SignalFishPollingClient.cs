@@ -28,8 +28,6 @@ namespace SignalFish.Client.Polling
     /// </summary>
     public sealed class SignalFishPollingClient
     {
-        private const int LivenessCloseCode = 1006;
-
         /// <summary>Gets the derived connection phase.</summary>
         public ConnectionPhase Phase => _machine.Phase;
 
@@ -134,7 +132,7 @@ namespace SignalFish.Client.Polling
 
             if (_sendFailed)
             {
-                Teardown(new TransportClose(LivenessCloseCode));
+                Teardown(new TransportClose(FramePipeline.LivenessCloseCode));
                 return 0;
             }
 
@@ -358,328 +356,21 @@ namespace SignalFish.Client.Polling
         private void ProcessFrame(TransportFrame frame)
         {
             _lastServerFrameMs = _clock.ElapsedMilliseconds;
-            if (frame.IsClose)
+            FramePipeline.Translate(frame, _options.MaxFrameBytes, out FrameTranslation translated);
+            if (translated.IsClose)
             {
-                Teardown(frame.Close);
+                Teardown(translated.Close);
                 return;
             }
 
-            if (!frame.IsText || frame.Payload.Length > _options.MaxFrameBytes)
+            if (translated.HasFact)
             {
-                /*
-                    The v2 floor is JSON text; an oversized or binary frame
-                    violates the negotiated contract (binary game data
-                    arrives with v3).
-                */
-                _events.TryEnqueue(PollEvent.FromViolation(default(MessageKind), frame.Payload));
-                return;
+                _machine.Apply(translated.Fact);
             }
 
-            EnvelopeEvent envelope = EnvelopeReader.Decode(frame.Payload);
-            switch (envelope.Kind)
+            if (translated.HasEvent)
             {
-                case EnvelopeEventKind.Message:
-                    ProcessMessage(envelope);
-                    break;
-                case EnvelopeEventKind.UnknownMessage:
-                    _events.TryEnqueue(PollEvent.FromUnknown(envelope.TypeText, envelope.Raw));
-                    break;
-                case EnvelopeEventKind.DecodeFailed:
-                    _events.TryEnqueue(
-                        PollEvent.FromDecodeFailed(
-                            envelope.Error,
-                            envelope.ErrorOffset,
-                            envelope.Raw
-                        )
-                    );
-                    break;
-                default:
-                    // Decode never yields other classifications.
-                    break;
-            }
-        }
-
-        private void ProcessMessage(EnvelopeEvent envelope)
-        {
-            if (SessionEventMapper.TryMap(envelope, out SessionEvent fact))
-            {
-                if (fact.Kind == SessionEventKind.Disconnected)
-                {
-                    // Never produced by a frame; defensive.
-                    Teardown(new TransportClose(LivenessCloseCode));
-                    return;
-                }
-
-                _machine.Apply(fact);
-                _events.TryEnqueue(BuildSessionEvent(fact, envelope));
-                return;
-            }
-
-            /*
-                Not a session fact: a gameplay/lifecycle payload (enqueued),
-                a protocol violation (enqueued), or an absorbed frame with
-                no v2 event surface (Pong, client-to-server echoes,
-                v3-only kinds). Null means absorbed.
-            */
-            if (SessionEventMapper.IsSessionFact(envelope.Message))
-            {
-                _events.TryEnqueue(PollEvent.FromViolation(envelope.Message, envelope.Raw));
-                return;
-            }
-
-            PollEvent? payloadEvent = TryBuildPayloadEvent(envelope);
-            if (payloadEvent is not null)
-            {
-                _events.TryEnqueue(payloadEvent.GetValueOrDefault());
-            }
-        }
-
-        private static PollEvent BuildSessionEvent(SessionEvent fact, in EnvelopeEvent envelope)
-        {
-            switch (fact.Kind)
-            {
-                case SessionEventKind.Authenticated:
-                {
-                    /*
-                        The payload is informational (rate budgets); the
-                        session fact is already applied, so a malformed
-                        payload surfaces as defaults, not a violation.
-                    */
-                    AuthenticatedMessage.TryDecode(envelope.Data, out AuthenticatedMessage auth);
-                    return PollEvent.FromAuthenticated(auth, envelope.Raw);
-                }
-                case SessionEventKind.RoomJoined:
-                {
-                    RoomJoinedMessage.TryDecode(envelope.Data, out RoomJoinedMessage joined);
-                    return PollEvent.FromMembership(
-                        PollEventKind.RoomJoined,
-                        fact.Membership,
-                        joined.Snapshot,
-                        envelope.Raw
-                    );
-                }
-                case SessionEventKind.SpectatorJoined:
-                {
-                    SpectatorJoinedMessage.TryDecode(
-                        envelope.Data,
-                        out SpectatorJoinedMessage spectatorJoined
-                    );
-                    return PollEvent.FromMembership(
-                        PollEventKind.SpectatorJoined,
-                        fact.Membership,
-                        spectatorJoined.Snapshot,
-                        envelope.Raw
-                    );
-                }
-                case SessionEventKind.Reconnected:
-                {
-                    ReconnectedMessage.TryDecode(envelope.Data, out ReconnectedMessage reconnect);
-                    return PollEvent.FromMembership(
-                        PollEventKind.Reconnected,
-                        fact.Membership,
-                        reconnect.Snapshot,
-                        envelope.Raw
-                    );
-                }
-                case SessionEventKind.RoomLeft:
-                    return PollEvent.From(PollEventKind.RoomLeft);
-                case SessionEventKind.SpectatorLeft:
-                {
-                    SpectatorLeftMessage.TryDecode(
-                        envelope.Data,
-                        out SpectatorLeftMessage spectatorLeft
-                    );
-                    return PollEvent.FromSpectatorLeft(spectatorLeft, envelope.Raw);
-                }
-                case SessionEventKind.RoomJoinFailed:
-                    return BuildFailure(PollEventKind.RoomJoinFailed, envelope);
-                case SessionEventKind.SpectatorJoinFailed:
-                    return BuildFailure(PollEventKind.SpectatorJoinFailed, envelope);
-                case SessionEventKind.ReconnectionFailed:
-                    return BuildFailure(PollEventKind.ReconnectionFailed, envelope);
-                case SessionEventKind.ServerError:
-                    return BuildFailure(PollEventKind.ServerError, envelope);
-                default:
-                    // TransportReady and Disconnected are synthetic (not frame-driven).
-                    return PollEvent.From(PollEventKind.TransportReady);
-            }
-        }
-
-        private static PollEvent BuildFailure(PollEventKind kind, in EnvelopeEvent envelope)
-        {
-            /*
-                Failure payloads are informational; a malformed payload
-                surfaces as defaults (the session fact itself stands).
-            */
-            FailureMessage.TryDecode(envelope.Data, out FailureMessage failure);
-            return PollEvent.FromFailure(kind, failure, envelope.Raw);
-        }
-
-        /// <summary>
-        /// Builds the payload event for a routed non-session message. Null
-        /// means the frame is absorbed (no v2 event surface). Gameplay and
-        /// lifecycle payloads treat a decode failure as a wire violation
-        /// (nothing session-critical was applied, so the anomaly must not
-        /// be masked by default payloads).
-        /// </summary>
-        private static PollEvent? TryBuildPayloadEvent(EnvelopeEvent envelope)
-        {
-            switch (envelope.Message)
-            {
-                case MessageKind.ProtocolInfo:
-                    if (
-                        !ProtocolInfoMessage.TryDecode(
-                            envelope.Data,
-                            out ProtocolInfoMessage protocolInfo
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromProtocolInfo(protocolInfo, envelope.Raw);
-                case MessageKind.LobbyStateChanged:
-                    if (
-                        !LobbyStateChangedMessage.TryDecode(
-                            envelope.Data,
-                            out LobbyStateChangedMessage lobby
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromLobby(lobby, envelope.Raw);
-                case MessageKind.PlayerJoined:
-                    if (
-                        !PlayerJoinedMessage.TryDecode(
-                            envelope.Data,
-                            out PlayerJoinedMessage playerJoined
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromPlayerJoined(playerJoined, envelope.Raw);
-                case MessageKind.PlayerLeft:
-                    if (
-                        !PlayerLeftMessage.TryDecode(
-                            envelope.Data,
-                            out PlayerLeftMessage playerLeft
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromPlayerLeft(playerLeft.PlayerId, envelope.Raw);
-                case MessageKind.PlayerReconnected:
-                    if (
-                        !PlayerReconnectedMessage.TryDecode(
-                            envelope.Data,
-                            out PlayerReconnectedMessage playerReconnected
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromPlayerReconnected(
-                        playerReconnected.PlayerId,
-                        envelope.Raw
-                    );
-                case MessageKind.GameStarting:
-                    if (
-                        !GameStartingMessage.TryDecode(
-                            envelope.Data,
-                            out GameStartingMessage gameStart
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromGameStart(gameStart, envelope.Raw);
-                case MessageKind.AuthorityResponse:
-                    if (
-                        !AuthorityResponseMessage.TryDecode(
-                            envelope.Data,
-                            out AuthorityResponseMessage authorityResponse
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromAuthorityResponse(authorityResponse, envelope.Raw);
-                case MessageKind.AuthorityChanged:
-                    if (
-                        !AuthorityChangedMessage.TryDecode(
-                            envelope.Data,
-                            out AuthorityChangedMessage authorityChanged
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromAuthorityChanged(authorityChanged, envelope.Raw);
-                case MessageKind.GameData:
-                    if (!IncomingGameData.TryDecode(envelope.Data, out IncomingGameData gameData))
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromGameData(gameData, envelope.Raw);
-                case MessageKind.AuthenticationError:
-                    /*
-                        Surfaces as a server error: the reason/code payload
-                        carries the diagnosis (the INVALID_APP_ID code
-                        distinguishes it from a generic Error).
-                    */
-                    if (!FailureMessage.TryDecode(envelope.Data, out FailureMessage authFailure))
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromFailure(
-                        PollEventKind.ServerError,
-                        authFailure,
-                        envelope.Raw
-                    );
-                case MessageKind.NewSpectatorJoined:
-                    if (
-                        !NewSpectatorJoinedMessage.TryDecode(
-                            envelope.Data,
-                            out NewSpectatorJoinedMessage newSpectator
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromNewSpectator(newSpectator, envelope.Raw);
-                case MessageKind.SpectatorDisconnected:
-                    if (
-                        !SpectatorDisconnectedMessage.TryDecode(
-                            envelope.Data,
-                            out SpectatorDisconnectedMessage spectatorDisconnected
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromSpectatorDisconnected(spectatorDisconnected, envelope.Raw);
-                default:
-                    /*
-                        Routed kinds with no v2 event surface: heartbeat
-                        replies (Pong refreshes liveness upstream), client-
-                        to-server echoes, and v3-only kinds. Absorbed;
-                        still one frame of budget.
-                    */
-                    return null;
+                _events.TryEnqueue(translated.Event);
             }
         }
 
@@ -705,7 +396,7 @@ namespace SignalFish.Client.Polling
                     failure). The close frame delivery and the thrown
                     TransportClosedException carry the same code.
                 */
-                TransportClose close = new TransportClose(LivenessCloseCode);
+                TransportClose close = new TransportClose(FramePipeline.LivenessCloseCode);
                 if (pending.Exception?.InnerException is TransportClosedException closed)
                 {
                     close = closed.Close;
@@ -754,7 +445,7 @@ namespace SignalFish.Client.Polling
             if (now - _lastServerFrameMs >= _options.HeartbeatTimeoutMilliseconds)
             {
                 // No server frame within the liveness window: the session is dead.
-                Teardown(new TransportClose(LivenessCloseCode));
+                Teardown(new TransportClose(FramePipeline.LivenessCloseCode));
                 return;
             }
 
