@@ -200,10 +200,14 @@ namespace SignalFish.Client.Async
                 long now = _clock.ElapsedMilliseconds;
                 _lastServerFrameMs = now;
                 _lastPingMs = now;
-            }
+                _events.TryEnqueue(PollEvent.TransportReady());
 
-            _events.TryEnqueue(PollEvent.TransportReady());
-            _loopTask = RunLoopAsync(shutdown.Token);
+                /*
+                    Stored under the gate so DisposeAsync can never miss it.
+                    The loop parks before it needs the gate again.
+                */
+                _loopTask = RunLoopAsync(shutdown.Token);
+            }
         }
 
         /// <summary>
@@ -334,9 +338,10 @@ namespace SignalFish.Client.Async
         /// when the command queue is full, waits for a slot instead of
         /// failing fast, pacing the caller to actual transport throughput —
         /// the recommended shape for high-rate payloads. Returns the same
-        /// admission verdicts; if the session ends while waiting the
-        /// verdict is <see cref="AdmissionError.NotConnected"/> and the
-        /// payload is not queued.
+        /// admission verdicts; if the session ends while waiting, the
+        /// verdict is <see cref="AdmissionError.NotConnected"/> (a payload
+        /// already granted a slot during the wait stays queued but is
+        /// never sent — queued work is discarded with the connection).
         /// </summary>
         public async Task<CommandSend> SendGameDataReliableAsync(
             GameDataMessage message,
@@ -712,6 +717,14 @@ namespace SignalFish.Client.Async
                     completed the queue): the in-flight frame is superseded
                     by the terminal, whose delivery is guaranteed.
                 */
+                lock (_gate)
+                {
+                    if (_terminal)
+                    {
+                        return;
+                    }
+                }
+
                 await _events.EnqueueAsync(translated.Event).ConfigureAwait(false);
             }
         }
@@ -810,11 +823,16 @@ namespace SignalFish.Client.Async
                 The terminal event is not enqueued (a full queue could drop
                 it): DequeueEventAsync/TryDequeueEvent synthesize it
                 one-shot when the completed queue drains to end-of-stream,
-                so Disconnected is delivered exactly once, last, in every
-                teardown scenario. The staged shutdown (plan M4.3) bounds
-                the drain wait properly.
+                so Disconnected is delivered exactly once, last. Completing
+                under the gate closes the window where an in-flight frame
+                could still buffer after a consumer observed the terminal.
+                The staged shutdown (plan M4.3) bounds the drain wait.
             */
-            _events.Complete();
+            lock (_gate)
+            {
+                _events.Complete();
+            }
+
             SignalWake();
             _ = DisposeTransportQuietlyAsync();
         }

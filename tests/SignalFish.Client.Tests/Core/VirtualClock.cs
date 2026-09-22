@@ -34,7 +34,7 @@ namespace SignalFish.Client.Tests.Core
 
         public long ElapsedMilliseconds
         {
-            get { return _elapsedMilliseconds; }
+            get { return Volatile.Read(ref _elapsedMilliseconds); }
         }
 
         private readonly object _gate = new object();

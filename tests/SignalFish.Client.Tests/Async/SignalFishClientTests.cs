@@ -43,13 +43,21 @@ namespace SignalFish.Client.Tests.Async
         }
 
         [Test]
-        public async Task ConnectTwiceIsRejected()
+        public async Task ConnectTwiceIsRejectedByTheClient()
         {
-            SignalFishClient client = new SignalFishClient(new FakeTransport(), new VirtualClock());
+            (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed();
             await client.ConnectAsync(Endpoint());
-            Assert.ThrowsAsync<InvalidOperationException>(
+
+            InvalidOperationException rejected = Assert.ThrowsAsync<InvalidOperationException>(
                 (Func<Task>)(async () => await client.ConnectAsync(Endpoint()))
             );
+            Assert.That(
+                rejected.Message,
+                Does.Contain("ConnectAsync"),
+                "the client guard must reject, not the transport"
+            );
+            Assert.That(transport.ConnectCount, Is.EqualTo(1));
+
             await client.DisposeAsync();
         }
 
