@@ -41,7 +41,12 @@ closed the item.
   a live server, as designed.
 - `csharpier check`, `lint-file-sizes`, `lint-no-linq` green.
 - The drill's first live verification is this PR's `e2e` run (Docker is
-  unavailable locally).
+  unavailable locally). First live run caught a real miss: the drill
+  scenarios skipped the Authenticate handshake and the client's own
+  admission fence refused the join (`NotAuthenticated`) — fixed by routing
+  the proxied clients through the same handshake as every other scenario
+  (`ConnectProxiedAuthenticatedClientAsync`). Second live run: 9/9 green
+  (`conformance` on the PR).
 
 ## Deferred / follow-ups
 
