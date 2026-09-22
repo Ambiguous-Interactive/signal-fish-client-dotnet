@@ -7,8 +7,10 @@ scenario runs the real client stack — `SignalFishPollingClient` over
 
 Run it locally with Docker: `pwsh -NoProfile -File scripts/run-e2e.ps1`.
 CI runs the same suite whenever a PR or main push touches the client or
-the suite (`e2e.yml`, service container). All seven scenarios pass against
-the live server (first verified on PR #44's `e2e` run).
+the suite (`e2e.yml`, service container). The full checklist passes
+against the live server: items 1-6 and the client-side half of item 7
+were first verified on PR #44's `e2e` run; the bidirectional partition
+drill completes item 7 (first verified on this PR's `e2e` run).
 
 ## Checklist status
 
@@ -32,10 +34,15 @@ Checked items are covered by `tests/SignalFish.Client.E2E`
       `ROOM_NOT_FOUND` on a spectator join to a missing room.
 - [x] **Heartbeat** — a client pinging every second outlives the server's
       ping timeout in silence and still relays afterwards.
-- [ ] **Directional liveness** — the silent-client half is covered (a
-        client that stops writing is dropped by the server's reapers and
-        reaches a terminal session). The full bidirectional partition
-        drill (blocking each direction independently through a proxy)
-        remains open.
+- [x] **Directional liveness** — both halves through an in-process TCP
+      proxy (`PartitionProxy`): the silent-client half (a client that
+      stops writing is dropped by the server's reapers), a severed
+      client→server direction ending in the server's typed liveness close
+      (the server's diagnosis reaches the client through the still-open
+      reverse direction — never a synthetic 1006), and a severed
+      server→client direction that keeps carrying outbound relay
+      end-to-end until the client's own liveness clock declares death
+      (local 1006). Reconnect-after-partition lands with M4.4
+      reconnection.
 - [ ] Reconnect, v3 negotiation, v3 dynamics, v3 delivery classes, v3 gap
       lifecycle — land with their milestones (M4.4+, M6).

@@ -29,11 +29,16 @@ namespace SignalFish.Client.E2E
             }
         }
 
+        /// <summary>Gets the live server's base URL without a trailing slash.</summary>
+        internal static Uri BaseUrl
+        {
+            get { return new Uri(Environment.GetEnvironmentVariable(UrlVariable)!.TrimEnd('/')); }
+        }
+
         /// <summary>Gets the v2 relay-floor WebSocket endpoint of the live server.</summary>
         internal static Uri V2Endpoint()
         {
-            string baseUrl = Environment.GetEnvironmentVariable(UrlVariable)!.TrimEnd('/');
-            return new Uri(baseUrl + "/v2/ws");
+            return new Uri(BaseUrl, "v2/ws");
         }
     }
 
@@ -54,6 +59,36 @@ namespace SignalFish.Client.E2E
             );
             await client.ConnectAsync(E2EEnvironment.V2Endpoint()).ConfigureAwait(false);
             return client;
+        }
+
+        /// <summary>
+        /// Connects a client whose whole socket path runs through a fresh
+        /// in-process partition proxy (the caller disposes the proxy after
+        /// the client). The directional-liveness drill severs each proxy
+        /// direction to reproduce one-way partitions.
+        /// </summary>
+        internal static async Task<(
+            SignalFishPollingClient Client,
+            PartitionProxy Proxy
+        )> ConnectProxiedClientAsync(PollingClientOptions? options = null)
+        {
+            PartitionProxy proxy = PartitionProxy.Start(E2EEnvironment.BaseUrl);
+            try
+            {
+                WebSocketTransport transport = new WebSocketTransport();
+                SignalFishPollingClient client = new SignalFishPollingClient(
+                    transport,
+                    SystemClock.Instance,
+                    options
+                );
+                await client.ConnectAsync(proxy.ClientV2Endpoint()).ConfigureAwait(false);
+                return (client, proxy);
+            }
+            catch
+            {
+                await proxy.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
         }
 
         /// <summary>
