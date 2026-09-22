@@ -54,8 +54,12 @@ fixed a decoder bug (#54). One deliverable PR.
   the admission matrix caught a real parity subtlety —
   `RequestAuthority` is not one of the five directed ops, so
   unauthenticated queuing is `NotInRoom`, not `NotAuthenticated`.
-- CI-time: dotnet cells +~2 s (21 tests), e2e +~10 s (2 scenarios);
-  net-flat against the 1 m20 s / 1 m14 s mains.
+- CI-time: net-flat (conformance 1m17s vs 1m14s main; the two new E2E
+  scenarios cost seconds). First PR run caught two things the unit suite
+  cannot: the live server refuses a claim while any seat is held
+  (`AUTHORITY_CONFLICT`) — the scenario now walks the documented
+  release → vacated-null broadcast → claim flow, which also exercises
+  #54's nullable decode on the wire — and a "queueing/queuing" typo.
 
 ## Findings / decisions
 

@@ -370,17 +370,21 @@ namespace SignalFish.Client.E2E
                 Alice releases: the answer grants, and the room-wide
                 broadcast carries the vacated seat (authority_player null —
                 the spec-nullable form) with you_are_authority false for
-                everyone, including the releaser.
+                everyone, including the releaser. The two frames are
+                unordered, so both come from one combined wait.
             */
             Assert.That(alice.SendAuthorityRequest(false).Accepted, Is.True);
-            PollEvent aliceAnswer = await E2EHarness.WaitForEventAsync(
+            List<PollEvent> aliceEvents = await E2EHarness.WaitForEventsAsync(
                 alice,
-                e => e.Kind == PollEventKind.AuthorityResponse
+                e => e.Kind is PollEventKind.AuthorityResponse or PollEventKind.AuthorityChanged,
+                2
+            );
+            PollEvent aliceAnswer = aliceEvents.First(e =>
+                e.Kind == PollEventKind.AuthorityResponse
             );
             Assert.That(aliceAnswer.AuthorityResponse.Granted, Is.True);
-            PollEvent aliceRelease = await E2EHarness.WaitForEventAsync(
-                alice,
-                e => e.Kind == PollEventKind.AuthorityChanged
+            PollEvent aliceRelease = aliceEvents.First(e =>
+                e.Kind == PollEventKind.AuthorityChanged
             );
             Assert.That(aliceRelease.AuthorityChanged.AuthorityPlayer, Is.Null);
             Assert.That(aliceRelease.AuthorityChanged.YouAreAuthority, Is.False);
