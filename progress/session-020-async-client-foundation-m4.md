@@ -24,7 +24,7 @@ both directions.
   the Rust client's defaults). Fail-fast sends report `SendBufferFull`
   (added last in `AdmissionError` precedence, matching Rust);
   `SendGameDataReliableAsync` waits for a slot. A full event queue parks
-  the loop (never drops). Admission and queueing are one atomic step per
+  the loop (never drops). Admission and queuing are one atomic step per
   send on a single gate. Events dequeue via `DequeueEventAsync` (null after
   terminal) or `TryDequeueEvent`. `ISignalFishClock` gains `DelayAsync` so
   heartbeat/liveness run on the injected clock (virtual time stays

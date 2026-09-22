@@ -17,7 +17,7 @@ namespace SignalFish.Client.Async
     /// <see cref="SendGameDataReliableAsync"/> waits for a slot instead)
     /// and events through a bounded queue that never drops — a full event
     /// queue pauses the loop, which is the backpressure contract. Admission
-    /// (state machine) and queueing are one atomic step per send: a refused
+    /// (state machine) and queuing are one atomic step per send: a refused
     /// command never touches the wire and never wedges a fence. Frames are
     /// processed strictly in arrival order, so the event stream order is
     /// deterministic under concurrency. Reconnection stays manual (see the

@@ -15,26 +15,13 @@ changes (CI, tests, tooling, docs) are not listed.
   `SendGameDataReliableAsync` waits for a slot instead, pacing high-rate
   payloads to actual transport throughput) and events flow through a bounded
   queue that never drops — a full event queue pauses the loop, which is the
-  backpressure contract. Admission and queueing are one atomic step per
+  backpressure contract. Admission and queuing are one atomic step per
   send: a refused command never touches the wire and never wedges a fence.
   Events are dequeued with `DequeueEventAsync` (null after the terminal
   `Disconnected`) or `TryDequeueEvent`; the loop's timing runs on the
   injected clock, so virtual-time tests stay deterministic. The new
   `BoundedQueue<T>`/`IBoundedQueue<T>` pair behind it is channel-free and
   zero-dependency (benchmarked at parity with `System.Threading.Channels`).
-
-### Fixed
-
-- `JoinRoom` frames now reproduce the server's published canonical wire form:
-  `room_code` precedes `player_name`, and absent optionals (`room_code`,
-  `max_players`, `supports_authority`, `relay_transport`) are sent as explicit
-  `null`s exactly like the upstream golden samples. Decoding accepts both
-  forms, and `JoinAsSpectator`'s optional `password` decodes explicit `null`
-  as absent too. Found by re-vendoring the golden fixtures, which the server
-  extended to cover the full mandatory v2 message floor (`GameStarting`,
-  `RoomLeft`, and the typed failure family now have wire samples).
-
-### Added
 
 - Command-send surface on the polling client (M3.6):
   `SignalFishPollingClient` can now drive a full session —
@@ -94,6 +81,17 @@ changes (CI, tests, tooling, docs) are not listed.
   forward-compatible events. Zero allocations on known messages.
 - Protocol envelope encoding for every outbound v2/v3 client message.
   Byte-identical to the server's own wire samples.
+
+### Fixed
+
+- `JoinRoom` frames now reproduce the server's published canonical wire form:
+  `room_code` precedes `player_name`, and absent optionals (`room_code`,
+  `max_players`, `supports_authority`, `relay_transport`) are sent as explicit
+  `null`s exactly like the upstream golden samples. Decoding accepts both
+  forms, and `JoinAsSpectator`'s optional `password` decodes explicit `null`
+  as absent too. Found by re-vendoring the golden fixtures, which the server
+  extended to cover the full mandatory v2 message floor (`GameStarting`,
+  `RoomLeft`, and the typed failure family now have wire samples).
 
 [keep-a-changelog]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/spec/v2.0.0.html
