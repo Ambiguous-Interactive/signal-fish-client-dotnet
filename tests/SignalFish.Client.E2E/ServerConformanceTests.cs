@@ -415,7 +415,7 @@ namespace SignalFish.Client.E2E
                 direction. CI runs the server with ~3 s liveness timers.
             */
             (SignalFishPollingClient silent, PartitionProxy proxy) =
-                await E2EHarness.ConnectProxiedClientAsync(
+                await E2EHarness.ConnectProxiedAuthenticatedClientAsync(
                     new PollingClientOptions(
                         heartbeatIntervalMilliseconds: int.MaxValue,
                         heartbeatTimeoutMilliseconds: int.MaxValue
@@ -466,7 +466,7 @@ namespace SignalFish.Client.E2E
                 verdict — the 1006 liveness close, not a server code.
             */
             (SignalFishPollingClient alice, PartitionProxy proxy) =
-                await E2EHarness.ConnectProxiedClientAsync(
+                await E2EHarness.ConnectProxiedAuthenticatedClientAsync(
                     new PollingClientOptions(
                         heartbeatIntervalMilliseconds: 500,
                         heartbeatTimeoutMilliseconds: 2_000

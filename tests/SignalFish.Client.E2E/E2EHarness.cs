@@ -102,19 +102,34 @@ namespace SignalFish.Client.E2E
         {
             SignalFishPollingClient client = await ConnectClientAsync(options)
                 .ConfigureAwait(false);
-            CommandSend send = client.SendAuthenticate(
-                new AuthenticateMessage(appId: "e2e-dotnet-app")
-            );
-            if (!send.Accepted)
-            {
-                throw new InvalidOperationException($"Authenticate refused: {send.Refusal}");
-            }
-
-            await WaitForEventAsync(client, e => e.Kind == PollEventKind.Authenticated)
-                .ConfigureAwait(false);
-            await WaitForEventAsync(client, e => e.Kind == PollEventKind.ProtocolInfo)
-                .ConfigureAwait(false);
+            await HandshakeAsync(client).ConfigureAwait(false);
             return client;
+        }
+
+        /// <summary>
+        /// The proxied connect plus the handshake (see
+        /// <see cref="ConnectAuthenticatedClientAsync"/>): the drill
+        /// scenarios join through it, so the client's admission fence is
+        /// satisfied before the partition starts.
+        /// </summary>
+        internal static async Task<(
+            SignalFishPollingClient Client,
+            PartitionProxy Proxy
+        )> ConnectProxiedAuthenticatedClientAsync(PollingClientOptions? options = null)
+        {
+            (SignalFishPollingClient client, PartitionProxy proxy) =
+                await ConnectProxiedClientAsync(options).ConfigureAwait(false);
+            try
+            {
+                await HandshakeAsync(client).ConfigureAwait(false);
+                return (client, proxy);
+            }
+            catch
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+                await proxy.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
         }
 
         /// <summary>Polls until the matching event arrives; a timeout fails with the phase.</summary>
@@ -259,6 +274,23 @@ namespace SignalFish.Client.E2E
             }
 
             return null;
+        }
+
+        /// <summary>Authenticates and waits for the handshake's two answers.</summary>
+        private static async Task HandshakeAsync(SignalFishPollingClient client)
+        {
+            CommandSend send = client.SendAuthenticate(
+                new AuthenticateMessage(appId: "e2e-dotnet-app")
+            );
+            if (!send.Accepted)
+            {
+                throw new InvalidOperationException($"Authenticate refused: {send.Refusal}");
+            }
+
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.Authenticated)
+                .ConfigureAwait(false);
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.ProtocolInfo)
+                .ConfigureAwait(false);
         }
     }
 }
