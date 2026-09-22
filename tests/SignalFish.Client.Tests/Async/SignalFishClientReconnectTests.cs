@@ -637,7 +637,8 @@ namespace SignalFish.Client.Tests.Async
         private SignalFishClient BuildPolicyClient(
             FakeTransport initial,
             ReconnectPolicy policy,
-            int eventCapacity = SignalFishClientOptions.DefaultEventCapacity
+            int eventCapacity = SignalFishClientOptions.DefaultEventCapacity,
+            int commandCapacity = SignalFishClientOptions.DefaultCommandCapacity
         )
         {
             _clock = new VirtualClock();
@@ -646,6 +647,7 @@ namespace SignalFish.Client.Tests.Async
                 _clock,
                 new SignalFishClientOptions(
                     eventCapacity: eventCapacity,
+                    commandCapacity: commandCapacity,
                     shutdownTimeoutMilliseconds: 0,
                     reconnectPolicy: policy
                 )
@@ -723,6 +725,92 @@ namespace SignalFish.Client.Tests.Async
             }
 
             Assert.That(done, Is.True, because);
+        }
+
+        [Test]
+        public async Task RefusedReclaimRecoversWhenTheSendQueueFrees()
+        {
+            TransportFactory factory = new TransportFactory();
+            FakeTransport first = factory.Create();
+            SignalFishClient client = BuildPolicyClient(
+                first,
+                new ReconnectPolicy(
+                    factory.Create,
+                    initialBackoffMilliseconds: 0,
+                    maxBackoffMilliseconds: 0
+                ),
+                commandCapacity: 1
+            );
+            await ConnectJoinRoomAsync(client, first);
+
+            first.FailPendingReceive(4003);
+            Assert.That(
+                (await NextEventAsync(client)).Kind,
+                Is.EqualTo(PollEventKind.Disconnected)
+            );
+            Assert.That(
+                (await NextEventAsync(client)).Kind,
+                Is.EqualTo(PollEventKind.Reconnecting)
+            );
+
+            await AdvanceUntilAsync(client, () => factory.Called >= 2, "round 2 opens");
+            FakeTransport second = factory.Last!;
+            Assert.That(
+                (await NextEventAsync(client)).Kind,
+                Is.EqualTo(PollEventKind.TransportReady)
+            );
+            await WaitForAsync(
+                () => second.SentText.Count >= 1,
+                "auto-authenticate occupies the capacity-1 queue"
+            );
+
+            /*
+                Refill the queue so the reclaim is refused (SendBufferFull)
+                at the Authenticated fact: the driver must keep making
+                progress — drain, then retry — instead of spinning on the
+                same-condition restart.
+            */
+            Assert.That(client.SendAuthenticate(new AuthenticateMessage()).Accepted, Is.True);
+            EnqueueGolden(second, "Authenticated");
+            Assert.That(
+                (await NextEventAsync(client)).Kind,
+                Is.EqualTo(PollEventKind.Authenticated)
+            );
+
+            await WaitForAsync(
+                () => second.SentText.Count >= 3,
+                "the reclaim retries after the queue drains and reaches the wire"
+            );
+            Assert.That(
+                second.SentText[2],
+                Is.EqualTo(ExpectedReconnectFrame("seat-token-1")),
+                "the refused reclaim is retried with the retained seat"
+            );
+
+            second.Enqueue(Encoding.UTF8.GetBytes(ReconnectedFrame("seat-token-2")), isText: true);
+            try
+            {
+                PollEvent reconnected = await NextEventAsync(client);
+                Assert.That(reconnected.Kind, Is.EqualTo(PollEventKind.Reconnected));
+            }
+            catch (System.Threading.Tasks.TaskCanceledException)
+            {
+                Assert.Fail(
+                    "no Reconnected event. phase="
+                        + client.Phase
+                        + " pendingEvents="
+                        + client.PendingEventCount
+                        + " sendCapacity="
+                        + client.SendCapacity
+                        + " wire2=["
+                        + string.Join(" | ", second.SentText)
+                        + "]"
+                );
+            }
+
+            Assert.That(client.Snapshot.ReconnectionToken, Is.EqualTo("seat-token-2"));
+
+            await client.DisposeAsync();
         }
 
         [Test]

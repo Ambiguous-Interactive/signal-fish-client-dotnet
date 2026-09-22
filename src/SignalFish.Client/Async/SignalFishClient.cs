@@ -863,10 +863,7 @@ namespace SignalFish.Client.Async
                         break;
                     }
 
-                    if (TryIssueAutoReconnect())
-                    {
-                        continue;
-                    }
+                    TryIssueAutoReconnect();
 
                     await DrainCommandsAsync().ConfigureAwait(false);
                     if (_terminal || _severed)
@@ -959,11 +956,13 @@ namespace SignalFish.Client.Async
 
         /// <summary>
         /// Consumes a retained seat once the fresh connection reaches the
-        /// authenticated phase: the same directed reconnect the manual
-        /// procedure prescribes. True when the command was issued (the
-        /// caller restarts the round iteration).
+        /// authenticated phase and no directed operation is in flight: the
+        /// same directed reconnect the manual procedure prescribes. The
+        /// call never restarts the caller's iteration — a refused reclaim
+        /// keeps the seat and retries are paced by later iterations (a
+        /// frame, a wake, a heartbeat), never by a same-condition spin.
         /// </summary>
-        private bool TryIssueAutoReconnect()
+        private void TryIssueAutoReconnect()
         {
             ReconnectMessage? seat = null;
             lock (_gate)
@@ -976,18 +975,30 @@ namespace SignalFish.Client.Async
                     && _machine.IsAuthenticated
                 )
                 {
-                    _autoSeatPending = false;
-                    seat = new ReconnectMessage(
-                        _autoSeat.PlayerId.ToString(),
-                        _autoSeat.RoomId.ToString(),
-                        _autoSeat.Token
-                    );
+                    if (_machine.Membership.IsPresent)
+                    {
+                        /*
+                            A confirmed membership this round did not reclaim
+                            (a deliberate application join) supersedes the
+                            retained seat.
+                        */
+                        _autoSeatPending = false;
+                    }
+                    else if (_machine.PendingOperation == default(PendingRoomOperation))
+                    {
+                        _autoSeatPending = false;
+                        seat = new ReconnectMessage(
+                            _autoSeat.PlayerId.ToString(),
+                            _autoSeat.RoomId.ToString(),
+                            _autoSeat.Token
+                        );
+                    }
                 }
             }
 
             if (seat is null)
             {
-                return false;
+                return;
             }
 
             CommandSend verdict;
@@ -1001,13 +1012,13 @@ namespace SignalFish.Client.Async
                     Disposal raced the issue; the attempt is lost with the
                     round, like any command still queued at the death.
                 */
-                return true;
+                return;
             }
 
             /*
-                A refused reclaim (a racing application join took the fence,
-                for example) never went out: the seat stays retained for a
-                later round instead of being dropped with this one.
+                A refused reclaim (a full send queue, for example) never
+                went out: the seat stays retained for a later iteration
+                instead of being dropped with this round.
             */
             if (!verdict.Accepted)
             {
@@ -1016,8 +1027,6 @@ namespace SignalFish.Client.Async
                     _autoSeatPending = true;
                 }
             }
-
-            return true;
         }
 
         /// <summary>
