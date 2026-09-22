@@ -17,6 +17,9 @@ namespace SignalFish.Client.Transport
     /// frames never reach the wire. Concurrency: single reader, one
     /// semaphore-guarded writer, atomic state transitions (no
     /// check-then-act), close surfaced exactly once, idempotent dispose.
+    /// Dispose initiates the WebSocket close handshake (close-out code 1000)
+    /// with a short bounded wait, so the server observes a client-initiated
+    /// close instead of a TCP abort; any fault falls back to the abort.
     /// </summary>
     public sealed class WebSocketTransport : ITransport
     {
@@ -36,6 +39,8 @@ namespace SignalFish.Client.Transport
         private const int AbnormalCloseCode = 1006;
         private const int ProbeTimeoutMilliseconds = 3_000;
         private const int MaxProbeResponseBytes = 64 * 1024;
+        private const int CloseHandshakeWaitMilliseconds = 500;
+        private const int CloseHandshakePollMilliseconds = 5;
 
         private const string ClientConfigPathSuffix = "client-config";
         private const string MaxOutboundKey = "max_outbound_message_size";
@@ -43,6 +48,7 @@ namespace SignalFish.Client.Transport
         private int _state = StateCreated;
         private int _closeCode;
         private int _readerActive;
+        private int _handshakeActive;
         private int _maxReceiveBytes = DefaultServerMaxOutboundBytes;
 
         private ClientWebSocket? _socket;
@@ -224,15 +230,97 @@ namespace SignalFish.Client.Transport
         }
 
         /// <inheritdoc />
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
-            if (TransitionToDisposed())
+            int previous = TransitionToDisposed();
+            if (previous == StateDisposed)
             {
-                Interlocked.CompareExchange(ref _closeCode, AbnormalCloseCode, 0);
-                ReleaseResources();
+                return;
             }
 
-            return default;
+            if (previous == StateConnected)
+            {
+                await TryCloseHandshakeAsync().ConfigureAwait(false);
+            }
+
+            Interlocked.CompareExchange(ref _closeCode, AbnormalCloseCode, 0);
+            ReleaseResources();
+        }
+
+        /// <summary>
+        /// The best-effort close handshake: sends the close output frame
+        /// (code 1000, no reason) so the server observes a client-initiated
+        /// close, then gives an active reader the bounded echo window (its
+        /// pending receive completes the handshake and records the observed
+        /// code). Every failure mode — a held send gate, a dead wire, a
+        /// raced release — falls back to the aborting resource release.
+        /// </summary>
+        private async Task TryCloseHandshakeAsync()
+        {
+            Volatile.Write(ref _handshakeActive, 1);
+            try
+            {
+                ClientWebSocket? socket = _socket;
+                if (socket is null)
+                {
+                    return;
+                }
+
+                CancellationTokenSource budget = new CancellationTokenSource(
+                    CloseHandshakeWaitMilliseconds
+                );
+                try
+                {
+                    await _sendGate.WaitAsync(budget.Token).ConfigureAwait(false);
+                    try
+                    {
+                        if (ReferenceEquals(_socket, socket))
+                        {
+                            await socket
+                                .CloseOutputAsync(
+                                    WebSocketCloseStatus.NormalClosure,
+                                    string.Empty,
+                                    budget.Token
+                                )
+                                .ConfigureAwait(false);
+                        }
+                    }
+                    finally
+                    {
+                        _sendGate.Release();
+                    }
+
+                    /*
+                        Only a pending receive can consume the server's echo;
+                        without one the wait would be dead time, so it runs
+                        only while a reader is in flight, and ends the moment
+                        that receive delivers the terminal close frame.
+                    */
+                    while (
+                        Volatile.Read(ref _readerActive) == 1
+                        && !Volatile.Read(ref _closeFrameDelivered)
+                    )
+                    {
+                        await Task.Delay(CloseHandshakePollMilliseconds, budget.Token)
+                            .ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    budget.Dispose();
+                }
+            }
+            catch (Exception)
+            {
+                /*
+                    The handshake is a courtesy; the aborting release below
+                    is always safe and always runs.
+                */
+            }
+            finally
+            {
+                Volatile.Write(ref _handshakeActive, 0);
+            }
         }
 
         private async ValueTask<TransportFrame> ReceiveCoreAsync(CancellationToken ct)
@@ -358,26 +446,36 @@ namespace SignalFish.Client.Transport
             _probeClient = null;
             socket?.Dispose();
             probeClient?.Dispose();
-            try
+
+            /*
+                The close handshake holds or waits on the send gate; the
+                dispose path re-runs this release after the handshake
+                clears its flag, so the overlap never disposes a semaphore
+                that is still in use.
+            */
+            if (Volatile.Read(ref _handshakeActive) == 0)
             {
-                _sendGate.Dispose();
+                try
+                {
+                    _sendGate.Dispose();
+                }
+                catch (ObjectDisposedException) { }
             }
-            catch (ObjectDisposedException) { }
         }
 
-        private bool TransitionToDisposed()
+        /// <summary>
+        /// Atomically moves any state to <see cref="StateDisposed"/> and
+        /// returns the state seen before the move (the first caller wins;
+        /// later callers observe <see cref="StateDisposed"/>).
+        /// </summary>
+        private int TransitionToDisposed()
         {
             while (true)
             {
                 int seen = Volatile.Read(ref _state);
-                if (seen == StateDisposed)
-                {
-                    return false;
-                }
-
                 if (Interlocked.CompareExchange(ref _state, StateDisposed, seen) == seen)
                 {
-                    return true;
+                    return seen;
                 }
             }
         }

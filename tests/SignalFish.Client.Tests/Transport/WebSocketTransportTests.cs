@@ -328,6 +328,72 @@ namespace SignalFish.Client.Tests.Transport
             );
         }
 
+        [Test]
+        public async Task DisposeSendsTheWebSocketCloseFrameCode1000()
+        {
+            await using TestWsServer server = TestWsServer.Start(null);
+            WebSocketTransport transport = new WebSocketTransport();
+            await transport.ConnectAsync(ServerUri(server.Port), TestToken());
+            TestWsConnection connection = await server.WaitForConnectionAsync(TestToken());
+
+            await transport.DisposeAsync();
+
+            TestWsFrame close = await connection.ReceiveFrameAsync(TestToken());
+            Assert.That(close.Opcode, Is.EqualTo(0x8));
+            Assert.That(close.Payload, Is.EqualTo(new byte[] { 0x03, 0xE8 }));
+        }
+
+        [Test]
+        public async Task DisposeWithAParkedReceiveCompletesTheCloseHandshake()
+        {
+            await using TestWsServer server = TestWsServer.Start(null);
+            WebSocketTransport transport = new WebSocketTransport();
+            await transport.ConnectAsync(ServerUri(server.Port), TestToken());
+            TestWsConnection connection = await server.WaitForConnectionAsync(TestToken());
+
+            Task<TransportFrame> pending = transport.ReceiveAsync(TestToken()).AsTask();
+
+            /*
+                The echo must race the bounded handshake window, like a real
+                server: read the client close-out, reply with 1000 while
+                DisposeAsync is still waiting for it.
+            */
+            Task serverEcho = Task.Run(async () =>
+            {
+                TestWsFrame closeOut = await connection.ReceiveFrameAsync(TestToken());
+                Assert.That(closeOut.Opcode, Is.EqualTo(0x8));
+                Assert.That(closeOut.Payload, Is.EqualTo(new byte[] { 0x03, 0xE8 }));
+                await connection.SendCloseAsync(1000);
+            });
+
+            await transport.DisposeAsync();
+            await serverEcho;
+
+            TransportFrame echo = await pending;
+            Assert.That(echo.IsClose, Is.True);
+            Assert.That(echo.Close.Code, Is.EqualTo(1000));
+        }
+
+        [Test]
+        public async Task DisposeWithoutEchoCompletesPromptly()
+        {
+            await using TestWsServer server = TestWsServer.Start(null);
+            WebSocketTransport transport = new WebSocketTransport();
+            await transport.ConnectAsync(ServerUri(server.Port), TestToken());
+            TestWsConnection connection = await server.WaitForConnectionAsync(TestToken());
+
+            long startMs = Environment.TickCount64;
+            await transport.DisposeAsync();
+
+            Assert.That(
+                Environment.TickCount64 - startMs,
+                Is.LessThan(5_000),
+                "the close-handshake wait must stay bounded"
+            );
+            TestWsFrame close = await connection.ReceiveFrameAsync(TestToken());
+            Assert.That(close.Opcode, Is.EqualTo(0x8));
+        }
+
         private static CancellationToken TestToken()
         {
             CancellationTokenSource cts = new CancellationTokenSource(TestTimeout);
