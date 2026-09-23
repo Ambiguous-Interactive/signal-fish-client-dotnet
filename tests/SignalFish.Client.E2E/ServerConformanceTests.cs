@@ -14,11 +14,18 @@ namespace SignalFish.Client.E2E
     /// — SignalFishPollingClient over WebSocketTransport — against the live
     /// server. Every scenario runs in open mode (no allowlist): item 1
     /// exercises the optional-first-Authenticate policy, the rest start
-    /// with JoinRoom.
+    /// with JoinRoom. Scenarios are fully isolated (unique game names and
+    /// rooms, own connections), so they run in parallel: the suite is
+    /// I/O-bound waiting on the server, and the wall clock drops to the
+    /// slowest scenario instead of the sum.
     /// </summary>
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class ServerConformanceTests
     {
+        private static readonly string[] RelayOnlyTransports = { "relay" };
+        private static readonly string[] RelayOnlyTopologies = { "relay" };
+
         [OneTimeSetUp]
         public void RequireLiveServer()
         {
@@ -90,6 +97,62 @@ namespace SignalFish.Client.E2E
 
             await alice.DisposeAsync();
             await bob.DisposeAsync();
+        }
+
+        /// <summary>
+        /// v3 negotiation (M6.1): the /v2 endpoint keeps the relay floor
+        /// (no negotiated version), while a /v3 Authenticate advertising
+        /// v3 gets the cap-down result echoed in the extended
+        /// <c>ProtocolInfo</c> — mirrored on the client snapshot.
+        /// </summary>
+        [Test]
+        public async Task V3NegotiationEchoesTheCappedDownResult()
+        {
+            // The v2 floor: no protocol_version on the wire, none negotiated.
+            SignalFishPollingClient v2 = await E2EHarness.ConnectClientAsync();
+            Assert.That(
+                v2.SendAuthenticate(new AuthenticateMessage(appId: "e2e-dotnet-app")).Accepted,
+                Is.True
+            );
+            PollEvent v2Info = await E2EHarness.WaitForEventAsync(
+                v2,
+                e => e.Kind == PollEventKind.ProtocolInfo
+            );
+            Assert.That(v2Info.ProtocolInfo.ProtocolVersion, Is.Null);
+            Assert.That(v2.Snapshot.NegotiatedProtocolVersion, Is.Null);
+            await v2.DisposeAsync();
+
+            // The v3 advertisement: relay-only capability, negotiated v3.
+            SignalFishPollingClient v3 = await E2EHarness.ConnectClientAsync(
+                E2EEnvironment.V3Endpoint()
+            );
+            CommandSend send = v3.SendAuthenticate(
+                new AuthenticateMessage(
+                    appId: "e2e-dotnet-app",
+                    protocolVersion: 3,
+                    supportedTransports: RelayOnlyTransports,
+                    supportedTopologies: RelayOnlyTopologies
+                )
+            );
+            Assert.That(send.Accepted, Is.True);
+            await E2EHarness.WaitForEventAsync(v3, e => e.Kind == PollEventKind.Authenticated);
+            PollEvent v3Info = await E2EHarness.WaitForEventAsync(
+                v3,
+                e => e.Kind == PollEventKind.ProtocolInfo
+            );
+            Assert.That(v3Info.ProtocolInfo.ProtocolVersion, Is.EqualTo(3u));
+            Assert.That(
+                v3Info.ProtocolInfo.MinProtocolVersion,
+                Is.GreaterThanOrEqualTo(2u),
+                "the deployment's minimum must not exceed the negotiated result"
+            );
+            Assert.That(
+                v3Info.ProtocolInfo.MaxProtocolVersion,
+                Is.GreaterThanOrEqualTo(3u),
+                "the server must not raise the client above its advertised maximum"
+            );
+            Assert.That(v3.Snapshot.NegotiatedProtocolVersion, Is.EqualTo(3u));
+            await v3.DisposeAsync();
         }
 
         /// <summary>Item 2: two-player lobby, all-ready, start, GameStarting.</summary>
@@ -458,13 +521,15 @@ namespace SignalFish.Client.E2E
             await E2EHarness.JoinRoomAsync(bob, gameName, "bob", roomCode: alice.Snapshot.RoomCode);
 
             /*
-                Both seats poll once a second (their heartbeats ride the
-                polls) with no game traffic: after 6 s of gameplay silence
-                — twice the server's ping timeout — both seats are alive.
+                Both seats poll four times a second (their heartbeats ride
+                the polls) with no game traffic: after 6 s of gameplay
+                silence — twice the server's ping timeout — both seats are
+                alive. The fine cadence keeps the ping schedule resilient
+                to scheduler stretches under the parallel suite.
             */
-            for (int second = 0; second < 6; second++)
+            for (int tick = 0; tick < 24; tick++)
             {
-                await Task.Delay(1_000);
+                await Task.Delay(250);
                 alice.Poll();
                 bob.Poll();
             }
