@@ -8,6 +8,20 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- v3 protocol negotiation (M6.1): `SignalFishClientOptions` accepts a
+  `ProtocolVersion` plus optional `SupportedTransports`,
+  `SupportedTopologies`, and `RequestedCapabilities` — every automatic
+  reconnect round advertises them, so a revived connection negotiates the
+  same capabilities as the caller's first handshake. The server's cap-down
+  echo arrives in the extended `ProtocolInfo` (now decoded: negotiated
+  version, min/max, transports, outbound size bound; absent on the v2
+  floor) and is tracked per connection: `ClientSnapshot.NegotiatedProtocolVersion`
+  reads null before negotiation or on the v2 floor, matching the Rust
+  client. The state machine also gained the `ProtocolUnsupported`
+  admission refusal that v3-only sends will check — every command
+  currently defined is v2, and a sweep pins that (the gate activates with
+  the first v3 send in M6.2/M6.5).
+
 - Authentication credentials (M5.3): `SignalFishClientOptions` accepts
   `AppId` and an optional `ConnectToken` (a tenant credential, redacted to
   presence in `ToString`), with `SdkVersion`/`Platform` defaulting from

@@ -25,6 +25,14 @@ namespace SignalFish.Client.Tests.Async
     public class SignalFishClientTests
     {
         private static readonly Guid SenderId = new Guid("00000000-0000-0000-0000-00000000000b");
+        private static readonly string[] RelayOnlyTransports = { "relay" };
+        private static readonly string[] DirectOnlyTransports = { "direct" };
+        private static readonly string[] RelayAndEmptyTransports = { "relay", "" };
+        private static readonly string[] CapabilitiesWithNullToken =
+        {
+            "room_operation_ids",
+            null!,
+        };
 
         [Test]
         public async Task ConnectEmitsTransportReadyOnce()
@@ -556,6 +564,86 @@ namespace SignalFish.Client.Tests.Async
                 new SignalFishClientOptions().ToString(),
                 Does.Contain("ConnectToken=<none>")
             );
+        }
+
+        [Test]
+        public void OptionsToStringDescribesTheNegotiationAdvertisement()
+        {
+            string text = new SignalFishClientOptions(
+                protocolVersion: 3,
+                supportedTransports: RelayOnlyTransports
+            ).ToString();
+            Assert.That(text, Does.Contain("ProtocolVersion=3"));
+            Assert.That(text, Does.Contain("SupportedTransports=[relay]"));
+            Assert.That(
+                new SignalFishClientOptions().ToString(),
+                Does.Contain("SupportedTransports=<none>")
+            );
+        }
+
+        // --- Options validation: fail fast, never mid-handshake -------------
+        [Test]
+        public void OptionsRejectUnfulfillableTransportAdvertisements()
+        {
+            Assert.That(
+                (Action)(
+                    () =>
+                        _ = new SignalFishClientOptions(supportedTransports: Array.Empty<string>())
+                ),
+                Throws.ArgumentException
+            );
+            Assert.That(
+                (Action)(
+                    () => _ = new SignalFishClientOptions(supportedTransports: DirectOnlyTransports)
+                ),
+                Throws.ArgumentException
+            );
+            Assert.That(
+                (Action)(
+                    () =>
+                        _ = new SignalFishClientOptions(
+                            supportedTransports: RelayAndEmptyTransports
+                        )
+                ),
+                Throws.ArgumentException
+            );
+            string[] withNull = { "relay", null! };
+            ArgumentException refused = Assert.Throws<ArgumentException>(
+                (Action)(() => _ = new SignalFishClientOptions(supportedTransports: withNull))
+            );
+            Assert.That(refused.ParamName, Is.EqualTo("supportedTransports"));
+        }
+
+        [Test]
+        public void OptionsRejectEmptyOrTokenlessTopologyAndCapabilityLists()
+        {
+            Assert.That(
+                (Action)(
+                    () =>
+                        _ = new SignalFishClientOptions(supportedTopologies: Array.Empty<string>())
+                ),
+                Throws.ArgumentException
+            );
+            Assert.That(
+                (Action)(
+                    () =>
+                        _ = new SignalFishClientOptions(
+                            requestedCapabilities: CapabilitiesWithNullToken
+                        )
+                ),
+                Throws.ArgumentException
+            );
+        }
+
+        [Test]
+        public void OptionsSnapshotTheAdvertisementListsAgainstCallerMutation()
+        {
+            string[] transports = { "relay", "direct" };
+            SignalFishClientOptions options = new SignalFishClientOptions(
+                supportedTransports: transports
+            );
+            transports[1] = "webrtc";
+            Assert.That(options.SupportedTransports![1], Is.EqualTo("direct"));
         }
 
         private static GameDataMessage Payload(int index)

@@ -24,17 +24,26 @@ namespace SignalFish.Client.Core
         /// </summary>
         public bool IsAuthority { get; }
 
+        /// <summary>
+        /// Negotiated protocol version; meaningful only for
+        /// <see cref="SessionEventKind.ProtocolInfo"/> (null on a v2
+        /// negotiation — the extended fields are omitted on that wire).
+        /// </summary>
+        public uint? NegotiatedProtocolVersion { get; }
+
         private SessionEvent(
             SessionEventKind kind,
             RoomMembership membership,
             string? reconnectionToken,
-            bool isAuthority
+            bool isAuthority,
+            uint? negotiatedProtocolVersion = null
         )
         {
             Kind = kind;
             Membership = membership;
             ReconnectionToken = reconnectionToken;
             IsAuthority = isAuthority;
+            NegotiatedProtocolVersion = negotiatedProtocolVersion;
         }
 
         /// <summary>Creates an event with no payload (liveness, failures, teardown).</summary>
@@ -71,6 +80,21 @@ namespace SignalFish.Client.Core
             );
         }
 
+        /// <summary>
+        /// Creates the negotiation-echo event. A null version is a v2
+        /// negotiation (the extended <c>ProtocolInfo</c> fields are absent).
+        /// </summary>
+        public static SessionEvent ProtocolInfo(uint? negotiatedProtocolVersion)
+        {
+            return new SessionEvent(
+                SessionEventKind.ProtocolInfo,
+                default,
+                null,
+                false,
+                negotiatedProtocolVersion
+            );
+        }
+
         public static bool operator ==(SessionEvent left, SessionEvent right)
         {
             return left.Equals(right);
@@ -86,6 +110,7 @@ namespace SignalFish.Client.Core
             return Kind == other.Kind
                 && Membership == other.Membership
                 && IsAuthority == other.IsAuthority
+                && NegotiatedProtocolVersion == other.NegotiatedProtocolVersion
                 && string.Equals(
                     ReconnectionToken,
                     other.ReconnectionToken,
@@ -106,6 +131,7 @@ namespace SignalFish.Client.Core
                 hash = (hash * 31) + (int)Kind;
                 hash = (hash * 31) + Membership.GetHashCode();
                 hash = (hash * 31) + IsAuthority.GetHashCode();
+                hash = (hash * 31) + NegotiatedProtocolVersion.GetHashCode();
                 hash =
                     (hash * 31) + (ReconnectionToken?.GetHashCode(StringComparison.Ordinal) ?? 0);
                 return hash;

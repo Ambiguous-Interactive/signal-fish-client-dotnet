@@ -57,5 +57,12 @@ namespace SignalFish.Client.Core
 
         /// <summary>Authority moved (carries whether this connection holds it).</summary>
         AuthorityChanged = 13,
+
+        /// <summary>
+        /// Server negotiation echo (carries the negotiated protocol
+        /// version; null on a v2 negotiation). Per-connection: cleared at
+        /// teardown and re-echoed on every new connection.
+        /// </summary>
+        ProtocolInfo = 14,
     }
 }

@@ -53,10 +53,16 @@ Checked items are covered by `tests/SignalFish.Client.E2E`
       hands the seat to a claiming player (`AuthorityResponse` +
       `AuthorityChanged`, mirrored in both snapshots) and only the holder
       can start the game (`GAME_START_FORBIDDEN` for the old authority).
-- [ ] Reconnect, v3 negotiation, v3 dynamics, v3 delivery classes, v3 gap
-      lifecycle — land with their milestones (M4.4+, M6). Floor note: the
-      reconnection token rides `RoomJoined`/`Reconnected` only on v3+
-      deployments (the v2 wire omits it — `docs/concepts/reconnection.md`
-      in the server repo), so the *live-server* reconnection scenario
-      waits for the v3 E2E work (M6.6); the v2-floor procedure is fully
-      covered by the golden-driven integration tests.
+- [x] **v3 negotiation** (M6.1) — the `/v2` endpoint keeps the relay floor
+      (extended `ProtocolInfo` fields absent, nothing negotiated), while a
+      `/v3` `Authenticate` advertising v3 receives the capped-down result
+      in the extended `ProtocolInfo` (negotiated version + min/max +
+      transports + outbound bound), mirrored on the client snapshot.
+      Floor note: the reconnection token
+      rides `RoomJoined`/`Reconnected` only on v3+ deployments (the v2
+      wire omits it — `docs/concepts/reconnection.md` in the server
+      repo), so the *live-server* reconnection scenario waits for the v3
+      E2E work (M6.6); the v2-floor procedure is fully covered by the
+      golden-driven integration tests.
+- [ ] Reconnect (live), v3 dynamics, v3 delivery classes, v3 gap lifecycle
+      — land with their milestones (M6.2+, M6.6).

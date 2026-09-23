@@ -40,6 +40,12 @@ namespace SignalFish.Client.E2E
         {
             return new Uri(BaseUrl, "v2/ws");
         }
+
+        /// <summary>Gets the v3 negotiation WebSocket endpoint of the live server.</summary>
+        internal static Uri V3Endpoint()
+        {
+            return new Uri(BaseUrl, "v3/ws");
+        }
     }
 
     /// <summary>Shared driving helpers for the conformance scenarios.</summary>
@@ -51,13 +57,23 @@ namespace SignalFish.Client.E2E
             PollingClientOptions? options = null
         )
         {
+            return await ConnectClientAsync(E2EEnvironment.V2Endpoint(), options)
+                .ConfigureAwait(false);
+        }
+
+        /// <summary>Connects to the given endpoint (v2 floor or v3 negotiation).</summary>
+        internal static async Task<SignalFishPollingClient> ConnectClientAsync(
+            Uri endpoint,
+            PollingClientOptions? options = null
+        )
+        {
             WebSocketTransport transport = new WebSocketTransport();
             SignalFishPollingClient client = new SignalFishPollingClient(
                 transport,
                 SystemClock.Instance,
                 options
             );
-            await client.ConnectAsync(E2EEnvironment.V2Endpoint()).ConfigureAwait(false);
+            await client.ConnectAsync(endpoint).ConfigureAwait(false);
             return client;
         }
 

@@ -30,6 +30,10 @@ namespace SignalFish.Client.Tests.Async
     [TestFixture]
     public class SignalFishClientReconnectTests
     {
+        private static readonly string[] V3AdvertisedTransports = { "relay", "direct", "webrtc" };
+        private static readonly string[] V3AdvertisedTopologies = { "relay", "host", "mesh" };
+        private static readonly string[] V3RequestedCapabilities = { "room_operation_ids" };
+
         private static readonly Guid GoldenPlayerId = new Guid(
             "00000000-0000-0000-0000-00000000000a"
         );
@@ -680,13 +684,69 @@ namespace SignalFish.Client.Tests.Async
             await client.DisposeAsync();
         }
 
+        [Test]
+        public async Task ReconnectHandshakeCarriesTheNegotiationAdvertisement()
+        {
+            /*
+                A v3 session that dies must re-advertise on the fresh
+                connection: without the v3 fields the server would negotiate
+                the new round down to the v2 relay floor. The expected bytes
+                are the vendored v3 Authenticate sample itself, so the
+                options → handshake → encoder chain is pinned byte-exactly.
+            */
+            TransportFactory factory = new TransportFactory();
+            FakeTransport first = factory.Create();
+            SignalFishClient client = BuildPolicyClient(
+                first,
+                new ReconnectPolicy(
+                    factory.Create,
+                    initialBackoffMilliseconds: 0,
+                    maxBackoffMilliseconds: 0
+                ),
+                appId: "mb_app_abc123",
+                sdkVersion: "1.2.3",
+                platform: "unity",
+                protocolVersion: 3,
+                supportedTransports: V3AdvertisedTransports,
+                supportedTopologies: V3AdvertisedTopologies,
+                requestedCapabilities: V3RequestedCapabilities
+            );
+            await ConnectJoinRoomAsync(client, first);
+
+            first.FailPendingReceive(4003);
+            await NextEventAsync(client); // Disconnected
+            await NextEventAsync(client); // Reconnecting (0 backoff)
+
+            await AdvanceUntilAsync(client, () => factory.Called >= 2, "round 2 opens");
+            FakeTransport second = factory.Last!;
+            await NextEventAsync(client); // TransportReady
+
+            await WaitForAsync(
+                () => second.SentText.Count >= 1,
+                "the fresh round re-authenticates"
+            );
+            Assert.That(
+                second.SentText[0],
+                Is.EqualTo(
+                    GoldenFixtures.ReadFirstLineOfType("v3-client-messages.jsonl", "Authenticate")
+                )
+            );
+            await client.DisposeAsync();
+        }
+
         private SignalFishClient BuildPolicyClient(
             FakeTransport initial,
             ReconnectPolicy policy,
             int eventCapacity = SignalFishClientOptions.DefaultEventCapacity,
             int commandCapacity = SignalFishClientOptions.DefaultCommandCapacity,
             string? appId = null,
-            string? connectToken = null
+            string? connectToken = null,
+            string? sdkVersion = null,
+            string? platform = null,
+            uint? protocolVersion = null,
+            IReadOnlyList<string>? supportedTransports = null,
+            IReadOnlyList<string>? supportedTopologies = null,
+            IReadOnlyList<string>? requestedCapabilities = null
         )
         {
             _clock = new VirtualClock();
@@ -699,7 +759,13 @@ namespace SignalFish.Client.Tests.Async
                     shutdownTimeoutMilliseconds: 0,
                     reconnectPolicy: policy,
                     appId: appId,
-                    connectToken: connectToken
+                    connectToken: connectToken,
+                    sdkVersion: sdkVersion,
+                    platform: platform,
+                    protocolVersion: protocolVersion,
+                    supportedTransports: supportedTransports,
+                    supportedTopologies: supportedTopologies,
+                    requestedCapabilities: requestedCapabilities
                 )
             );
         }

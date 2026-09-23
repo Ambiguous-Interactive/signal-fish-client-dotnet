@@ -113,6 +113,14 @@ namespace SignalFish.Client.Tests.Core
                     @"{""type"":""AuthorityChanged"",""data"":{""authority_player"":null,""you_are_authority"":false}}",
                     SessionEvent.AuthorityChanged(false)
                 ),
+                (
+                    GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "ProtocolInfo"),
+                    SessionEvent.ProtocolInfo(null)
+                ),
+                (
+                    GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo"),
+                    SessionEvent.ProtocolInfo(3)
+                ),
             };
 
             foreach ((string wire, SessionEvent expected) in rows)
@@ -127,7 +135,6 @@ namespace SignalFish.Client.Tests.Core
         {
             string[] wires =
             {
-                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "ProtocolInfo"),
                 GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "PlayerJoined"),
                 GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "PlayerLeft"),
                 GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "GameData"),
@@ -173,6 +180,14 @@ namespace SignalFish.Client.Tests.Core
             );
             // Payload is not an object.
             Assert.That(TryMapWire(@"{""type"":""RoomJoined""}", out _), Is.False);
+            // Session-critical capability lists missing from the payload.
+            Assert.That(
+                TryMapWire(
+                    @"{""type"":""ProtocolInfo"",""data"":{""game_data_formats"":[""json""]}}",
+                    out _
+                ),
+                Is.False
+            );
             // Unknown wire type: forward-compatible UnknownMessage event.
             Assert.That(TryMapWire(@"{""type"":""FutureThing""}", out _), Is.False);
         }

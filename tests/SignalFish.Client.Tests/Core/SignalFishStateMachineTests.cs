@@ -701,6 +701,58 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
+        public void NoCurrentCommandRequiresNegotiatedV3()
+        {
+            /*
+                The M6.1 gate is inert until the first v3-only command lands
+                (M6.2 classified delivery, M6.5 mesh). The sweep walks the
+                full command-value space so an appended command cannot skip
+                classification: if it requires v3, this row must be flipped
+                together with the gate test that pins the ProtocolUnsupported
+                refusal.
+            */
+            for (int value = 1; value <= 255; value++)
+            {
+                Assert.That(
+                    SignalFishStateMachine.RequiresNegotiatedV3((ClientCommand)value),
+                    Is.False,
+                    $"command value {value}"
+                );
+            }
+        }
+
+        [Test]
+        public void ProtocolInfoFactTracksNegotiatedVersionOnMachineAndSnapshot()
+        {
+            SignalFishStateMachine machine = Fresh();
+            Assert.That(machine.NegotiatedProtocolVersion, Is.Null);
+            Assert.That(machine.CreateSnapshot().NegotiatedProtocolVersion, Is.Null);
+
+            machine.Apply(SessionEvent.ProtocolInfo(3));
+            Assert.That(machine.NegotiatedProtocolVersion, Is.EqualTo(3u));
+            Assert.That(machine.CreateSnapshot().NegotiatedProtocolVersion, Is.EqualTo(3u));
+
+            // A later echo replaces (the authoritative cap-down result).
+            machine.Apply(SessionEvent.ProtocolInfo(null));
+            Assert.That(machine.NegotiatedProtocolVersion, Is.Null);
+
+            // Per-connection fact: teardown clears it.
+            machine.Apply(SessionEvent.ProtocolInfo(3));
+            machine.Apply(SessionEvent.From(SessionEventKind.Disconnected));
+            Assert.That(machine.NegotiatedProtocolVersion, Is.Null);
+            Assert.That(machine.CreateSnapshot().NegotiatedProtocolVersion, Is.Null);
+        }
+
+        [Test]
+        public void V2NegotiationKeepsV2CommandsAdmitted()
+        {
+            SignalFishStateMachine machine = AuthenticatedAtLeast();
+            machine.Apply(SessionEvent.ProtocolInfo(null));
+
+            Assert.That(machine.TryAdmit(ClientCommand.JoinRoom, out _), Is.True);
+        }
+
+        [Test]
         public void ArmNoneIsMisuse()
         {
             SignalFishStateMachine machine = Fresh();
