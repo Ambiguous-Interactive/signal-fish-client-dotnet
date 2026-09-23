@@ -109,6 +109,7 @@ namespace SignalFish.Client.Protocol
         /// <param name="connectionInfo">The connection-info JSON object, as UTF-8 bytes.</param>
         public ProvideConnectionInfoMessage(ReadOnlyMemory<byte> connectionInfo)
         {
+            EnvelopeWriter.RequireJsonObject(connectionInfo.Span, "connection_info");
             _connectionInfo = connectionInfo;
         }
 

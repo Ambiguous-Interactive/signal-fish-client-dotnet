@@ -591,6 +591,7 @@ namespace SignalFish.Client.Protocol
         /// <param name="signal">The signal JSON value, as UTF-8 bytes.</param>
         public SignalMessage(string to, string generation, ReadOnlyMemory<byte> signal)
         {
+            EnvelopeWriter.RequireJsonValue(signal.Span, "signal");
             To = to;
             Generation = generation;
             _signal = signal;

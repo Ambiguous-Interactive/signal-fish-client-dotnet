@@ -14,11 +14,11 @@ namespace SignalFish.Client.Protocol
     /// required field, a non-JSON verbatim payload) throws
     /// <see cref="ArgumentException"/>: encode bugs are programmer errors,
     /// unlike decode, which is total. Frames carrying no payload fields omit
-    /// the <c>data</c> member entirely. Verbatim payloads must be valid
-    /// UTF-8 JSON: game data is validated at
-    /// <see cref="GameDataMessage"/> construction (delivery-depth bound);
-    /// signal and connection-info payloads are re-scanned by the writer at
-    /// encode time.
+    /// the <c>data</c> member entirely. Verbatim payloads (game data,
+    /// signal, connection info) must be valid UTF-8 JSON no deeper than
+    /// <see cref="MaxVerbatimPayloadDepth"/> containers and are validated
+    /// once, at message construction, so a refusal precedes every send and
+    /// the encode path never re-walks a payload.
     /// </summary>
     public static class EnvelopeWriter
     {
@@ -109,6 +109,19 @@ namespace SignalFish.Client.Protocol
             internal static readonly byte[] Transport = Encoding.ASCII.GetBytes("transport");
             internal static readonly byte[] Type = Encoding.ASCII.GetBytes("type");
         }
+
+        /// <summary>
+        /// Maximum nesting level (the root value is level 1) accepted in an
+        /// outbound verbatim payload — the one depth constant for the SDK's
+        /// whole outbound JSON contract (game data, signal, connection
+        /// info), mirroring the server codec's default recursion limit. The
+        /// walk is allocation-free and budget-bounded, so it is stack-safe
+        /// for pathological input. Note the envelope embeds a payload two
+        /// levels deeper than its standalone form, so the deepest payload
+        /// decodable on the wire is two levels tighter than this send bound
+        /// (the Rust SDK carries the same envelope overhead).
+        /// </summary>
+        internal const int MaxVerbatimPayloadDepth = 128;
 
         private static readonly byte[] EnvelopeOpen = Encoding.ASCII.GetBytes("{\"type\": \"");
         private static readonly byte[] EnvelopeClosePlain = Encoding.ASCII.GetBytes("\"}");
@@ -368,7 +381,20 @@ namespace SignalFish.Client.Protocol
                 throw new ArgumentNullException(nameof(destination));
             }
 
-            RequireJsonObject(message.ConnectionInfo.Span, "connection_info");
+            /*
+                Construction validated the payload (verbatim JSON object,
+                shared depth bound), so the encode path never re-walks it.
+                The O(1) emptiness guard only closes the struct-default
+                hole: default(ProvideConnectionInfoMessage) never ran a
+                constructor, and an empty payload would corrupt the frame.
+            */
+            if (message.ConnectionInfo.IsEmpty)
+            {
+                throw new ArgumentException(
+                    "The message must carry a verbatim JSON object for \"connection_info\".",
+                    nameof(message)
+                );
+            }
 
             JsonWriter writer = new JsonWriter(destination);
             writer.WriteBytes(EnvelopeOpen);
@@ -436,6 +462,20 @@ namespace SignalFish.Client.Protocol
                 */
                 throw new ArgumentException(
                     "GameData class is unset; construct GameDataMessage with an explicit delivery class.",
+                    nameof(message)
+                );
+            }
+
+            /*
+                Construction validated the payload, so the encode path never
+                re-walks it. The O(1) emptiness guard only closes the
+                struct-default hole: default(GameDataMessage) never ran a
+                constructor, and an empty payload would corrupt the frame.
+            */
+            if (message.Payload.IsEmpty)
+            {
+                throw new ArgumentException(
+                    "The message must carry a non-empty verbatim JSON payload.",
                     nameof(message)
                 );
             }
@@ -515,7 +555,21 @@ namespace SignalFish.Client.Protocol
 
             RequireUuid(message.To, "to");
             RequireUuid(message.Generation, "generation");
-            RequireJsonValue(message.Signal.Span, "signal");
+
+            /*
+                Construction validated the payload (verbatim JSON, shared
+                depth bound), so the encode path never re-walks it. The O(1)
+                emptiness guard only closes the struct-default hole:
+                default(SignalMessage) never ran a constructor, and an empty
+                payload would corrupt the frame.
+            */
+            if (message.Signal.IsEmpty)
+            {
+                throw new ArgumentException(
+                    "The message must carry a verbatim JSON value for \"signal\".",
+                    nameof(message)
+                );
+            }
 
             JsonWriter writer = new JsonWriter(destination);
             writer.WriteBytes(EnvelopeOpen);
@@ -634,16 +688,15 @@ namespace SignalFish.Client.Protocol
 
         /// <summary>
         /// Validates a verbatim payload as one complete JSON value
-        /// (allocation-free rescan) so a malformed payload fails at the call
-        /// site instead of corrupting the whole frame. The default bound is
-        /// the envelope decode depth; verbatim game data passes its own
-        /// larger payload bound (see
-        /// <see cref="GameDataMessage.MaxPayloadContainerDepth"/>).
+        /// (allocation-free rescan) so a malformed payload fails at the
+        /// message construction site instead of corrupting the whole frame.
+        /// The bound is the shared
+        /// <see cref="MaxVerbatimPayloadDepth"/> verbatim-payload contract.
         /// </summary>
         internal static void RequireJsonValue(
             ReadOnlySpan<byte> json,
             string wireField,
-            int maxDepth = JsonScanner.MaxDepth
+            int maxDepth = MaxVerbatimPayloadDepth
         )
         {
             if (json.IsEmpty)
@@ -673,7 +726,7 @@ namespace SignalFish.Client.Protocol
             }
         }
 
-        private static void RequireJsonObject(ReadOnlySpan<byte> json, string wireField)
+        internal static void RequireJsonObject(ReadOnlySpan<byte> json, string wireField)
         {
             RequireJsonValue(json, wireField);
             if (json[0] != (byte)'{')
