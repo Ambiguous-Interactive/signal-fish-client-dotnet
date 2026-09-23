@@ -49,6 +49,13 @@ loops, cheap when idle, and honest about asynchrony.
 - The event stream is a single ordered sequence; consumers drain it
   continuously. Document per-event timing guarantees
   ([event timing is part of the contract](../protocol-messages/SKILL.md)).
+- Struct equality is **default-instance safe**: `default(T)` is always a
+  legal value (a failed `TryCapture`, an unset field), so `GetHashCode`/
+  `Equals` must never dereference a nullable member. Hash with
+  `System.HashCode` (its `Add` accepts nulls) or `?.GetHashCode(...) ?? 0`;
+  compare with `==` / static `string.Equals`. A hand-rolled
+  `Token.GetHashCode()` on a nullable string once threw NRE the first time
+  anything hashed a failed capture.
 
 ## Errors
 
