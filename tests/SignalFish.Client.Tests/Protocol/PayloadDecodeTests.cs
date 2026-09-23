@@ -61,6 +61,107 @@ namespace SignalFish.Client.Tests
             Assert.That(message.GameDataFormats, Has.Count.EqualTo(2));
             Assert.That(message.GameDataFormats[0], Is.EqualTo("json"));
             Assert.That(message.GameDataFormats[1], Is.EqualTo("message_pack"));
+            // The v3 negotiation fields are absent on a v2 negotiation.
+            Assert.That(message.ProtocolVersion, Is.Null);
+            Assert.That(message.MinProtocolVersion, Is.Null);
+            Assert.That(message.MaxProtocolVersion, Is.Null);
+            Assert.That(message.Transports, Is.Null);
+            Assert.That(message.MaxOutboundMessageSize, Is.Null);
+        }
+
+        [Test]
+        public void ProtocolInfoV3GoldenFixtureDecodesNegotiatedResult()
+        {
+            EnvelopeEvent envelope = DecodeFixtureEnvelope(
+                "ProtocolInfo",
+                "v3-server-messages.jsonl"
+            );
+            Assert.That(
+                ProtocolInfoMessage.TryDecode(envelope.Data, out ProtocolInfoMessage message),
+                Is.True
+            );
+            Assert.That(message.Capabilities, Has.Count.EqualTo(4));
+            Assert.That(message.Capabilities[0], Is.EqualTo("reconnection"));
+            Assert.That(message.Capabilities[1], Is.EqualTo("spectators"));
+            Assert.That(message.Capabilities[2], Is.EqualTo("authority"));
+            Assert.That(message.Capabilities[3], Is.EqualTo("room_operation_ids"));
+            Assert.That(message.ProtocolVersion, Is.EqualTo(3u));
+            Assert.That(message.MinProtocolVersion, Is.EqualTo(2u));
+            Assert.That(message.MaxProtocolVersion, Is.EqualTo(3u));
+            Assert.That(message.Transports, Has.Count.EqualTo(1));
+            Assert.That(message.Transports[0], Is.EqualTo("websocket"));
+            Assert.That(message.MaxOutboundMessageSize, Is.EqualTo(8388608u));
+        }
+
+        // --- v3 negotiation-field decode policies -------------------------------
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"protocol_version\": \"three\"}",
+            TestName = "WrongTypedProtocolVersion"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"min_protocol_version\": [2]}",
+            TestName = "WrongTypedMinProtocolVersion"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"transports\": \"websocket\"}",
+            TestName = "WrongTypedTransports"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"max_outbound_message_size\": -1}",
+            TestName = "NegativeMaxOutboundMessageSize"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"protocol_version\": 3, \"protocol_version\": 2}",
+            TestName = "RepeatedProtocolVersionKey"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"protocol_version\": null, \"protocol_version\": 3}",
+            TestName = "RepeatedProtocolVersionKeyAfterNull"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"transports\": null, \"transports\": [\"websocket\"]}",
+            TestName = "RepeatedTransportsKeyAfterNull"
+        )]
+        public void ProtocolInfoWithMalformedV3FieldRejectsDecode(string wire)
+        {
+            bool decoded = ProtocolInfoMessage.TryDecode(
+                Bytes(wire),
+                out ProtocolInfoMessage message
+            );
+            Assert.That(decoded, Is.False);
+            Assert.That(message, Is.EqualTo(default(ProtocolInfoMessage)));
+        }
+
+        [Test]
+        public void ProtocolInfoWithExplicitNullV3FieldsTreatsThemAsAbsent()
+        {
+            bool decoded = ProtocolInfoMessage.TryDecode(
+                Bytes(
+                    "{\"capabilities\": [\"reconnection\"], \"game_data_formats\": [\"json\"], "
+                        + "\"protocol_version\": null, \"min_protocol_version\": null, "
+                        + "\"max_protocol_version\": null, \"transports\": null, "
+                        + "\"max_outbound_message_size\": null}"
+                ),
+                out ProtocolInfoMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.ProtocolVersion, Is.Null);
+            Assert.That(message.Transports, Is.Null);
+            Assert.That(message.MaxOutboundMessageSize, Is.Null);
+        }
+
+        [Test]
+        public void ProtocolInfoWithUnknownFieldStillDecodes()
+        {
+            bool decoded = ProtocolInfoMessage.TryDecode(
+                Bytes(
+                    "{\"capabilities\": [], \"game_data_formats\": [], "
+                        + "\"future_v4_field\": {\"nested\": true}}"
+                ),
+                out ProtocolInfoMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.Capabilities, Is.Empty);
         }
 
         [Test]
@@ -670,9 +771,12 @@ namespace SignalFish.Client.Tests
 
         private static ReadOnlyMemory<byte> Bytes(string json) => Encoding.UTF8.GetBytes(json);
 
-        private static EnvelopeEvent DecodeFixtureEnvelope(string wireType)
+        private static EnvelopeEvent DecodeFixtureEnvelope(
+            string wireType,
+            string fileName = "v2-server-messages.jsonl"
+        )
         {
-            string line = GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", wireType);
+            string line = GoldenFixtures.ReadFirstLineOfType(fileName, wireType);
             EnvelopeEvent envelope = EnvelopeReader.Decode(Encoding.UTF8.GetBytes(line));
             Assert.That(envelope.Kind, Is.EqualTo(EnvelopeEventKind.Message));
             return envelope;

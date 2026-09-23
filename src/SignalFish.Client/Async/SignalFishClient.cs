@@ -698,8 +698,9 @@ namespace SignalFish.Client.Async
 
         /// <summary>
         /// The per-round handshake payload: the credentials configured on
-        /// the options (app id, SDK identity, optional tenant token), so a
-        /// reconnect round re-authenticates exactly like the caller's
+        /// the options (app id, SDK identity, optional tenant token) and
+        /// the v3 negotiation advertisement, so a reconnect round
+        /// re-authenticates and re-negotiates exactly like the caller's
         /// explicit first handshake must have.
         /// </summary>
         private AuthenticateMessage BuildHandshakeMessage()
@@ -708,6 +709,10 @@ namespace SignalFish.Client.Async
                 appId: _options.AppId,
                 sdkVersion: _options.SdkVersion,
                 platform: _options.Platform,
+                protocolVersion: _options.ProtocolVersion,
+                supportedTransports: _options.SupportedTransports,
+                supportedTopologies: _options.SupportedTopologies,
+                requestedCapabilities: _options.RequestedCapabilities,
                 connectToken: _options.ConnectToken
             );
         }

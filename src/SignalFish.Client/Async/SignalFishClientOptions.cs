@@ -1,6 +1,7 @@
 namespace SignalFish.Client.Async
 {
     using System;
+    using System.Collections.Generic;
     using SignalFish.Client.Reconnection;
 
     /// <summary>
@@ -93,6 +94,43 @@ namespace SignalFish.Client.Async
         /// <summary>Gets the platform token sent on every <c>Authenticate</c>.</summary>
         public string Platform { get; }
 
+        /// <summary>
+        /// Gets the highest protocol version the client speaks, advertised
+        /// on every automatic-reconnect <c>Authenticate</c> (v3
+        /// negotiation; <c>null</c> omits the field — the endpoint default,
+        /// keeping the handshake bytes byte-identical to the v2 floor).
+        /// The server caps the result down and echoes it in
+        /// <c>ProtocolInfo</c>. Mirror the advertisement of your explicit
+        /// first <c>SendAuthenticate</c> here — a revived round advertising
+        /// less would silently renegotiate down (a v3 session would land
+        /// on the v2 floor).
+        /// </summary>
+        public uint? ProtocolVersion { get; }
+
+        /// <summary>
+        /// Gets the supported data-path transport tokens advertised on
+        /// every automatic-reconnect <c>Authenticate</c> (<c>null</c>
+        /// omits the field — relay-only). Always includes <c>relay</c> so
+        /// the session keeps a valid floor member; advertise only what you
+        /// can fulfill. Stored as a defensive copy.
+        /// </summary>
+        public IReadOnlyList<string>? SupportedTransports { get; }
+
+        /// <summary>
+        /// Gets the supported session topology tokens advertised on every
+        /// automatic-reconnect <c>Authenticate</c> (<c>null</c> omits the
+        /// field — relay-only). Stored as a defensive copy.
+        /// </summary>
+        public IReadOnlyList<string>? SupportedTopologies { get; }
+
+        /// <summary>
+        /// Gets the additive capability tokens advertised on every
+        /// automatic-reconnect <c>Authenticate</c> (<c>null</c> omits the
+        /// field; unknown tokens are ignored by the server). Stored as a
+        /// defensive copy.
+        /// </summary>
+        public IReadOnlyList<string>? RequestedCapabilities { get; }
+
         /// <summary>Initializes the options; every parameter has the documented default.</summary>
         public SignalFishClientOptions(
             int eventCapacity = DefaultEventCapacity,
@@ -106,7 +144,11 @@ namespace SignalFish.Client.Async
             string? appId = null,
             string? connectToken = null,
             string? sdkVersion = SignalFishClientInfo.SdkVersion,
-            string? platform = SignalFishClientInfo.Platform
+            string? platform = SignalFishClientInfo.Platform,
+            uint? protocolVersion = null,
+            IReadOnlyList<string>? supportedTransports = null,
+            IReadOnlyList<string>? supportedTopologies = null,
+            IReadOnlyList<string>? requestedCapabilities = null
         )
         {
             if (eventCapacity < 1)
@@ -165,6 +207,29 @@ namespace SignalFish.Client.Async
                 );
             }
 
+            /*
+                Fail-fast here instead of mid-handshake: a malformed token
+                list would otherwise throw inside the reconnect round's
+                encoder on the driver loop, killing the session with no
+                surfaced diagnosis. Copies also pin the advertisement
+                against later caller mutation.
+            */
+            SupportedTransports = CaptureList(supportedTransports, nameof(supportedTransports));
+            if (SupportedTransports is not null && !Contains(SupportedTransports, "relay"))
+            {
+                throw new ArgumentException(
+                    "The transport advertisement must include 'relay' so the "
+                        + "session keeps a valid relay-floor member.",
+                    nameof(supportedTransports)
+                );
+            }
+
+            SupportedTopologies = CaptureList(supportedTopologies, nameof(supportedTopologies));
+            RequestedCapabilities = CaptureList(
+                requestedCapabilities,
+                nameof(requestedCapabilities)
+            );
+
             EventCapacity = eventCapacity;
             CommandCapacity = commandCapacity;
             MaxFrameBytes = maxFrameBytes;
@@ -177,6 +242,7 @@ namespace SignalFish.Client.Async
             ConnectToken = connectToken;
             SdkVersion = sdkVersion ?? SignalFishClientInfo.SdkVersion;
             Platform = platform ?? SignalFishClientInfo.Platform;
+            ProtocolVersion = protocolVersion;
         }
 
         /// <summary>
@@ -207,7 +273,81 @@ namespace SignalFish.Client.Async
                 + ", "
                 + nameof(Platform)
                 + "="
-                + Platform;
+                + Platform
+                + ", "
+                + nameof(ProtocolVersion)
+                + "="
+                + (
+                    ProtocolVersion?.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    ?? "<none>"
+                )
+                + ", "
+                + nameof(SupportedTransports)
+                + "="
+                + Describe(SupportedTransports)
+                + ", "
+                + nameof(SupportedTopologies)
+                + "="
+                + Describe(SupportedTopologies)
+                + ", "
+                + nameof(RequestedCapabilities)
+                + "="
+                + Describe(RequestedCapabilities);
+        }
+
+        private static string Describe(IReadOnlyList<string>? tokens)
+        {
+            if (tokens is null)
+            {
+                return "<none>";
+            }
+
+            return "[" + string.Join(",", tokens) + "]";
+        }
+
+        private static string[]? CaptureList(IReadOnlyList<string>? tokens, string paramName)
+        {
+            if (tokens is null)
+            {
+                return null;
+            }
+
+            if (tokens.Count == 0)
+            {
+                throw new ArgumentException(
+                    "The token list cannot be empty; omit it (relay-only) or pass tokens.",
+                    paramName
+                );
+            }
+
+            string[] copy = new string[tokens.Count];
+            for (int i = 0; i < tokens.Count; i++)
+            {
+                if (string.IsNullOrEmpty(tokens[i]))
+                {
+                    throw new ArgumentException(
+                        "The token list cannot contain a null or empty token.",
+                        paramName
+                    );
+                }
+
+                copy[i] = tokens[i];
+            }
+
+            return copy;
+        }
+
+        private static bool Contains(IReadOnlyList<string> tokens, string token)
+        {
+            foreach (string candidate in tokens)
+            {
+                if (string.Equals(candidate, token, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

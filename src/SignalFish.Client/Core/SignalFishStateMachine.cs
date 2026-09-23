@@ -77,6 +77,16 @@ namespace SignalFish.Client.Core
             get { return _isAuthority; }
         }
 
+        /// <summary>
+        /// The negotiated protocol version (the server's cap-down echo);
+        /// null before <c>ProtocolInfo</c> arrives or on a v2 negotiation.
+        /// Per-connection: cleared at teardown.
+        /// </summary>
+        public uint? NegotiatedProtocolVersion
+        {
+            get { return _negotiatedProtocolVersion; }
+        }
+
         private bool _connected;
         private bool _transportReady;
         private bool _authenticated;
@@ -84,6 +94,7 @@ namespace SignalFish.Client.Core
         private PendingRoomOperation _pendingOperation;
         private string? _reconnectionToken;
         private bool _isAuthority;
+        private uint? _negotiatedProtocolVersion;
         private bool _terminal;
 
         /// <summary>Creates the machine in the connecting phase (constructed-live, Rust parity).</summary>
@@ -108,7 +119,8 @@ namespace SignalFish.Client.Core
                 _membership.IsPresent ? _membership.RoomId : null,
                 _membership.IsPresent ? _membership.RoomCode : null,
                 _reconnectionToken,
-                _isAuthority
+                _isAuthority,
+                _negotiatedProtocolVersion
             );
         }
 
@@ -154,6 +166,22 @@ namespace SignalFish.Client.Core
         public bool TryAdmit(ClientCommand command, bool becomeAuthority, out AdmissionError error)
         {
             error = Admit(command, becomeAuthority);
+            if (
+                error == default(AdmissionError)
+                && RequiresNegotiatedV3(command)
+                && (_negotiatedProtocolVersion ?? 0) < 3
+            )
+            {
+                /*
+                    Rust parity: the protocol refusal is the *last* word —
+                    membership and role verdicts win while they apply, and
+                    once those are satisfied the version gate describes the
+                    remaining failure precisely. Covers both the
+                    pre-negotiation and negotiated-v2 cases.
+                */
+                error = AdmissionError.ProtocolUnsupported;
+            }
+
             return error == default(AdmissionError);
         }
 
@@ -281,6 +309,14 @@ namespace SignalFish.Client.Core
 
                     _isAuthority = sessionEvent.IsAuthority;
                     break;
+                case SessionEventKind.ProtocolInfo:
+                    /*
+                        The cap-down echo is authoritative per connection: a
+                        re-echo replaces, and v2 (absent field) negotiates
+                        null. Never gates the handshake facts.
+                    */
+                    _negotiatedProtocolVersion = sessionEvent.NegotiatedProtocolVersion;
+                    break;
                 case SessionEventKind.Disconnected:
                     ClearSession();
                     break;
@@ -291,6 +327,18 @@ namespace SignalFish.Client.Core
                     */
                     break;
             }
+        }
+
+        /// <summary>
+        /// Whether <paramref name="command"/> may only ride a negotiated-v3
+        /// connection. The v2 floor is sacred: every command defined so far
+        /// is v2 — the first v3-only send (classified delivery, mesh
+        /// signaling) adds itself here together with the
+        /// <see cref="AdmissionError.ProtocolUnsupported"/> gate coverage.
+        /// </summary>
+        internal static bool RequiresNegotiatedV3(ClientCommand command)
+        {
+            return false;
         }
 
         private AdmissionError Admit(ClientCommand command, bool becomeAuthority)
@@ -424,6 +472,7 @@ namespace SignalFish.Client.Core
             _pendingOperation = default(PendingRoomOperation);
             _reconnectionToken = null;
             _isAuthority = false;
+            _negotiatedProtocolVersion = null;
         }
 
         private static bool IsDirected(ClientCommand command)

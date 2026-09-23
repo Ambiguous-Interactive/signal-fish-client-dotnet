@@ -215,6 +215,18 @@ namespace SignalFish.Client.Polling
                     );
                     return PollEvent.FromAuthorityChanged(authorityChanged, envelope.Raw);
                 }
+                case SessionEventKind.ProtocolInfo:
+                {
+                    /*
+                        Same as above: the fact's decode validated the
+                        payload, so the surfaced re-decode cannot fail.
+                    */
+                    ProtocolInfoMessage.TryDecode(
+                        envelope.Data,
+                        out ProtocolInfoMessage protocolInfo
+                    );
+                    return PollEvent.FromProtocolInfo(protocolInfo, envelope.Raw);
+                }
                 default:
                     // TransportReady and Disconnected are synthetic (not frame-driven).
                     return PollEvent.From(PollEventKind.TransportReady);
@@ -242,18 +254,6 @@ namespace SignalFish.Client.Polling
         {
             switch (envelope.Message)
             {
-                case MessageKind.ProtocolInfo:
-                    if (
-                        !ProtocolInfoMessage.TryDecode(
-                            envelope.Data,
-                            out ProtocolInfoMessage protocolInfo
-                        )
-                    )
-                    {
-                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
-                    }
-
-                    return PollEvent.FromProtocolInfo(protocolInfo, envelope.Raw);
                 case MessageKind.LobbyStateChanged:
                     if (
                         !LobbyStateChangedMessage.TryDecode(

@@ -4,8 +4,8 @@ namespace SignalFish.Client.Core
 
     /// <summary>
     /// Coherent synchronous view of the session state — the Rust client's
-    /// <c>ClientSnapshot</c> phase table and identity fields at the v2
-    /// floor (v3 negotiation and delivery fields land with M6). Every
+    /// <c>ClientSnapshot</c> phase table and identity fields, including the
+    /// v3 negotiation result (delivery/mesh fields land with M6.2+). Every
     /// field is read from one machine state, so multiple reads of one
     /// snapshot always describe the same instant. <c>default</c> is the
     /// disconnected, never-authenticated snapshot.
@@ -44,6 +44,14 @@ namespace SignalFish.Client.Core
         /// <summary>True while this connection is the confirmed room authority.</summary>
         public bool IsAuthority { get; }
 
+        /// <summary>
+        /// The negotiated protocol version (the server's cap-down echo);
+        /// null before <c>ProtocolInfo</c> arrives or on a v2 negotiation —
+        /// the Rust client's <c>negotiated_protocol_version()</c> accessor
+        /// semantics.
+        /// </summary>
+        public uint? NegotiatedProtocolVersion { get; }
+
         /// <summary>Initializes a new snapshot.</summary>
         public ClientSnapshot(
             bool connected,
@@ -54,7 +62,8 @@ namespace SignalFish.Client.Core
             Guid? roomId,
             string? roomCode,
             string? reconnectionToken,
-            bool isAuthority = false
+            bool isAuthority = false,
+            uint? negotiatedProtocolVersion = null
         )
         {
             Connected = connected;
@@ -66,6 +75,7 @@ namespace SignalFish.Client.Core
             RoomCode = roomCode;
             ReconnectionToken = reconnectionToken;
             IsAuthority = isAuthority;
+            NegotiatedProtocolVersion = negotiatedProtocolVersion;
         }
 
         public static bool operator ==(ClientSnapshot left, ClientSnapshot right)
@@ -92,7 +102,8 @@ namespace SignalFish.Client.Core
                     other.ReconnectionToken,
                     StringComparison.Ordinal
                 )
-                && IsAuthority == other.IsAuthority;
+                && IsAuthority == other.IsAuthority
+                && NegotiatedProtocolVersion == other.NegotiatedProtocolVersion;
         }
 
         public override bool Equals(object obj)
@@ -115,6 +126,7 @@ namespace SignalFish.Client.Core
                 hash =
                     (hash * 31) + (ReconnectionToken?.GetHashCode(StringComparison.Ordinal) ?? 0);
                 hash = (hash * 31) + IsAuthority.GetHashCode();
+                hash = (hash * 31) + NegotiatedProtocolVersion.GetHashCode();
                 return hash;
             }
         }
@@ -142,6 +154,14 @@ namespace SignalFish.Client.Core
                 + nameof(IsAuthority)
                 + "="
                 + IsAuthority
+                + ", "
+                + nameof(NegotiatedProtocolVersion)
+                + "="
+                + (
+                    NegotiatedProtocolVersion?.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture
+                    ) ?? "<none>"
+                )
                 + ", ReconnectionToken="
                 + (ReconnectionToken is null ? "<none>" : "<redacted>");
         }

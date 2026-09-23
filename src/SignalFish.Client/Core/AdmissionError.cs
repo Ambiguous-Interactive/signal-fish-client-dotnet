@@ -5,7 +5,8 @@ namespace SignalFish.Client.Core
     /// <summary>
     /// Why a command was refused locally. Precedence matches the Rust
     /// client: <see cref="NotConnected"/> → <see cref="NotAuthenticated"/> →
-    /// <see cref="RoomOperationPending"/> → membership/role.
+    /// <see cref="RoomOperationPending"/> → membership/role →
+    /// <see cref="ProtocolUnsupported"/>.
     /// <see cref="None"/> means admitted.
     /// </summary>
     public enum AdmissionError
@@ -46,5 +47,13 @@ namespace SignalFish.Client.Core
         /// refused: this connection does not hold the authority.
         /// </summary>
         AuthorityRequired = 8,
+
+        /// <summary>
+        /// A v3-only send was refused: the connection has not negotiated
+        /// v3 (either <c>ProtocolInfo</c> has not arrived yet, or it
+        /// negotiated the v2 relay floor). Checked last — membership and
+        /// role verdicts take precedence, Rust parity.
+        /// </summary>
+        ProtocolUnsupported = 9,
     }
 }

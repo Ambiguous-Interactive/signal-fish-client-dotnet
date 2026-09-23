@@ -34,6 +34,7 @@ namespace SignalFish.Client.Core
                 case MessageKind.ReconnectionFailed:
                 case MessageKind.Error:
                 case MessageKind.AuthorityChanged:
+                case MessageKind.ProtocolInfo:
                     return true;
                 default:
                     return false;
@@ -108,6 +109,19 @@ namespace SignalFish.Client.Core
                     }
 
                     sessionEvent = SessionEvent.AuthorityChanged(authorityChanged.YouAreAuthority);
+                    return true;
+                case MessageKind.ProtocolInfo:
+                    if (
+                        !ProtocolInfoMessage.TryDecode(
+                            envelope.Data,
+                            out ProtocolInfoMessage protocolInfo
+                        )
+                    )
+                    {
+                        return false;
+                    }
+
+                    sessionEvent = SessionEvent.ProtocolInfo(protocolInfo.ProtocolVersion);
                     return true;
                 case MessageKind.Error:
                     // Informational only: the fence stays armed (fail-closed).

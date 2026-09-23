@@ -248,8 +248,13 @@ namespace SignalFish.Client.Protocol
     /// <summary>
     /// Payload of the inbound <c>ProtocolInfo</c> message (S→C): the
     /// protocol capability tokens and the game-data formats the endpoint
-    /// supports. Both lists are required but may be empty. Wire order:
-    /// <c>capabilities</c>, <c>game_data_formats</c>.
+    /// supports. Both lists are required but may be empty. The v3
+    /// negotiation fields are optional — a v2 negotiation omits them
+    /// entirely; explicit JSON <c>null</c> decodes as absent. Wire order:
+    /// <c>capabilities</c>, <c>game_data_formats</c>,
+    /// <c>protocol_version</c>, <c>min_protocol_version</c>,
+    /// <c>max_protocol_version</c>, <c>transports</c>,
+    /// <c>max_outbound_message_size</c>.
     /// </summary>
     public readonly struct ProtocolInfoMessage : IEquatable<ProtocolInfoMessage>
     {
@@ -259,20 +264,54 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the supported game-data format tokens (required; may be empty).</summary>
         public IReadOnlyList<string> GameDataFormats { get; }
 
+        /// <summary>
+        /// Gets the negotiated protocol version (the client's advertisement
+        /// capped at the server's ceiling); null on a v2 negotiation or
+        /// before the v3 fields exist.
+        /// </summary>
+        public uint? ProtocolVersion { get; }
+
+        /// <summary>Gets the deployment's minimum supported protocol version (v3; optional).</summary>
+        public uint? MinProtocolVersion { get; }
+
+        /// <summary>Gets the deployment's maximum supported protocol version (v3; optional).</summary>
+        public uint? MaxProtocolVersion { get; }
+
+        /// <summary>Gets the server-side data-path transports (v3; optional).</summary>
+        public IReadOnlyList<string>? Transports { get; }
+
+        /// <summary>Gets the outbound per-message byte bound (v3; optional).</summary>
+        public uint? MaxOutboundMessageSize { get; }
+
         /// <summary>Initializes a new <see cref="ProtocolInfoMessage"/> payload.</summary>
         public ProtocolInfoMessage(
             IReadOnlyList<string> capabilities,
-            IReadOnlyList<string> gameDataFormats
+            IReadOnlyList<string> gameDataFormats,
+            uint? protocolVersion = null,
+            uint? minProtocolVersion = null,
+            uint? maxProtocolVersion = null,
+            IReadOnlyList<string>? transports = null,
+            uint? maxOutboundMessageSize = null
         )
         {
             Capabilities = capabilities;
             GameDataFormats = gameDataFormats;
+            ProtocolVersion = protocolVersion;
+            MinProtocolVersion = minProtocolVersion;
+            MaxProtocolVersion = maxProtocolVersion;
+            Transports = transports;
+            MaxOutboundMessageSize = maxOutboundMessageSize;
         }
 
         /// <inheritdoc />
         public bool Equals(ProtocolInfoMessage other) =>
             AuthenticateMessage.SequenceEquals(Capabilities, other.Capabilities)
-            && AuthenticateMessage.SequenceEquals(GameDataFormats, other.GameDataFormats);
+            && AuthenticateMessage.SequenceEquals(GameDataFormats, other.GameDataFormats)
+            && ProtocolVersion == other.ProtocolVersion
+            && MinProtocolVersion == other.MinProtocolVersion
+            && MaxProtocolVersion == other.MaxProtocolVersion
+            && AuthenticateMessage.SequenceEquals(Transports, other.Transports)
+            && MaxOutboundMessageSize == other.MaxOutboundMessageSize;
 
         /// <inheritdoc />
         public override bool Equals(object? obj) =>
@@ -284,6 +323,11 @@ namespace SignalFish.Client.Protocol
             HashCode hash = default;
             hash.Add(SequenceHashCode(Capabilities));
             hash.Add(SequenceHashCode(GameDataFormats));
+            hash.Add(ProtocolVersion);
+            hash.Add(MinProtocolVersion);
+            hash.Add(MaxProtocolVersion);
+            hash.Add(SequenceHashCode(Transports));
+            hash.Add(MaxOutboundMessageSize);
             return hash.ToHashCode();
         }
 
@@ -299,7 +343,8 @@ namespace SignalFish.Client.Protocol
         /// Decodes the <c>data</c> object of a <c>ProtocolInfo</c> envelope
         /// (the <see cref="EnvelopeEvent.Data"/> slice). Unknown fields are
         /// skipped; a repeated key or a wrong-typed value (including a
-        /// wrong-typed array element) is rejected. Returns
+        /// wrong-typed array element) is rejected; an explicit JSON
+        /// <c>null</c> decodes as absent. Returns
         /// <see langword="false"/> for malformed input or a missing
         /// required field.
         /// </summary>
@@ -311,6 +356,16 @@ namespace SignalFish.Client.Protocol
 
             IReadOnlyList<string>? capabilities = null;
             IReadOnlyList<string>? gameDataFormats = null;
+            uint? protocolVersion = null;
+            uint? minProtocolVersion = null;
+            uint? maxProtocolVersion = null;
+            IReadOnlyList<string>? transports = null;
+            uint? maxOutboundMessageSize = null;
+            bool protocolVersionSeen = false;
+            bool minProtocolVersionSeen = false;
+            bool maxProtocolVersionSeen = false;
+            bool transportsSeen = false;
+            bool maxOutboundMessageSizeSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -354,6 +409,102 @@ namespace SignalFish.Client.Protocol
 
                     gameDataFormats = parsed;
                 }
+                else if (scanner.KeyIs(keyRaw, "protocol_version"))
+                {
+                    if (protocolVersionSeen)
+                    {
+                        return false;
+                    }
+
+                    protocolVersionSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadUInt32(valueRaw, out uint parsed))
+                        {
+                            return false;
+                        }
+
+                        protocolVersion = parsed;
+                    }
+                }
+                else if (scanner.KeyIs(keyRaw, "min_protocol_version"))
+                {
+                    if (minProtocolVersionSeen)
+                    {
+                        return false;
+                    }
+
+                    minProtocolVersionSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadUInt32(valueRaw, out uint parsed))
+                        {
+                            return false;
+                        }
+
+                        minProtocolVersion = parsed;
+                    }
+                }
+                else if (scanner.KeyIs(keyRaw, "max_protocol_version"))
+                {
+                    if (maxProtocolVersionSeen)
+                    {
+                        return false;
+                    }
+
+                    maxProtocolVersionSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadUInt32(valueRaw, out uint parsed))
+                        {
+                            return false;
+                        }
+
+                        maxProtocolVersion = parsed;
+                    }
+                }
+                else if (scanner.KeyIs(keyRaw, "transports"))
+                {
+                    if (transportsSeen)
+                    {
+                        return false;
+                    }
+
+                    transportsSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (
+                            !JsonScanner.TryReadStringArray(
+                                data,
+                                valueRaw,
+                                out IReadOnlyList<string>? parsed
+                            ) || parsed is null
+                        )
+                        {
+                            return false;
+                        }
+
+                        transports = parsed;
+                    }
+                }
+                else if (scanner.KeyIs(keyRaw, "max_outbound_message_size"))
+                {
+                    if (maxOutboundMessageSizeSeen)
+                    {
+                        return false;
+                    }
+
+                    maxOutboundMessageSizeSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadUInt32(valueRaw, out uint parsed))
+                        {
+                            return false;
+                        }
+
+                        maxOutboundMessageSize = parsed;
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -367,7 +518,15 @@ namespace SignalFish.Client.Protocol
                 return false;
             }
 
-            message = new ProtocolInfoMessage(capabilities, gameDataFormats);
+            message = new ProtocolInfoMessage(
+                capabilities,
+                gameDataFormats,
+                protocolVersion,
+                minProtocolVersion,
+                maxProtocolVersion,
+                transports,
+                maxOutboundMessageSize
+            );
             return true;
         }
 
