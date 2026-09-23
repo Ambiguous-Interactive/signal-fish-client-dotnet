@@ -114,4 +114,5 @@ could not see it — the v2-only golden corpus has no v3 RoomJoined).
 - M6.3 DeliveryReport accounting (hardest task; port the Rust client's
   test scenarios as the executable spec) — the wire decoding of
   `DeliveryReport` and the `seq`/`epoch` baselines land there.
-- Confirm the CI SDK cache hit on the second run after merge.
+- #58: M6.5 must unify Signal/ConnectionInfo payload depth bounds with
+  the game-data contract (same class as this session's 64/128 fix).

@@ -25,12 +25,16 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   encode hot path strictly cheaper (validation moved to the constructor,
   which both clients call exactly once per send).
 - Applied: SDK install-dir cache for CI (`DOTNET_INSTALL_DIR` +
-  actions/cache, version-keyed); fixture-level NUnit parallelization
+  actions/cache, version-keyed; two rounds to land it — job-level `env`
+  cannot use the `runner` context, and a workspace-local SDK dir pollutes
+  tree-scanning tools like CSharpier, so the cache path + setup step carry
+  `runner.temp` at step level); fixture-level NUnit parallelization
   (17 s -> ~7 s, suite green and deterministic on both TFMs);
   `scripts/fast-check.ps1` (single-TFM, no-restore iteration: ~17 s vs
   ~47 s, ~2.8x).
-- Open: windows SDK-cache behavior is PR-verified only on first run
-  (miss) — confirm the second run restores and steps go green.
+- Open: none — SDK cache hit measured on rerun (windows Setup .NET
+  79 s -> 5 s; workflow wall 2m33s -> ~1m30s, -43%); issue #58 filed for
+  the M6.5 depth-bound sibling.
 
 ## 2026-09-23 - session 025b: cross-PR feedback audit - all findings verified landed, equality rule codified
 
