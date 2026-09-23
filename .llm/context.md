@@ -163,7 +163,7 @@ guidance.
 | --- | --- |
 | `dotnet build` | Build the solution |
 | `dotnet test` | Run the test suite |
-| `pwsh -NoProfile -File scripts/fast-check.ps1` | Fast red-green loop: one TFM, Debug, no restore (~15 s) |
+| `pwsh -NoProfile -File scripts/fast-check.ps1` | Fast red-green loop: one TFM, Debug, no restore, no analyzers, loopback skipped (~11 s; ~5 s with `-Filter`) |
 | `pwsh -NoProfile -File scripts/install-hooks.ps1` | One-time: activate git hooks |
 | `pwsh -NoProfile -File scripts/generate-skills-index.ps1` | Regenerate `.llm/skills/index.md` |
 | `pwsh -NoProfile -File scripts/lint-file-sizes.ps1` | Enforce the 300-line limit |
