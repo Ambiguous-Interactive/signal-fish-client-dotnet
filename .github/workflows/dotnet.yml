@@ -53,19 +53,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
-      # Install SDKs into a cacheable runner-local directory: installing
-      # both SDKs dominated the Windows cell (~80 s), which set the
-      # workflow's wall clock. With a warm cache the setup step is a
-      # near no-op; the key changes only when the requested versions do.
-      DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
-      DOTNET_ROOT: ${{ runner.temp }}/dotnet
+      # Install SDKs into a cacheable directory: installing both SDKs
+      # dominated the Windows cell (~80 s), which set the workflow's wall
+      # clock. With a warm cache the setup step is a near no-op. Job-level
+      # env can only use the github context (not runner), so this anchors
+      # on the workspace; the key changes only when the requested
+      # versions file changes.
+      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet-sdks
+      DOTNET_ROOT: ${{ github.workspace }}/.dotnet-sdks
     steps:
       - uses: actions/checkout@v7
 
       - name: Cache .NET SDKs
         uses: actions/cache@v6
         with:
-          path: ${{ runner.temp }}/dotnet
+          path: ${{ github.workspace }}/.dotnet-sdks
           # Keyed on .github/dotnet-versions.txt (keep in sync with the
           # dotnet-version block below): a version bump changes the hash
           # and forces a fresh install+cache instead of silently reusing
