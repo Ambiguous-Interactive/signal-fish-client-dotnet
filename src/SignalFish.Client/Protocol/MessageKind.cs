@@ -145,5 +145,8 @@ namespace SignalFish.Client.Protocol
 
         /// <summary><c>SpectatorLeft</c> (S→C): spectator membership ended.</summary>
         SpectatorLeft,
+
+        /// <summary><c>RelayStats</c> (S→C, v3): per-interval relay accounting for this connection.</summary>
+        RelayStats,
     }
 }

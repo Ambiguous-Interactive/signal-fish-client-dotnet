@@ -28,14 +28,30 @@ namespace SignalFish.Client.Protocol
         /// </summary>
         public string? ConnectedAt { get; }
 
+        /// <summary>Gets the player's reconnection epoch baseline (null when the frame omits it).</summary>
+        public uint? Epoch { get; }
+
+        /// <summary>Gets the player's next-sequence baseline (null when the frame omits it).</summary>
+        public ulong? Seq { get; }
+
         /// <summary>Initializes a new <see cref="PlayerInfo"/> value.</summary>
-        public PlayerInfo(Guid id, string name, bool isAuthority, bool isReady, string? connectedAt)
+        public PlayerInfo(
+            Guid id,
+            string name,
+            bool isAuthority,
+            bool isReady,
+            string? connectedAt,
+            uint? epoch = null,
+            ulong? seq = null
+        )
         {
             Id = id;
             Name = name;
             IsAuthority = isAuthority;
             IsReady = isReady;
             ConnectedAt = connectedAt;
+            Epoch = epoch;
+            Seq = seq;
         }
 
         /// <inheritdoc />
@@ -44,7 +60,9 @@ namespace SignalFish.Client.Protocol
             && AuthenticateMessage.NullableStringEquals(Name, other.Name)
             && IsAuthority == other.IsAuthority
             && IsReady == other.IsReady
-            && AuthenticateMessage.NullableStringEquals(ConnectedAt, other.ConnectedAt);
+            && AuthenticateMessage.NullableStringEquals(ConnectedAt, other.ConnectedAt)
+            && Epoch == other.Epoch
+            && Seq == other.Seq;
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is PlayerInfo other && Equals(other);
@@ -58,6 +76,8 @@ namespace SignalFish.Client.Protocol
             hash.Add(IsAuthority);
             hash.Add(IsReady);
             hash.Add(ConnectedAt);
+            hash.Add(Epoch);
+            hash.Add(Seq);
             return hash.ToHashCode();
         }
 
@@ -116,9 +136,13 @@ namespace SignalFish.Client.Protocol
             bool isAuthority = false;
             bool isReady = false;
             string? connectedAt = null;
+            uint? epoch = null;
+            ulong? seq = null;
             bool idSeen = false;
             bool authoritySeen = false;
             bool readySeen = false;
+            bool epochSeen = false;
+            bool seqSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -172,6 +196,48 @@ namespace SignalFish.Client.Protocol
                         return false;
                     }
                 }
+                else if (scanner.KeyIs(keyRaw, "epoch"))
+                {
+                    if (epochSeen)
+                    {
+                        return false;
+                    }
+
+                    epochSeen = true;
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        epoch = null;
+                    }
+                    else if (!scanner.TryReadUInt32(valueRaw, out uint epochValue))
+                    {
+                        return false;
+                    }
+                    else
+                    {
+                        epoch = epochValue;
+                    }
+                }
+                else if (scanner.KeyIs(keyRaw, "seq"))
+                {
+                    if (seqSeen)
+                    {
+                        return false;
+                    }
+
+                    seqSeen = true;
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        seq = null;
+                    }
+                    else if (!scanner.TryReadUInt64(valueRaw, out ulong seqValue))
+                    {
+                        return false;
+                    }
+                    else
+                    {
+                        seq = seqValue;
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -187,7 +253,7 @@ namespace SignalFish.Client.Protocol
                 return false;
             }
 
-            player = new PlayerInfo(id, name, isAuthority, isReady, connectedAt);
+            player = new PlayerInfo(id, name, isAuthority, isReady, connectedAt, epoch, seq);
             return true;
         }
 
@@ -650,14 +716,26 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the player identity that left (required).</summary>
         public Guid PlayerId { get; }
 
+        /// <summary>
+        /// Gets the delivery epoch the seat ended on (null when the frame
+        /// omits it — the v2 wire has no epoch).
+        /// </summary>
+        public uint? Epoch { get; }
+
+        /// <summary>Gets the last sequence the player delivered (null when the frame omits it).</summary>
+        public ulong? FinalSeq { get; }
+
         /// <summary>Initializes a new <see cref="PlayerLeftMessage"/> payload.</summary>
-        public PlayerLeftMessage(Guid playerId)
+        public PlayerLeftMessage(Guid playerId, uint? epoch = null, ulong? finalSeq = null)
         {
             PlayerId = playerId;
+            Epoch = epoch;
+            FinalSeq = finalSeq;
         }
 
         /// <inheritdoc />
-        public bool Equals(PlayerLeftMessage other) => PlayerId == other.PlayerId;
+        public bool Equals(PlayerLeftMessage other) =>
+            PlayerId == other.PlayerId && Epoch == other.Epoch && FinalSeq == other.FinalSeq;
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is PlayerLeftMessage other && Equals(other);
@@ -667,6 +745,8 @@ namespace SignalFish.Client.Protocol
         {
             HashCode hash = default;
             hash.Add(PlayerId);
+            hash.Add(Epoch);
+            hash.Add(FinalSeq);
             return hash.ToHashCode();
         }
 
@@ -692,7 +772,11 @@ namespace SignalFish.Client.Protocol
             JsonMemberState state = scanner.BeginObject();
 
             Guid playerId = default;
+            uint? epoch = null;
+            ulong? finalSeq = null;
             bool playerSeen = false;
+            bool epochSeen = false;
+            bool finalSeqSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -711,6 +795,48 @@ namespace SignalFish.Client.Protocol
 
                     playerSeen = true;
                 }
+                else if (scanner.KeyIs(keyRaw, "epoch"))
+                {
+                    if (epochSeen)
+                    {
+                        return false;
+                    }
+
+                    epochSeen = true;
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        epoch = null;
+                    }
+                    else if (!scanner.TryReadUInt32(valueRaw, out uint epochValue))
+                    {
+                        return false;
+                    }
+                    else
+                    {
+                        epoch = epochValue;
+                    }
+                }
+                else if (scanner.KeyIs(keyRaw, "final_seq"))
+                {
+                    if (finalSeqSeen)
+                    {
+                        return false;
+                    }
+
+                    finalSeqSeen = true;
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        finalSeq = null;
+                    }
+                    else if (!scanner.TryReadUInt64(valueRaw, out ulong finalSeqValue))
+                    {
+                        return false;
+                    }
+                    else
+                    {
+                        finalSeq = finalSeqValue;
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -720,7 +846,7 @@ namespace SignalFish.Client.Protocol
                 return false;
             }
 
-            message = new PlayerLeftMessage(playerId);
+            message = new PlayerLeftMessage(playerId, epoch, finalSeq);
             return true;
         }
     }
@@ -734,14 +860,19 @@ namespace SignalFish.Client.Protocol
     {
         public Guid PlayerId { get; }
 
+        /// <summary>Gets the delivery epoch the seat resumed on (null when the frame omits it).</summary>
+        public uint? Epoch { get; }
+
         /// <summary>Initializes a new <see cref="PlayerReconnectedMessage"/> payload.</summary>
-        public PlayerReconnectedMessage(Guid playerId)
+        public PlayerReconnectedMessage(Guid playerId, uint? epoch = null)
         {
             PlayerId = playerId;
+            Epoch = epoch;
         }
 
         /// <inheritdoc />
-        public bool Equals(PlayerReconnectedMessage other) => PlayerId == other.PlayerId;
+        public bool Equals(PlayerReconnectedMessage other) =>
+            PlayerId == other.PlayerId && Epoch == other.Epoch;
 
         /// <inheritdoc />
         public override bool Equals(object? obj) =>
@@ -752,6 +883,7 @@ namespace SignalFish.Client.Protocol
         {
             HashCode hash = default;
             hash.Add(PlayerId);
+            hash.Add(Epoch);
             return hash.ToHashCode();
         }
 
@@ -784,7 +916,9 @@ namespace SignalFish.Client.Protocol
             JsonMemberState state = scanner.BeginObject();
 
             Guid playerId = default;
+            uint? epoch = null;
             bool playerSeen = false;
+            bool epochSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -803,6 +937,27 @@ namespace SignalFish.Client.Protocol
 
                     playerSeen = true;
                 }
+                else if (scanner.KeyIs(keyRaw, "epoch"))
+                {
+                    if (epochSeen)
+                    {
+                        return false;
+                    }
+
+                    epochSeen = true;
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        epoch = null;
+                    }
+                    else if (!scanner.TryReadUInt32(valueRaw, out uint epochValue))
+                    {
+                        return false;
+                    }
+                    else
+                    {
+                        epoch = epochValue;
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -812,7 +967,7 @@ namespace SignalFish.Client.Protocol
                 return false;
             }
 
-            message = new PlayerReconnectedMessage(playerId);
+            message = new PlayerReconnectedMessage(playerId, epoch);
             return true;
         }
     }

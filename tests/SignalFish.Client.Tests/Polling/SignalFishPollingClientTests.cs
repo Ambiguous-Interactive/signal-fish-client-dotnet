@@ -448,6 +448,134 @@ namespace SignalFish.Client.Tests.Polling
         }
 
         [Test]
+        public async Task DeliveryReportFrameSurfacesDeliveryReportEvent()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "DeliveryReport")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.DeliveryReport));
+            Assert.That(pollEvent.DeliveryReport.PerClass.Reliable.Delivered, Is.EqualTo(8ul));
+            Assert.That(
+                pollEvent.DeliveryReport.PerClass.Latest,
+                Is.EqualTo(new LatestDeliveryCounters(12, 1, 0, 0, 0))
+            );
+            Assert.That(pollEvent.DeliveryReport.Gaps, Has.Count.EqualTo(1));
+            Assert.That(
+                pollEvent.DeliveryReport.Gaps[0].Reason,
+                Is.EqualTo(DeliveryGapReason.LatestSuperseded)
+            );
+        }
+
+        [Test]
+        public async Task RelayStatsFrameSurfacesRelayStatsEvent()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                "{\"type\": \"RelayStats\", \"data\": {\"interval_ms\": 1000, "
+                    + "\"sent_to_you\": 120, \"dropped_for_you\": 3, "
+                    + "\"backpressure_events\": 1}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.RelayStats));
+            Assert.That(pollEvent.RelayStats.IntervalMs, Is.EqualTo(1000ul));
+            Assert.That(pollEvent.RelayStats.SentToYou, Is.EqualTo(120ul));
+            Assert.That(pollEvent.RelayStats.DroppedForYou, Is.EqualTo(3ul));
+            Assert.That(pollEvent.RelayStats.BackpressureEvents, Is.EqualTo(1ul));
+        }
+
+        [Test]
+        public async Task GoingAwayFrameSurfacesGoingAwayEvent()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "GoingAway")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.GoingAway));
+            Assert.That(pollEvent.GoingAway.DeadlineMs, Is.EqualTo(1700000000000ul));
+            Assert.That(pollEvent.GoingAway.RetryAfterSecs, Is.EqualTo(30ul));
+        }
+
+        [Test]
+        public async Task MalformedDeliveryReportFrameSurfacesViolation()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                "{\"type\": \"DeliveryReport\", \"data\": {\"per_class\": "
+                    + "{\"reliable\": {\"delivered\": 8}, "
+                    + "\"latest\": {\"delivered\": 0, \"superseded\": 0, "
+                    + "\"dropped_full\": 0, \"abandoned\": 0, "
+                    + "\"unsupported_format\": 0}, \"volatile\": "
+                    + "{\"delivered\": 0, \"dropped\": 0, \"abandoned\": 0, "
+                    + "\"unsupported_format\": 0}}}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.ProtocolViolation));
+        }
+
+        [Test]
+        public async Task MalformedRelayStatsFrameSurfacesViolation()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                "{\"type\": \"RelayStats\", \"data\": {\"interval_ms\": 1000, "
+                    + "\"sent_to_you\": 120}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.ProtocolViolation));
+        }
+
+        [Test]
+        public async Task MalformedGoingAwayFrameSurfacesViolation()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                "{\"type\": \"GoingAway\", \"data\": {\"deadline_ms\": \"soon\", "
+                    + "\"retry_after_secs\": 30}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.ProtocolViolation));
+        }
+
+        [Test]
         public async Task RoomJoinedV3SnapshotSurfacesRoomJoinedNotViolation()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =

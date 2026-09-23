@@ -60,6 +60,15 @@ dotnet_naming_style.private_fields_underscore_camel.capitalization = camel_case
 dotnet_diagnostic.CA1028.severity = none
 dotnet_diagnostic.CA1815.severity = none
 
+# V3 delivery-accountability conventions (scoped to src/SignalFish.Client/V3/):
+# - CA1028 (enums should be Int32): the delivery enums (gap reasons,
+#   game-data dispositions) are deliberately byte-backed: they mirror the
+#   wire protocol's byte-encoded discriminators and stay dense inside
+#   hot-path structs (locked zero-alloc budget; same rationale as the
+#   Protocol enums).
+[src/SignalFish.Client/V3/*.cs]
+dotnet_diagnostic.CA1028.severity = none
+
 # Polling-client conventions (scoped to src/SignalFish.Client/Polling/):
 # - CA1028 (enums should be Int32): PollEventKind is byte-backed so
 #   PollEvent stays dense inside the ring buffer (locked zero-alloc budget;
