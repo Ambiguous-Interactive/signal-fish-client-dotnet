@@ -42,6 +42,26 @@ trim CI wall time. One deliverable PR.
     class/key surfaced; one combined `WaitForEventsAsync` drain so
     delivery-timing decoupling cannot eat a later match. Conformance
     checklist row flipped.
+- **Live-server E2E RCA (the session's real bug)**
+  - The new v3 delivery E2E failed in CI: alice's `RoomJoined` never
+    matched; the server's 3 s idle timer closed the silent connection and
+    the session went Terminal (e2e env: `IDLE_TIMEOUT_SECS=3`,
+    `SERVER_PING_INTERVAL_SECS=0`).
+  - Root cause: the server strips `connected_at` from every v3 room
+    snapshot (upstream issue #529), but `PlayerInfo.TryDecode` and
+    `SpectatorInfo.TryDecode` required it — so EVERY v3 room-snapshot
+    frame failed decode and surfaced as a discarded protocol violation.
+    The v2-only golden corpus could never catch this; the live /v3 room
+    join was the first exercise of the shape.
+  - Fix: `ConnectedAt` is now optional (`string?`) on both structs
+    (equality already null-safe); regression tests pin the live v3
+    snapshot shape (player epoch/seq baselines + room reconnection token,
+    no connected_at) at the payload and pipeline levels.
+  - Verified by hand against the server source (`src/protocol/types.rs`,
+    `PlayerInfo.connected_at`: "NOT sent to protocol-v3 peers ... the
+    write layer strips it from every v3 room snapshot").
+
+
 - **Local iteration speed (~2.8x)**
   - Fixture-level NUnit parallelization (`[assembly: Parallelizable]`):
     17 s → ~7 s per TFM, suite deterministic and green on both TFMs; the
@@ -76,9 +96,13 @@ the Fix Philosophy. Reviewer 2 (CI/tooling) APPROVED with a cache-key
 staleness MINOR (fixed via the versions-file hash) and formatting NITs
 (applied).
 
+A third round ran against live CI: the new E2E failed there, which
+surfaced the v3 snapshot decode bug above (the two offline review rounds
+could not see it — the v2-only golden corpus has no v3 RoomJoined).
+
 ## Verification
 
-- `dotnet test`: 571 passed / 0 failed on net8.0 and net10.0.
+- `dotnet test`: 578 passed / 0 failed on net8.0 and net10.0.
 - `lint-conventions` (all six lints), `csharpier --check`,
   `lint-file-sizes`, `lint-llm-instructions`, `scripts/tests/run-all.ps1`:
   clean.

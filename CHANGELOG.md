@@ -157,6 +157,10 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Fixed
 
+- Room-snapshot rosters (`PlayerInfo`/`SpectatorInfo.ConnectedAt`) decode
+  when the server omits `connected_at` — which it always does on negotiated
+  v3 connections. Previously every v3 room join failed to decode and the
+  session stalled; caught by the live-server conformance suite.
 - `JoinRoom` frames now reproduce the server's published canonical wire form:
   `room_code` precedes `player_name`, and absent optionals (`room_code`,
   `max_players`, `supports_authority`, `relay_transport`) are sent as explicit

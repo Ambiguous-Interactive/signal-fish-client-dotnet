@@ -448,6 +448,43 @@ namespace SignalFish.Client.Tests.Polling
         }
 
         [Test]
+        public async Task RoomJoinedV3SnapshotSurfacesRoomJoinedNotViolation()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            /*
+                The live /v3 RoomJoined: no connected_at (stripped server-
+                side from every v3 snapshot), player epoch/seq baselines,
+                and a room-level reconnection token. Regression for the
+                session-stranding decode failure the conformance suite
+                caught.
+            */
+            EnqueueWire(
+                transport,
+                "{\"type\": \"RoomJoined\", \"data\": {\"room_id\": "
+                    + "\"11111111-1111-1111-1111-111111111111\", "
+                    + "\"room_code\": \"ABC123\", \"player_id\": "
+                    + "\"00000000-0000-0000-0000-00000000000a\", "
+                    + "\"game_name\": \"my-game\", \"max_players\": 8, "
+                    + "\"supports_authority\": true, \"current_players\": "
+                    + "[{\"id\": \"00000000-0000-0000-0000-00000000000a\", "
+                    + "\"name\": \"alice\", \"is_authority\": true, "
+                    + "\"is_ready\": false, \"epoch\": 1, \"seq\": 0}], "
+                    + "\"is_authority\": true, \"lobby_state\": \"waiting\", "
+                    + "\"ready_players\": [], \"relay_type\": \"matchbox\", "
+                    + "\"current_spectators\": [], "
+                    + "\"reconnection_token\": \"tok-123\"}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.RoomJoined));
+            Assert.That(pollEvent.Membership.RoomCode, Is.EqualTo("ABC123"));
+        }
+
+        [Test]
         public async Task FailureFramesCarryReasonAndErrorCode()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =

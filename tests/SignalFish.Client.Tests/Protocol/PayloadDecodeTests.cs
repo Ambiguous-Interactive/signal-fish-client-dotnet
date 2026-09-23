@@ -392,6 +392,39 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
+        public void RoomJoinedV3SnapshotWithoutConnectedAtDecodes()
+        {
+            /*
+                The live /v3 shape (server issue #529): connected_at is
+                stripped from every v3 room snapshot, and players carry
+                paired epoch/seq baselines plus the room-level
+                reconnection_token. This is the regression that made every
+                v3 room join fail decode and strand the session.
+            */
+            byte[] wire = Encoding.UTF8.GetBytes(
+                "{\"player_id\": \"00000000-0000-0000-0000-00000000000a\", "
+                    + "\"room_id\": \"11111111-1111-1111-1111-111111111111\", "
+                    + "\"room_code\": \"ABC123\", \"game_name\": \"my-game\", "
+                    + "\"max_players\": 8, \"supports_authority\": true, "
+                    + "\"current_players\": [{\"id\": "
+                    + "\"00000000-0000-0000-0000-00000000000a\", "
+                    + "\"name\": \"alice\", \"is_authority\": true, "
+                    + "\"is_ready\": false, \"epoch\": 1, \"seq\": 0}], "
+                    + "\"is_authority\": true, \"lobby_state\": \"waiting\", "
+                    + "\"ready_players\": [], \"relay_type\": \"matchbox\", "
+                    + "\"current_spectators\": [], "
+                    + "\"reconnection_token\": \"tok-123\"}"
+            );
+
+            Assert.That(RoomJoinedMessage.TryDecode(wire, out RoomJoinedMessage message), Is.True);
+            Assert.That(message.ReconnectionToken, Is.EqualTo("tok-123"));
+            Assert.That(message.Snapshot.CurrentPlayers, Has.Count.EqualTo(1));
+            PlayerInfo alice = message.Snapshot.CurrentPlayers[0];
+            Assert.That(alice.Name, Is.EqualTo("alice"));
+            Assert.That(alice.ConnectedAt, Is.Null);
+        }
+
+        [Test]
         public void SpectatorJoinedGoldenFixtureDecodesPartialSnapshot()
         {
             EnvelopeEvent envelope = DecodeFixtureEnvelope("SpectatorJoined");
