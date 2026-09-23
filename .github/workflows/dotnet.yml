@@ -52,8 +52,25 @@ jobs:
             framework: net8.0
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    env:
+      # Install SDKs into a cacheable runner-local directory: installing
+      # both SDKs dominated the Windows cell (~80 s), which set the
+      # workflow's wall clock. With a warm cache the setup step is a
+      # near no-op; the key changes only when the requested versions do.
+      DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+      DOTNET_ROOT: ${{ runner.temp }}/dotnet
     steps:
       - uses: actions/checkout@v7
+
+      - name: Cache .NET SDKs
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/dotnet
+          # Keyed on .github/dotnet-versions.txt (keep in sync with the
+          # dotnet-version block below): a version bump changes the hash
+          # and forces a fresh install+cache instead of silently reusing
+          # a stale one.
+          key: dotnet-sdk-${{ runner.os }}-${{ hashFiles('.github/dotnet-versions.txt') }}
 
       # The multi-targeted test project restores both TFMs in one shot
       # (restore cannot be scoped per project reference without breaking
