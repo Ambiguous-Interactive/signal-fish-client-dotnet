@@ -327,4 +327,106 @@ namespace SignalFish.Client.Protocol
             return true;
         }
     }
+
+    /// <summary>
+    /// Payload of the inbound v3 <c>GoingAway</c> message (S→C): the server
+    /// is draining and will close the connection at the deadline. Both
+    /// fields are required; the game owns the reconnect scheduling.
+    /// </summary>
+    public readonly struct GoingAwayMessage : IEquatable<GoingAwayMessage>
+    {
+        /// <summary>Gets the Unix-epoch millisecond deadline of the close (required).</summary>
+        public ulong DeadlineMs { get; }
+
+        /// <summary>Gets the suggested wait before reconnecting, in seconds (required).</summary>
+        public ulong RetryAfterSecs { get; }
+
+        /// <summary>Initializes a new <see cref="GoingAwayMessage"/> payload.</summary>
+        public GoingAwayMessage(ulong deadlineMs, ulong retryAfterSecs)
+        {
+            DeadlineMs = deadlineMs;
+            RetryAfterSecs = retryAfterSecs;
+        }
+
+        /// <inheritdoc />
+        public bool Equals(GoingAwayMessage other) =>
+            DeadlineMs == other.DeadlineMs && RetryAfterSecs == other.RetryAfterSecs;
+
+        /// <inheritdoc />
+        public override bool Equals(object? obj) => obj is GoingAwayMessage other && Equals(other);
+
+        /// <inheritdoc />
+        public override int GetHashCode()
+        {
+            HashCode hash = default;
+            hash.Add(DeadlineMs);
+            hash.Add(RetryAfterSecs);
+            return hash.ToHashCode();
+        }
+
+        /// <inheritdoc />
+        public static bool operator ==(GoingAwayMessage left, GoingAwayMessage right) =>
+            left.Equals(right);
+
+        /// <inheritdoc />
+        public static bool operator !=(GoingAwayMessage left, GoingAwayMessage right) =>
+            !left.Equals(right);
+
+        /// <summary>
+        /// Decodes the <c>data</c> object of a <c>GoingAway</c> envelope
+        /// (the <see cref="EnvelopeEvent.Data"/> slice). Unknown fields are
+        /// skipped; a repeated key or a wrong-typed value is rejected.
+        /// Returns <see langword="false"/> for malformed input or a
+        /// missing required field.
+        /// </summary>
+        internal static bool TryDecode(ReadOnlyMemory<byte> data, out GoingAwayMessage message)
+        {
+            message = default;
+            JsonScanner scanner = new JsonScanner(data.Span);
+            JsonMemberState state = scanner.BeginObject();
+
+            ulong deadlineMs = 0;
+            ulong retryAfterSecs = 0;
+            bool deadlineSeen = false;
+            bool retrySeen = false;
+
+            while (state == JsonMemberState.Member)
+            {
+                state = scanner.ScanMember(out Range keyRaw, out Range valueRaw);
+                if (state != JsonMemberState.Member)
+                {
+                    return false;
+                }
+
+                if (scanner.KeyIs(keyRaw, "deadline_ms"))
+                {
+                    if (deadlineSeen || !scanner.TryReadUInt64(valueRaw, out deadlineMs))
+                    {
+                        return false;
+                    }
+
+                    deadlineSeen = true;
+                }
+                else if (scanner.KeyIs(keyRaw, "retry_after_secs"))
+                {
+                    if (retrySeen || !scanner.TryReadUInt64(valueRaw, out retryAfterSecs))
+                    {
+                        return false;
+                    }
+
+                    retrySeen = true;
+                }
+
+                state = scanner.EndMember();
+            }
+
+            if (state != JsonMemberState.EndObject || !deadlineSeen || !retrySeen)
+            {
+                return false;
+            }
+
+            message = new GoingAwayMessage(deadlineMs, retryAfterSecs);
+            return true;
+        }
+    }
 }

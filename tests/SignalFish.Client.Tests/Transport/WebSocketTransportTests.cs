@@ -16,8 +16,19 @@ namespace SignalFish.Client.Tests.Transport
     /// single-reader discipline.
     /// </summary>
     [TestFixture]
+    [Category(TransportLoopback)]
     public class WebSocketTransportTests
     {
+        /// <summary>
+        /// Category for the real-socket round-trips: skipped by the local
+        /// fast lane (scripts/fast-check.ps1 sets the variable below),
+        /// always run by the full gate and CI.
+        /// </summary>
+        internal const string TransportLoopback = "TransportLoopback";
+
+        /// <summary>Set by scripts/fast-check.ps1 to skip real-socket round-trips.</summary>
+        internal const string FastLaneVariable = "SIGNALFISH_FAST_LANE";
+
         private const int Abnormal = 1006;
 
         public static readonly TestCaseData[] CloseCodeCases =
@@ -35,6 +46,17 @@ namespace SignalFish.Client.Tests.Transport
         };
 
         private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+
+        [OneTimeSetUp]
+        public void SkipInFastLane()
+        {
+            if (Environment.GetEnvironmentVariable(FastLaneVariable) == "1")
+            {
+                Assert.Ignore(
+                    "TransportLoopback is excluded from the fast lane; the full gate and CI always run it."
+                );
+            }
+        }
 
         [TestCaseSource(nameof(CloseCodeCases))]
         public async Task ReceiveServerCloseMapsCodeToKind(

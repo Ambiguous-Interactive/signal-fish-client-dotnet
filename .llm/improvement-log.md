@@ -9,6 +9,27 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-23 - session 027: M6.3 core (accountability engine + v3 decodes)
+
+- Trigger: M6.3 core (engine + decode surface), issue-debt round, and the
+  local-iteration speed mandate; one deliverable PR.
+- Evidence: fast-check 23.4 s -> 11.3 s full / ~5 s filtered. The
+  allocation gate caught a real 24 B/call hot-path allocation on day one;
+  the adversarial review caught a lint blocker + a broken exclusion switch
+  pre-PR; 26 Rust scenarios ported green on first full run.
+- Findings: (1) a `List.RemoveAll(lambda)` allocates its display class at
+  method entry even on early-return paths — use explicit loops on gated
+  hot paths. (2) NUnit3TestAdapter's vstest `TestCaseFilter` negation is
+  unreliable (`Category!=X` selects everything); signal exclusions via an
+  env-var + `OneTimeSetUp` `Assert.Ignore` instead. (3) PowerShell `@()`
+  array literals split `("a:" + $var)` elements at the `+` — compute the
+  token into a variable first. (4) Parallel sub-agents duplicated wire
+  types across namespaces when the contract pinned types but not their
+  file/namespace home — pin the home too.
+- Applied: engine + decodes + 33 tests landed (M6.3 core); #58 closed via
+  the shared `MaxVerbatimPayloadDepth` contract; integration follow-up
+  issue filed. Open: none.
+
 ## 2026-09-23 - session 026: M6.2 classified delivery + iteration speed
 
 - Trigger: M6.2 (classified delivery) plus the goal's speed mandates
@@ -239,31 +260,3 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   seed.bin`) gives a seconds-scale deterministic red-green for generator
   bugs without the instrumented driver.
 - Open: none.
-
-## 2026-09-20 - session 010: transport (M2) + loopback WS test server
-
-- Findings: (1) NUnit's `Throws.InvalidOperationException` is an *exact*
-  type constraint - derived types fail it; use
-  `Throws.Exception.InstanceOf<T>()` for base-type contracts. (2) Loopback
-  test servers hand off connections via a cancellation-safe primitive
-  (semaphore + queue): waiter-TCS handoffs lose connections and stale
-  waiters steal later ones. (3) `ClientWebSocket` cannot read
-  upgrade-response headers - size comes from the pre-connect
-  `client-config` HTTP probe; the header path is browser-transport-only
-  (M7). (4) RFC 6455 close codes are 1000-4999; out-of-range test codes
-  surface as 1006. (5) TOCTOU-free transport shape: CAS transitions,
-  single reader/writer, exactly-once close, idempotent dispose.
-- Applied: M2 landed red-green (262 tests x 2 TFMs); test-scoped CA2007/
-  CA2000/CA1031/CA5350 suppressions in .editorconfig. Open: none.
-
-## 2026-09-20 - envelope writer (M1.3): ref-struct copy hazard caught by red-green
-
-- Findings: (1) a ref struct with mutable position state must be
-  `ref`-passed into every helper writing through it; by-value compiles clean
-  and corrupts silently. (2) `Try*` methods assigning `out` eagerly must not
-  compose with `||` when the failure-path value is observable. (3)
-  `stackalloc` inside a loop accumulates per iteration (reclaimed only at
-  method return) - fatal, uncatchable StackOverflowException; hoist one
-  scratch span. (4) struct ctors must normalize ignored fields or `Equals`
-  contradicts the wire.
-- Open: fold (1)+(2) into json-serialization when next edited (300-line cap).

@@ -8,6 +8,13 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- v3 delivery accountability decodes (M6.3 core): room snapshots and
+  reconnections now expose the sender epoch/seq baselines and
+  `sender_watermarks` the server already sends on v3 connections, and
+  `DeliveryReport`, `RelayStats`, and `GoingAway` frames surface as events
+  instead of being dropped (RelayStats was previously unroutable). The
+  client-side accounting engine behind these events ships in the next
+  release.
 - v3 classified delivery (M6.2): on a negotiated-v3 connection, relayed
   game data carries a delivery class — `reliable` (the unchanged v2 wire
   form), `latest{key}` (server keeps only the newest value per key), or
@@ -154,6 +161,14 @@ changes (CI, tests, tooling, docs) are not listed.
   clean-vs-abnormal disconnect telemetry classify graceful exits correctly.
   The handshake is best-effort with a short bounded wait; an unresponsive
   server or dead wire falls back to the previous abort.
+
+### Changed
+
+- One depth contract for outbound verbatim payloads: game data, signal,
+  and connection info share a single 128-container bound, validated once
+  at message construction; encoding no longer re-validates payloads.
+  `SignalMessage` and `ProvideConnectionInfoMessage` now refuse malformed
+  or too-deep payloads at construction.
 
 ### Fixed
 

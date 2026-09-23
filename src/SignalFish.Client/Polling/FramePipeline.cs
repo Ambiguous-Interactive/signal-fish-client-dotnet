@@ -376,6 +376,37 @@ namespace SignalFish.Client.Polling
                     }
 
                     return PollEvent.FromSpectatorDisconnected(spectatorDisconnected, envelope.Raw);
+                case MessageKind.DeliveryReport:
+                    if (
+                        !DeliveryReportMessage.TryDecode(
+                            envelope.Data,
+                            out DeliveryReportMessage deliveryReport
+                        )
+                    )
+                    {
+                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
+                    }
+
+                    return PollEvent.FromDeliveryReport(deliveryReport, envelope.Raw);
+                case MessageKind.RelayStats:
+                    if (
+                        !RelayStatsMessage.TryDecode(
+                            envelope.Data,
+                            out RelayStatsMessage relayStats
+                        )
+                    )
+                    {
+                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
+                    }
+
+                    return PollEvent.FromRelayStats(relayStats, envelope.Raw);
+                case MessageKind.GoingAway:
+                    if (!GoingAwayMessage.TryDecode(envelope.Data, out GoingAwayMessage goingAway))
+                    {
+                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
+                    }
+
+                    return PollEvent.FromGoingAway(goingAway, envelope.Raw);
                 default:
                     /*
                         Routed kinds with no v2 event surface: heartbeat

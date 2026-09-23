@@ -1,6 +1,226 @@
 namespace SignalFish.Client.Protocol
 {
     using System;
+    using System.Collections.Generic;
+
+    /// <summary>
+    /// One sender's delivery baseline from a v3 <c>Reconnected</c> frame:
+    /// the epoch the sender is on and the last sequence the client was
+    /// durably credited, so the game can detect replay gaps via
+    /// <c>DeliveryReport</c>. All fields are required.
+    /// </summary>
+    public readonly struct SenderWatermark : IEquatable<SenderWatermark>
+    {
+        /// <summary>Gets the sending player's identity (required).</summary>
+        public Guid PlayerId { get; }
+
+        /// <summary>Gets the delivery epoch the sender is on (required).</summary>
+        public uint Epoch { get; }
+
+        /// <summary>Gets the last credited sequence from that sender (required).</summary>
+        public ulong Seq { get; }
+
+        /// <summary>Initializes a new <see cref="SenderWatermark"/> value.</summary>
+        public SenderWatermark(Guid playerId, uint epoch, ulong seq)
+        {
+            PlayerId = playerId;
+            Epoch = epoch;
+            Seq = seq;
+        }
+
+        /// <inheritdoc />
+        public bool Equals(SenderWatermark other) =>
+            PlayerId == other.PlayerId && Epoch == other.Epoch && Seq == other.Seq;
+
+        /// <inheritdoc />
+        public override bool Equals(object? obj) => obj is SenderWatermark other && Equals(other);
+
+        /// <inheritdoc />
+        public override int GetHashCode()
+        {
+            HashCode hash = default;
+            hash.Add(PlayerId);
+            hash.Add(Epoch);
+            hash.Add(Seq);
+            return hash.ToHashCode();
+        }
+
+        /// <inheritdoc />
+        public static bool operator ==(SenderWatermark left, SenderWatermark right) =>
+            left.Equals(right);
+
+        /// <inheritdoc />
+        public static bool operator !=(SenderWatermark left, SenderWatermark right) =>
+            !left.Equals(right);
+
+        /// <summary>
+        /// Decodes one <c>SenderWatermark</c> object (a sliced sub-object of
+        /// a payload). Unknown fields are skipped; a repeated key or a
+        /// wrong-typed value is rejected. Returns
+        /// <see langword="false"/> for malformed input or a missing
+        /// required field.
+        /// </summary>
+        internal static bool TryDecode(ReadOnlyMemory<byte> data, out SenderWatermark watermark)
+        {
+            watermark = default;
+            JsonScanner scanner = new JsonScanner(data.Span);
+            JsonMemberState state = scanner.BeginObject();
+
+            Guid playerId = default;
+            uint epoch = 0;
+            ulong seq = 0;
+            bool playerSeen = false;
+            bool epochSeen = false;
+            bool seqSeen = false;
+
+            while (state == JsonMemberState.Member)
+            {
+                state = scanner.ScanMember(out Range keyRaw, out Range valueRaw);
+                if (state != JsonMemberState.Member)
+                {
+                    return false;
+                }
+
+                if (scanner.KeyIs(keyRaw, "player_id"))
+                {
+                    if (playerSeen || !scanner.TryReadGuid(valueRaw, out playerId))
+                    {
+                        return false;
+                    }
+
+                    playerSeen = true;
+                }
+                else if (scanner.KeyIs(keyRaw, "epoch"))
+                {
+                    if (epochSeen || !scanner.TryReadUInt32(valueRaw, out epoch))
+                    {
+                        return false;
+                    }
+
+                    epochSeen = true;
+                }
+                else if (scanner.KeyIs(keyRaw, "seq"))
+                {
+                    if (seqSeen || !scanner.TryReadUInt64(valueRaw, out seq))
+                    {
+                        return false;
+                    }
+
+                    seqSeen = true;
+                }
+
+                state = scanner.EndMember();
+            }
+
+            if (state != JsonMemberState.EndObject || !playerSeen || !epochSeen || !seqSeen)
+            {
+                return false;
+            }
+
+            watermark = new SenderWatermark(playerId, epoch, seq);
+            return true;
+        }
+
+        /// <summary>
+        /// Reads a scanned value that must be a JSON array of
+        /// <c>SenderWatermark</c> objects into a list (decode path;
+        /// allocates the result). A malformed element fails the decode.
+        /// </summary>
+        internal static bool TryReadArray(
+            ReadOnlyMemory<byte> data,
+            Range valueRaw,
+            out IReadOnlyList<SenderWatermark>? values
+        )
+        {
+            values = null;
+            (int Offset, int Length) s = valueRaw.GetOffsetAndLength(data.Length);
+            if (s.Length < 2 || data.Span[s.Offset] != (byte)'[')
+            {
+                return false;
+            }
+
+            JsonScanner scanner = new JsonScanner(data.Span.Slice(s.Offset, s.Length));
+            scanner.SkipWhitespace();
+            if (scanner.Expect((byte)'[') != default(DecodeError))
+            {
+                return false;
+            }
+
+            List<SenderWatermark> list = new List<SenderWatermark>();
+            scanner.SkipWhitespace();
+            if (scanner.Peek == (byte)']')
+            {
+                if (scanner.Expect((byte)']') != default(DecodeError))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                while (true)
+                {
+                    scanner.SkipWhitespace();
+
+                    /*
+                        Elements validate at member-value depth, the same
+                        level JsonScanner.ScanMember uses for payload values.
+                    */
+                    if (
+                        scanner.ScanValueRaw(2, JsonScanner.MaxDepth, out Range element)
+                        != default(DecodeError)
+                    )
+                    {
+                        return false;
+                    }
+
+                    (int EOffset, int ELength) e = element.GetOffsetAndLength(s.Length);
+                    if (
+                        !TryDecode(
+                            data.Slice(s.Offset + e.EOffset, e.ELength),
+                            out SenderWatermark watermark
+                        )
+                    )
+                    {
+                        return false;
+                    }
+
+                    list.Add(watermark);
+                    scanner.SkipWhitespace();
+                    byte next = scanner.Peek;
+                    if (next == (byte)',')
+                    {
+                        if (scanner.Expect((byte)',') != default(DecodeError))
+                        {
+                            return false;
+                        }
+
+                        continue;
+                    }
+
+                    if (next == (byte)']')
+                    {
+                        if (scanner.Expect((byte)']') != default(DecodeError))
+                        {
+                            return false;
+                        }
+
+                        break;
+                    }
+
+                    return false;
+                }
+            }
+
+            scanner.SkipWhitespace();
+            if (!scanner.IsEof)
+            {
+                return false;
+            }
+
+            values = list;
+            return true;
+        }
+    }
 
     /// <summary>
     /// Payload of the inbound <c>Reconnected</c> frame (S→C): a prior
@@ -31,13 +251,21 @@ namespace SignalFish.Client.Protocol
         /// </summary>
         public string? ReconnectionToken { get; }
 
+        /// <summary>
+        /// Gets the sender delivery baselines the v3 frame carried (null
+        /// when absent — the v2 wire omits them). Advisory accounting
+        /// state: excluded from equality like <see cref="Snapshot"/>.
+        /// </summary>
+        public IReadOnlyList<SenderWatermark>? SenderWatermarks { get; }
+
         /// <summary>Initializes a new <see cref="ReconnectedMessage"/> payload.</summary>
         public ReconnectedMessage(
             Guid playerId,
             Guid roomId,
             string roomCode,
             RoomSnapshot? snapshot = null,
-            string? reconnectionToken = null
+            string? reconnectionToken = null,
+            IReadOnlyList<SenderWatermark>? senderWatermarks = null
         )
         {
             PlayerId = playerId;
@@ -45,6 +273,7 @@ namespace SignalFish.Client.Protocol
             RoomCode = roomCode;
             Snapshot = snapshot ?? default;
             ReconnectionToken = reconnectionToken;
+            SenderWatermarks = senderWatermarks;
         }
 
         /// <inheritdoc />
@@ -98,9 +327,11 @@ namespace SignalFish.Client.Protocol
             Guid roomId = default;
             string? roomCode = null;
             string? reconnectionToken = null;
+            IReadOnlyList<SenderWatermark>? senderWatermarks = null;
             bool playerSeen = false;
             bool roomSeen = false;
             bool tokenSeen = false;
+            bool watermarksSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -157,6 +388,22 @@ namespace SignalFish.Client.Protocol
                         }
                     }
                 }
+                else if (scanner.KeyIs(keyRaw, "sender_watermarks"))
+                {
+                    if (watermarksSeen)
+                    {
+                        return false;
+                    }
+
+                    watermarksSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!SenderWatermark.TryReadArray(data, valueRaw, out senderWatermarks))
+                        {
+                            return false;
+                        }
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -175,7 +422,8 @@ namespace SignalFish.Client.Protocol
                 roomId,
                 roomCode,
                 snapshot,
-                reconnectionToken
+                reconnectionToken,
+                senderWatermarks
             );
             return true;
         }

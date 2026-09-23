@@ -431,6 +431,38 @@ namespace SignalFish.Client.Protocol
             return true;
         }
 
+        /// <summary>Reads a scanned JSON number that must be an unsigned 64-bit integer in decimal form.</summary>
+        internal bool TryReadUInt64(Range valueRaw, out ulong value)
+        {
+            value = 0;
+            (int Offset, int Length) s = valueRaw.GetOffsetAndLength(_buf.Length);
+            ReadOnlySpan<byte> digits = _buf.Slice(s.Offset, s.Length);
+            if (digits.IsEmpty || digits.Length > 20)
+            {
+                return false;
+            }
+
+            ulong accumulator = 0;
+            foreach (byte b in digits)
+            {
+                if (!IsDigit(b))
+                {
+                    return false;
+                }
+
+                uint digit = (uint)(b - (byte)'0');
+                if (accumulator > (ulong.MaxValue - digit) / 10)
+                {
+                    return false;
+                }
+
+                accumulator = (accumulator * 10) + digit;
+            }
+
+            value = accumulator;
+            return true;
+        }
+
         /// <summary>Reads a scanned JSON literal that must be <c>true</c> or <c>false</c>.</summary>
         internal bool TryReadBoolean(Range valueRaw, out bool value)
         {

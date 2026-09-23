@@ -55,6 +55,7 @@ namespace SignalFish.Client.Protocol
             "SpectatorJoinFailed",
             "SpectatorJoined",
             "SpectatorLeft",
+            "RelayStats",
         };
 
         private static readonly byte[][] NameBytes = BuildNameBytes();

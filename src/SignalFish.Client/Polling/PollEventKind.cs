@@ -115,5 +115,14 @@ namespace SignalFish.Client.Polling
         /// by the async client.
         /// </summary>
         ReconnectAbandoned = 28,
+
+        /// <summary>Per-class delivery accounting + gap report (carries the delivery payload).</summary>
+        DeliveryReport = 29,
+
+        /// <summary>Per-interval relay accounting (carries the relay-stats payload).</summary>
+        RelayStats = 30,
+
+        /// <summary>Server draining notice (carries the deadline + retry-after payload).</summary>
+        GoingAway = 31,
     }
 }

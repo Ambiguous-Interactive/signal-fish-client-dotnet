@@ -222,7 +222,7 @@ namespace SignalFish.Client.Tests
         [Test]
         public void GameDataPayloadAtDepthLimitIsAcceptedAndBeyondRefused()
         {
-            const int limit = GameDataMessage.MaxPayloadContainerDepth;
+            const int limit = EnvelopeWriter.MaxVerbatimPayloadDepth;
 
             /*
                 The bound is the deepest level a value may occupy (root is
@@ -298,6 +298,80 @@ namespace SignalFish.Client.Tests
             EnvelopeEvent ev = EnvelopeReader.Decode(deepFrame.WrittenSpan.ToArray());
             Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.Message));
             Assert.That(ev.Message, Is.EqualTo(MessageKind.GameData));
+        }
+
+        [Test]
+        public void SignalAndConnectionInfoPayloadsShareTheVerbatimDepthBoundary()
+        {
+            const int limit = EnvelopeWriter.MaxVerbatimPayloadDepth;
+
+            /*
+                One depth constant governs every verbatim outbound payload.
+                Signal takes any JSON value; connection info must be a JSON
+                object. Both are validated at construction — exactly at the
+                bound is legal, one deeper is refused — and a payload the
+                constructor accepted must encode without re-validation.
+            */
+            Assert.That(
+                (Action)(
+                    () =>
+                        _ = new SignalMessage(
+                            "00000000-0000-0000-0000-000000000001",
+                            "00000000-0000-0000-0000-000000000002",
+                            Encoding.UTF8.GetBytes(Nested("1", limit - 1))
+                        )
+                ),
+                Throws.Nothing
+            );
+            Assert.That(
+                (Action)(
+                    () =>
+                        _ = new SignalMessage(
+                            "00000000-0000-0000-0000-000000000001",
+                            "00000000-0000-0000-0000-000000000002",
+                            Encoding.UTF8.GetBytes(Nested("1", limit))
+                        )
+                ),
+                Throws.ArgumentException
+            );
+            Assert.That(
+                (Action)(
+                    () =>
+                        _ = new ProvideConnectionInfoMessage(
+                            Encoding.UTF8.GetBytes(Nested("{}", limit - 1))
+                        )
+                ),
+                Throws.Nothing
+            );
+            Assert.That(
+                (Action)(
+                    () =>
+                        _ = new ProvideConnectionInfoMessage(
+                            Encoding.UTF8.GetBytes(Nested("{}", limit))
+                        )
+                ),
+                Throws.ArgumentException
+            );
+            Assert.That(
+                (Action)(
+                    () => _ = new ProvideConnectionInfoMessage(Encoding.UTF8.GetBytes("[1, 2]"))
+                ),
+                Throws.ArgumentException,
+                "connection info must be a JSON object, not just any JSON value"
+            );
+
+            ArrayBufferWriter<byte> deepSignal = new ArrayBufferWriter<byte>(256);
+            EnvelopeWriter.WriteSignal(
+                deepSignal,
+                new SignalMessage(
+                    "00000000-0000-0000-0000-000000000001",
+                    "00000000-0000-0000-0000-000000000002",
+                    Encoding.UTF8.GetBytes(Nested("1", limit - 3))
+                )
+            );
+            EnvelopeEvent decoded = EnvelopeReader.Decode(deepSignal.WrittenSpan.ToArray());
+            Assert.That(decoded.Kind, Is.EqualTo(EnvelopeEventKind.Message));
+            Assert.That(decoded.Message, Is.EqualTo(MessageKind.Signal));
         }
 
         private static string Nested(string inner, int levels)
@@ -803,7 +877,7 @@ namespace SignalFish.Client.Tests
                         )
                 ),
                 Throws.ArgumentException,
-                "A malformed verbatim payload must fail at the call site, not corrupt the frame."
+                "A malformed verbatim payload must fail at construction, not corrupt the frame."
             );
             Assert.That(
                 (Action)(
