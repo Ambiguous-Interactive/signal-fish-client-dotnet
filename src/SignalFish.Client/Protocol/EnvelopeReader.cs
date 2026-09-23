@@ -24,10 +24,12 @@ namespace SignalFish.Client.Protocol
     {
         /// <summary>
         /// Maximum JSON nesting depth (objects and arrays) accepted inside a
-        /// frame. Deeper frames fail with <see cref="DecodeError.DepthExceeded"/>
+        /// frame: the server codec's default recursion limit, so every
+        /// payload the server itself accepts and relays is decodable.
+        /// Deeper frames fail with <see cref="DecodeError.DepthExceeded"/>
         /// instead of risking unbounded recursion.
         /// </summary>
-        public const int MaxDepth = 64;
+        public const int MaxDepth = 128;
 
         /// <summary>Nesting depth of root-level member values (the root object is level 1).</summary>
         private const int RootMemberDepth = 2;

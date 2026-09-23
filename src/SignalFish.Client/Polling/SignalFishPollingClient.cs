@@ -324,7 +324,9 @@ namespace SignalFish.Client.Polling
         /// <summary>Relays a game-data payload to the other players (player role only).</summary>
         public CommandSend SendGameData(in GameDataMessage message)
         {
-            if (!AdmitForSend(ClientCommand.SendGameData, out AdmissionError refusal))
+            if (
+                !AdmitForSend(ClientCommand.SendGameData, message.Class, out AdmissionError refusal)
+            )
             {
                 return CommandSend.Refused(refusal);
             }
@@ -351,13 +353,32 @@ namespace SignalFish.Client.Polling
             out AdmissionError refusal
         )
         {
+            return AdmitForSend(command, GameDataClass.Reliable, becomeAuthority, out refusal);
+        }
+
+        private bool AdmitForSend(
+            ClientCommand command,
+            GameDataClass delivery,
+            out AdmissionError refusal
+        )
+        {
+            return AdmitForSend(command, delivery, becomeAuthority: true, out refusal);
+        }
+
+        private bool AdmitForSend(
+            ClientCommand command,
+            GameDataClass delivery,
+            bool becomeAuthority,
+            out AdmissionError refusal
+        )
+        {
             if (!_connectCalled || _terminal)
             {
                 refusal = AdmissionError.NotConnected;
                 return false;
             }
 
-            return _machine.TryAdmit(command, becomeAuthority, out refusal);
+            return _machine.TryAdmit(command, delivery, becomeAuthority, out refusal);
         }
 
         /// <summary>Encodes and dispatches a payload-less command.</summary>

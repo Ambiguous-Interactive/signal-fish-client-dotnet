@@ -1,6 +1,9 @@
 namespace SignalFish.Client.E2E
 {
     using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Text;
     using System.Threading.Tasks;
     using NUnit.Framework;
     using SignalFish.Client.Core;
@@ -153,6 +156,116 @@ namespace SignalFish.Client.E2E
             );
             Assert.That(v3.Snapshot.NegotiatedProtocolVersion, Is.EqualTo(3u));
             await v3.DisposeAsync();
+        }
+
+        /// <summary>
+        /// v3 delivery classes (M6.2): on a negotiated-v3 room, reliable
+        /// rides the v2 form while latest{key} and volatile carry their
+        /// class metadata end-to-end and arrive surfaced on the event
+        /// (the server coalesces/drops per its own queue policies).
+        /// </summary>
+        [Test]
+        public async Task V3DeliveryClassesRoundTripWithClassSurfaced()
+        {
+            SignalFishPollingClient alice = await E2EHarness.ConnectClientAsync(
+                E2EEnvironment.V3Endpoint()
+            );
+            SignalFishPollingClient bob = await E2EHarness.ConnectClientAsync(
+                E2EEnvironment.V3Endpoint()
+            );
+
+            AuthenticateMessage advertisement = new AuthenticateMessage(
+                appId: "e2e-dotnet-app",
+                protocolVersion: 3,
+                supportedTransports: RelayOnlyTransports,
+                supportedTopologies: RelayOnlyTopologies
+            );
+            Assert.That(alice.SendAuthenticate(advertisement).Accepted, Is.True);
+            Assert.That(bob.SendAuthenticate(advertisement).Accepted, Is.True);
+            await E2EHarness.WaitForEventAsync(alice, e => e.Kind == PollEventKind.ProtocolInfo);
+            await E2EHarness.WaitForEventAsync(bob, e => e.Kind == PollEventKind.ProtocolInfo);
+
+            string gameName = E2EHarness.GameName();
+            RoomMembership aliceSeat = await E2EHarness.JoinRoomAsync(alice, gameName, "alice");
+            RoomMembership bobSeat = await E2EHarness.JoinRoomAsync(
+                bob,
+                gameName,
+                "bob",
+                roomCode: aliceSeat.RoomCode
+            );
+            Assert.That(bobSeat.RoomCode, Is.EqualTo(aliceSeat.RoomCode));
+
+            Assert.That(
+                alice
+                    .SendGameData(new GameDataMessage(Encoding.UTF8.GetBytes(@"{""n"": 1}")))
+                    .Accepted,
+                Is.True
+            );
+            Assert.That(
+                alice
+                    .SendGameData(
+                        new GameDataMessage(
+                            Encoding.UTF8.GetBytes(@"{""n"": 2}"),
+                            GameDataClass.Latest,
+                            key: 7
+                        )
+                    )
+                    .Accepted,
+                Is.True
+            );
+            Assert.That(
+                alice
+                    .SendGameData(
+                        new GameDataMessage(
+                            Encoding.UTF8.GetBytes(@"{""n"": 3}"),
+                            GameDataClass.Volatile
+                        )
+                    )
+                    .Accepted,
+                Is.True
+            );
+
+            /*
+                One combined drain: the classes decouple delivery timing
+                (latest coalesces, volatile never paces), so sequential
+                filtered waits could eat a later match.
+            */
+            List<PollEvent> delivered = await E2EHarness.WaitForEventsAsync(
+                bob,
+                e => e.Kind == PollEventKind.GameData,
+                3
+            );
+            PollEvent reliable = delivered.Single(e => e.GameData.Class == GameDataClass.Reliable);
+            PollEvent latest = delivered.Single(e => e.GameData.Class == GameDataClass.Latest);
+            PollEvent volatileEvent = delivered.Single(e =>
+                e.GameData.Class == GameDataClass.Volatile
+            );
+
+            Assert.That(reliable.GameData.FromPlayer, Is.EqualTo(aliceSeat.PlayerId));
+            Assert.That(
+                E2EHarness.PayloadJsonEquals(reliable.GameData.Payload.Span, @"{""n"": 1}"),
+                Is.True
+            );
+
+            Assert.That(latest.GameData.FromPlayer, Is.EqualTo(aliceSeat.PlayerId));
+            Assert.That(latest.GameData.Key, Is.EqualTo(7u));
+            Assert.That(
+                E2EHarness.PayloadJsonEquals(latest.GameData.Payload.Span, @"{""n"": 2}"),
+                Is.True
+            );
+
+            Assert.That(volatileEvent.GameData.FromPlayer, Is.EqualTo(aliceSeat.PlayerId));
+            Assert.That(
+                E2EHarness.PayloadJsonEquals(volatileEvent.GameData.Payload.Span, @"{""n"": 3}"),
+                Is.True
+            );
+
+            await LeaveAsync(alice);
+            await E2EHarness.WaitForEventAsync(bob, e => e.Kind == PollEventKind.PlayerLeft);
+            await LeaveAsync(bob);
+
+            await alice.DisposeAsync();
+            await bob.DisposeAsync();
         }
 
         /// <summary>Item 2: two-player lobby, all-ready, start, GameStarting.</summary>

@@ -307,9 +307,8 @@ namespace SignalFish.Client.Tests
             Assert.That(ev.Message, Is.EqualTo(MessageKind.Ping));
         }
 
-        [TestCase(61, EnvelopeEventKind.Message)]
-        [TestCase(62, EnvelopeEventKind.Message)]
-        [TestCase(63, EnvelopeEventKind.DecodeFailed)]
+        [TestCase(126, EnvelopeEventKind.Message)]
+        [TestCase(127, EnvelopeEventKind.DecodeFailed)]
         public void DecodeDataPayloadNestingEnforcesDepthBound(
             int arrayDepth,
             EnvelopeEventKind expectedKind
@@ -317,7 +316,7 @@ namespace SignalFish.Client.Tests
         {
             /*
                 Root(1) + data(2) + array levels: level k is scanned at depth
-                2+k, so the bound accepts 62 array levels and rejects 63.
+                2+k, so the bound accepts 126 array levels and rejects 127.
             */
             string wire =
                 "{\"type\":\"Ping\",\"data\":{\"x\":"
@@ -334,9 +333,8 @@ namespace SignalFish.Client.Tests
             }
         }
 
-        [TestCase(62, EnvelopeEventKind.Message)]
-        [TestCase(63, EnvelopeEventKind.Message)]
-        [TestCase(64, EnvelopeEventKind.DecodeFailed)]
+        [TestCase(127, EnvelopeEventKind.Message)]
+        [TestCase(128, EnvelopeEventKind.DecodeFailed)]
         public void DecodeRootMemberNestingEnforcesDepthBound(
             int arrayDepth,
             EnvelopeEventKind expectedKind
@@ -344,7 +342,7 @@ namespace SignalFish.Client.Tests
         {
             /*
                 Root(1) + direct array levels: level k is scanned at depth
-                1+k, so the bound accepts 63 array levels and rejects 64.
+                1+k, so the bound accepts 127 array levels and rejects 128.
             */
             string wire =
                 "{\"type\":\"Ping\",\"x\":"
@@ -708,7 +706,7 @@ namespace SignalFish.Client.Tests
             yield return new TestCaseData(
                 "depth exceeded",
                 Encoding.UTF8.GetBytes(
-                    "{\"type\":\"Ping\",\"x\":" + new string('[', 100) + new string(']', 100) + "}"
+                    "{\"type\":\"Ping\",\"x\":" + new string('[', 200) + new string(']', 200) + "}"
                 ),
                 DecodeError.DepthExceeded
             ).SetArgDisplayNames("depth exceeded", "wire", DecodeError.DepthExceeded.ToString());

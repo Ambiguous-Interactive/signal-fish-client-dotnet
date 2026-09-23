@@ -1,6 +1,7 @@
 namespace SignalFish.Client.Core
 {
     using System;
+    using SignalFish.Client.Protocol;
 
     /// <summary>
     /// Connection phase, membership, and membership-fencing state for one
@@ -165,10 +166,31 @@ namespace SignalFish.Client.Core
         /// <summary>The flag-carrying form; see the two-argument overload.</summary>
         public bool TryAdmit(ClientCommand command, bool becomeAuthority, out AdmissionError error)
         {
+            return TryAdmit(command, GameDataClass.Reliable, becomeAuthority, out error);
+        }
+
+        /// <summary>The delivery-carrying form; see the two-argument overload.</summary>
+        public bool TryAdmit(
+            ClientCommand command,
+            GameDataClass delivery,
+            out AdmissionError error
+        )
+        {
+            return TryAdmit(command, delivery, becomeAuthority: true, out error);
+        }
+
+        /// <summary>The full form; see the two-argument overload.</summary>
+        public bool TryAdmit(
+            ClientCommand command,
+            GameDataClass delivery,
+            bool becomeAuthority,
+            out AdmissionError error
+        )
+        {
             error = Admit(command, becomeAuthority);
             if (
                 error == default(AdmissionError)
-                && RequiresNegotiatedV3(command)
+                && RequiresNegotiatedV3(command, delivery)
                 && (_negotiatedProtocolVersion ?? 0) < 3
             )
             {
@@ -330,15 +352,18 @@ namespace SignalFish.Client.Core
         }
 
         /// <summary>
-        /// Whether <paramref name="command"/> may only ride a negotiated-v3
-        /// connection. The v2 floor is sacred: every command defined so far
-        /// is v2 — the first v3-only send (classified delivery, mesh
-        /// signaling) adds itself here together with the
-        /// <see cref="AdmissionError.ProtocolUnsupported"/> gate coverage.
+        /// Whether a command (with its game-data delivery class) may only
+        /// ride a negotiated-v3 connection. The v2 floor is sacred:
+        /// <see cref="GameDataClass.Reliable"/> relay reproduces the v2
+        /// wire form and is never gated; classified delivery
+        /// (<see cref="GameDataClass.Latest"/>,
+        /// <see cref="GameDataClass.Volatile"/>) is the first v3-only send
+        /// (mesh signaling adds itself with the M6.5 work).
         /// </summary>
-        internal static bool RequiresNegotiatedV3(ClientCommand command)
+        internal static bool RequiresNegotiatedV3(ClientCommand command, GameDataClass delivery)
         {
-            return false;
+            return command == ClientCommand.SendGameData
+                && (delivery == GameDataClass.Latest || delivery == GameDataClass.Volatile);
         }
 
         private AdmissionError Admit(ClientCommand command, bool becomeAuthority)

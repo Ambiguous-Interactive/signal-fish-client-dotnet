@@ -248,6 +248,66 @@ namespace SignalFish.Client.Tests.Async
         }
 
         [Test]
+        public async Task ClassifiedGameDataWithoutNegotiatedV3IsRefused()
+        {
+            (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed();
+            await ConnectJoinRoom(client, transport);
+
+            byte[] payload = Encoding.UTF8.GetBytes("{\"tick\": 1}");
+            CommandSend latest = client.SendGameData(
+                new GameDataMessage(payload, GameDataClass.Latest, key: 7)
+            );
+            Assert.That(latest.Accepted, Is.False);
+            Assert.That(latest.Refusal, Is.EqualTo(AdmissionError.ProtocolUnsupported));
+            Assert.That(
+                CountTag(transport.SentText, 9),
+                Is.EqualTo(0),
+                "a refused send never touches the wire"
+            );
+
+            /*
+                The waiting send carries the same gate: a classified message
+                through SendGameDataReliableAsync is refused on a pre-v3
+                connection instead of being emitted for the server to
+                answer INVALID_DELIVERY_CLASS.
+            */
+            CommandSend reliableAsync = await client.SendGameDataReliableAsync(
+                new GameDataMessage(payload, GameDataClass.Latest, key: 7)
+            );
+            Assert.That(reliableAsync.Accepted, Is.False);
+            Assert.That(reliableAsync.Refusal, Is.EqualTo(AdmissionError.ProtocolUnsupported));
+
+            transport.Enqueue(
+                Encoding.UTF8.GetBytes(
+                    GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo")
+                ),
+                isText: true
+            );
+            Assert.That(
+                (await NextEventAsync(client)).Kind,
+                Is.EqualTo(PollEventKind.ProtocolInfo)
+            );
+
+            int sentBefore = transport.SentText.Count;
+            CommandSend negotiated = client.SendGameData(
+                new GameDataMessage(payload, GameDataClass.Latest, key: 7)
+            );
+            Assert.That(negotiated.Accepted, Is.True);
+            await WaitForAsync(
+                () => transport.SentText.Count >= sentBefore + 1,
+                "classified relay on the wire"
+            );
+            Assert.That(
+                transport.SentText[^1],
+                Is.EqualTo(
+                    "{\"type\": \"GameData\", \"data\": {\"data\": {\"tick\": 1}, "
+                        + "\"class\": \"latest\", \"key\": 7}}"
+                )
+            );
+            await client.DisposeAsync();
+        }
+
+        [Test]
         public async Task HeartbeatPingsAndLivenessTimeoutEndsTheSession()
         {
             (SignalFishClient client, FakeTransport transport, VirtualClock clock) = BuildTimed(

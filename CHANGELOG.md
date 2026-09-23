@@ -8,6 +8,22 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- v3 classified delivery (M6.2): on a negotiated-v3 connection, relayed
+  game data carries a delivery class — `reliable` (the unchanged v2 wire
+  form), `latest{key}` (server keeps only the newest value per key), or
+  `volatile` (never paces the sender). `new GameDataMessage(payload, class,
+  key)` sends classified; received frames surface the sender's class and
+  key, so rate-sensitive games can coalesce state updates without losing
+  the last word. Classified sends without a negotiated v3 are refused
+  locally (`ProtocolUnsupported`); payloads deeper than the protocol's
+  128-level JSON bound are refused at construction, before anything is
+  sent.
+
+- Deeper game-data payloads decode: the frame depth bound rises from 64 to
+  the protocol's 128 nesting levels, matching the server codec — payloads
+  between the old and new bounds now relay instead of surfacing a decode
+  failure.
+
 - v3 protocol negotiation (M6.1): `SignalFishClientOptions` accepts a
   `ProtocolVersion` plus optional `SupportedTransports`,
   `SupportedTopologies`, and `RequestedCapabilities` — every automatic

@@ -327,6 +327,124 @@ namespace SignalFish.Client.Tests.Polling
                 Encoding.UTF8.GetString(pollEvent.GameData.Payload.ToArray()),
                 Is.EqualTo("{}")
             );
+            Assert.That(
+                pollEvent.GameData.Class,
+                Is.EqualTo(GameDataClass.Reliable),
+                "omitted delivery metadata means reliable"
+            );
+            Assert.That(pollEvent.GameData.Key, Is.EqualTo(0u));
+        }
+
+        [Test]
+        public async Task ClassifiedGameDataSurfacesClassAndKey()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "GameData")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.GameData));
+            Assert.That(pollEvent.GameData.Class, Is.EqualTo(GameDataClass.Latest));
+            Assert.That(pollEvent.GameData.Key, Is.EqualTo(7u));
+            Assert.That(
+                Encoding.UTF8.GetString(pollEvent.GameData.Payload.ToArray()),
+                Is.EqualTo("{\"position\": {\"x\": 12, \"y\": 34}}")
+            );
+        }
+
+        [Test]
+        public async Task GameDataWithUnknownClassTokenSurfacesViolation()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                "{\"type\": \"GameData\", \"data\": {\"from_player\": "
+                    + "\"00000000-0000-0000-0000-00000000000b\", \"data\": {}, "
+                    + "\"class\": \"eventual\"}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.ProtocolViolation));
+        }
+
+        [TestCase(
+            "\"class\": \"latest\", \"key\": 7, \"class\": \"volatile\"",
+            TestName = "Repeated.Class"
+        )]
+        [TestCase("\"key\": 7, \"class\": \"latest\", \"key\": 8", TestName = "Repeated.Key")]
+        public async Task GameDataWithRepeatedDeliveryMetadataSurfacesViolation(string metadata)
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                "{\"type\": \"GameData\", \"data\": {\"from_player\": "
+                    + "\"00000000-0000-0000-0000-00000000000b\", \"data\": {}, "
+                    + metadata
+                    + "}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.ProtocolViolation));
+        }
+
+        [TestCase("5", TestName = "Number")]
+        [TestCase("null", TestName = "Null")]
+        [TestCase("true", TestName = "Bool")]
+        [TestCase("[]", TestName = "Array")]
+        [TestCase("\"\"", TestName = "Empty")]
+        public async Task GameDataWithNonStringClassSurfacesViolation(string classValue)
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                "{\"type\": \"GameData\", \"data\": {\"from_player\": "
+                    + "\"00000000-0000-0000-0000-00000000000b\", \"data\": {}, "
+                    + "\"class\": "
+                    + classValue
+                    + "}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.ProtocolViolation));
+        }
+
+        [Test]
+        public async Task GameDataWithKeyOnNonLatestClassNormalizesKeyAway()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                "{\"type\": \"GameData\", \"data\": {\"from_player\": "
+                    + "\"00000000-0000-0000-0000-00000000000b\", \"data\": {}, "
+                    + "\"class\": \"volatile\", \"key\": 7}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.GameData));
+            Assert.That(pollEvent.GameData.Class, Is.EqualTo(GameDataClass.Volatile));
+            Assert.That(pollEvent.GameData.Key, Is.EqualTo(0u));
         }
 
         [Test]

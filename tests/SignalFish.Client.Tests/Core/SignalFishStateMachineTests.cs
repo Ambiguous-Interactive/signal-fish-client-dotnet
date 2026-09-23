@@ -3,6 +3,7 @@ namespace SignalFish.Client.Tests.Core
     using System;
     using NUnit.Framework;
     using SignalFish.Client.Core;
+    using SignalFish.Client.Protocol;
 
     /// <summary>
     /// M3.2 red-green anchor: the connection state machine. Tables pin the
@@ -701,24 +702,97 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void NoCurrentCommandRequiresNegotiatedV3()
+        public void OnlyClassifiedGameDataRequiresNegotiatedV3()
         {
             /*
-                The M6.1 gate is inert until the first v3-only command lands
-                (M6.2 classified delivery, M6.5 mesh). The sweep walks the
-                full command-value space so an appended command cannot skip
-                classification: if it requires v3, this row must be flipped
-                together with the gate test that pins the ProtocolUnsupported
-                refusal.
+                The sweep walks the full command x delivery-class value
+                space so an appended command cannot skip classification:
+                exactly the classified game-data sends (latest, volatile)
+                require a negotiated v3 connection; reliable relay stays on
+                the v2 floor.
             */
             for (int value = 1; value <= 255; value++)
             {
-                Assert.That(
-                    SignalFishStateMachine.RequiresNegotiatedV3((ClientCommand)value),
-                    Is.False,
-                    $"command value {value}"
-                );
+                ClientCommand command = (ClientCommand)value;
+                foreach (
+                    GameDataClass delivery in new[]
+                    {
+                        GameDataClass.Reliable,
+                        GameDataClass.Latest,
+                        GameDataClass.Volatile,
+                    }
+                )
+                {
+                    bool expected =
+                        command == ClientCommand.SendGameData && delivery != GameDataClass.Reliable;
+                    Assert.That(
+                        SignalFishStateMachine.RequiresNegotiatedV3(command, delivery),
+                        Is.EqualTo(expected),
+                        $"command value {value} x delivery {delivery}"
+                    );
+                }
             }
+        }
+
+        [Test]
+        public void ClassifiedDeliveryGateTracksNegotiatedVersion()
+        {
+            SignalFishStateMachine machine = InRoom(RoomRole.Player);
+            Assert.That(
+                machine.TryAdmit(
+                    ClientCommand.SendGameData,
+                    GameDataClass.Reliable,
+                    out AdmissionError reliableRefusal
+                ),
+                Is.True,
+                "reliable relay is the v2 floor and is never gated"
+            );
+            Assert.That(reliableRefusal, Is.EqualTo(default(AdmissionError)));
+
+            Assert.That(
+                machine.TryAdmit(
+                    ClientCommand.SendGameData,
+                    GameDataClass.Latest,
+                    out AdmissionError latestRefusal
+                ),
+                Is.False
+            );
+            Assert.That(latestRefusal, Is.EqualTo(AdmissionError.ProtocolUnsupported));
+            Assert.That(
+                machine.TryAdmit(
+                    ClientCommand.SendGameData,
+                    GameDataClass.Volatile,
+                    out AdmissionError volatileRefusal
+                ),
+                Is.False
+            );
+            Assert.That(volatileRefusal, Is.EqualTo(AdmissionError.ProtocolUnsupported));
+
+            machine.Apply(SessionEvent.ProtocolInfo(3));
+            Assert.That(
+                machine.TryAdmit(ClientCommand.SendGameData, GameDataClass.Latest, out _),
+                Is.True
+            );
+            Assert.That(
+                machine.TryAdmit(ClientCommand.SendGameData, GameDataClass.Volatile, out _),
+                Is.True
+            );
+
+            /*
+                Role precedence: membership and role verdicts win while they
+                apply — a classified send from a pre-v3 spectator is a role
+                refusal, not a version refusal.
+            */
+            SignalFishStateMachine spectator = InRoom(RoomRole.Spectator);
+            Assert.That(
+                spectator.TryAdmit(
+                    ClientCommand.SendGameData,
+                    GameDataClass.Latest,
+                    out AdmissionError spectatorRefusal
+                ),
+                Is.False
+            );
+            Assert.That(spectatorRefusal, Is.EqualTo(AdmissionError.WrongRoomRole));
         }
 
         [Test]
