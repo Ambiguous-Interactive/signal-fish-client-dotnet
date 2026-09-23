@@ -21,14 +21,15 @@ namespace SignalFish.Client.Protocol
         public bool IsReady { get; }
 
         /// <summary>
-        /// Gets the connection timestamp as a verbatim ISO-8601 string
-        /// (required). Never parsed or normalized — the game owns time
-        /// interpretation.
+        /// Gets the connection timestamp as a verbatim ISO-8601 string.
+        /// Optional: the server strips it from every protocol-v3 room
+        /// snapshot, so it reads <see langword="null"/> there. Never parsed
+        /// or normalized — the game owns time interpretation.
         /// </summary>
-        public string ConnectedAt { get; }
+        public string? ConnectedAt { get; }
 
         /// <summary>Initializes a new <see cref="PlayerInfo"/> value.</summary>
-        public PlayerInfo(Guid id, string name, bool isAuthority, bool isReady, string connectedAt)
+        public PlayerInfo(Guid id, string name, bool isAuthority, bool isReady, string? connectedAt)
         {
             Id = id;
             Name = name;
@@ -181,7 +182,6 @@ namespace SignalFish.Client.Protocol
                 || name is null
                 || !authoritySeen
                 || !readySeen
-                || connectedAt is null
             )
             {
                 return false;
@@ -294,7 +294,8 @@ namespace SignalFish.Client.Protocol
 
     /// <summary>
     /// One connected spectator as reported by the server in spectator
-    /// rosters and membership events. All fields are required.
+    /// rosters and membership events. Identity and name are required; the
+    /// timestamp is optional (absent on protocol-v3 snapshots).
     /// </summary>
     public readonly struct SpectatorInfo : IEquatable<SpectatorInfo>
     {
@@ -304,14 +305,15 @@ namespace SignalFish.Client.Protocol
         public string Name { get; }
 
         /// <summary>
-        /// Gets the connection timestamp as a verbatim ISO-8601 string
-        /// (required). Never parsed or normalized — the game owns time
-        /// interpretation.
+        /// Gets the connection timestamp as a verbatim ISO-8601 string.
+        /// Optional: the server strips it from every protocol-v3 room
+        /// snapshot, so it reads <see langword="null"/> there. Never parsed
+        /// or normalized — the game owns time interpretation.
         /// </summary>
-        public string ConnectedAt { get; }
+        public string? ConnectedAt { get; }
 
         /// <summary>Initializes a new <see cref="SpectatorInfo"/> value.</summary>
-        public SpectatorInfo(Guid id, string name, string connectedAt)
+        public SpectatorInfo(Guid id, string name, string? connectedAt)
         {
             Id = id;
             Name = name;
@@ -432,12 +434,7 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (
-                state != JsonMemberState.EndObject
-                || !idSeen
-                || name is null
-                || connectedAt is null
-            )
+            if (state != JsonMemberState.EndObject || !idSeen || name is null)
             {
                 return false;
             }

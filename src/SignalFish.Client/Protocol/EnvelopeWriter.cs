@@ -14,10 +14,11 @@ namespace SignalFish.Client.Protocol
     /// required field, a non-JSON verbatim payload) throws
     /// <see cref="ArgumentException"/>: encode bugs are programmer errors,
     /// unlike decode, which is total. Frames carrying no payload fields omit
-    /// the <c>data</c> member entirely. Verbatim payloads
-    /// (<see cref="GameDataMessage"/>, <see cref="SignalMessage"/>,
-    /// <see cref="ProvideConnectionInfoMessage"/>) are embedded without
-    /// inspection and must be valid UTF-8 JSON.
+    /// the <c>data</c> member entirely. Verbatim payloads must be valid
+    /// UTF-8 JSON: game data is validated at
+    /// <see cref="GameDataMessage"/> construction (delivery-depth bound);
+    /// signal and connection-info payloads are re-scanned by the writer at
+    /// encode time.
     /// </summary>
     public static class EnvelopeWriter
     {
@@ -427,8 +428,6 @@ namespace SignalFish.Client.Protocol
                 throw new ArgumentNullException(nameof(destination));
             }
 
-            RequireJsonValue(message.Payload.Span, "data (payload)");
-
             if (message.Class == default(GameDataClass))
             {
                 /*
@@ -636,9 +635,16 @@ namespace SignalFish.Client.Protocol
         /// <summary>
         /// Validates a verbatim payload as one complete JSON value
         /// (allocation-free rescan) so a malformed payload fails at the call
-        /// site instead of corrupting the whole frame.
+        /// site instead of corrupting the whole frame. The default bound is
+        /// the envelope decode depth; verbatim game data passes its own
+        /// larger payload bound (see
+        /// <see cref="GameDataMessage.MaxPayloadContainerDepth"/>).
         /// </summary>
-        private static void RequireJsonValue(ReadOnlySpan<byte> json, string wireField)
+        internal static void RequireJsonValue(
+            ReadOnlySpan<byte> json,
+            string wireField,
+            int maxDepth = JsonScanner.MaxDepth
+        )
         {
             if (json.IsEmpty)
             {
@@ -649,7 +655,7 @@ namespace SignalFish.Client.Protocol
             }
 
             JsonScanner scanner = new JsonScanner(json);
-            if (scanner.ScanValueRaw(1, JsonScanner.MaxDepth, out _) != default(DecodeError))
+            if (scanner.ScanValueRaw(1, maxDepth, out _) != default(DecodeError))
             {
                 throw new ArgumentException(
                     $"The message must carry a valid UTF-8 JSON value for \"{wireField}\".",

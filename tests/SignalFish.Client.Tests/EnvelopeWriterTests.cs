@@ -220,6 +220,99 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
+        public void GameDataPayloadAtDepthLimitIsAcceptedAndBeyondRefused()
+        {
+            const int limit = GameDataMessage.MaxPayloadContainerDepth;
+
+            /*
+                The bound is the deepest level a value may occupy (root is
+                level 1), matching the envelope decode bound's semantics.
+                Exactly at the bound is legal, one deeper is refused — for
+                both container shapes, and a deep branch is refused even
+                when a shallow sibling is fine. The bound keeps the walk
+                (and the server's decode) stack-safe.
+            */
+            Assert.That(
+                (Action)(
+                    () => _ = new GameDataMessage(Encoding.UTF8.GetBytes(Nested("1", limit - 1)))
+                ),
+                Throws.Nothing
+            );
+            Assert.That(
+                (Action)(
+                    () => _ = new GameDataMessage(Encoding.UTF8.GetBytes(Nested("{}", limit - 1)))
+                ),
+                Throws.Nothing
+            );
+            Assert.That(
+                (Action)(
+                    () => _ = new GameDataMessage(Encoding.UTF8.GetBytes(Nested("[1]", limit - 2)))
+                ),
+                Throws.Nothing
+            );
+
+            Assert.That(
+                (Action)(() => _ = new GameDataMessage(Encoding.UTF8.GetBytes(Nested("1", limit)))),
+                Throws.ArgumentException
+            );
+            Assert.That(
+                (Action)(
+                    () => _ = new GameDataMessage(Encoding.UTF8.GetBytes(Nested("[1]", limit)))
+                ),
+                Throws.ArgumentException
+            );
+            Assert.That(
+                (Action)(
+                    () => _ = new GameDataMessage(Encoding.UTF8.GetBytes(Nested("{}", limit)))
+                ),
+                Throws.ArgumentException
+            );
+            Assert.That(
+                (Action)(
+                    () =>
+                        _ = new GameDataMessage(
+                            Encoding.UTF8.GetBytes(
+                                "{\"flat\": true, \"deep\": " + Nested("1", limit - 1) + "}"
+                            )
+                        )
+                ),
+                Throws.ArgumentException,
+                "a deep branch must not hide behind a shallow sibling"
+            );
+
+            /*
+                A payload this SDK accepts must survive its own wire
+                roundtrip. The envelope embeds a payload two levels deeper
+                than its standalone form (root + the data member), so the
+                deepest payload decodable on the wire is standalone depth
+                125 — exactly at the shared 128 bound once embedded. This
+                pins the send→decode boundary; the two-level gap between
+                "ctor-accepted" (127) and "wire-decodable" (125) mirrors the
+                server codec's own embedding overhead.
+            */
+            ArrayBufferWriter<byte> deepFrame = new ArrayBufferWriter<byte>(256);
+            EnvelopeWriter.WriteGameData(
+                deepFrame,
+                new GameDataMessage(Encoding.UTF8.GetBytes(Nested("1", limit - 3)))
+            );
+            EnvelopeEvent ev = EnvelopeReader.Decode(deepFrame.WrittenSpan.ToArray());
+            Assert.That(ev.Kind, Is.EqualTo(EnvelopeEventKind.Message));
+            Assert.That(ev.Message, Is.EqualTo(MessageKind.GameData));
+        }
+
+        private static string Nested(string inner, int levels)
+        {
+            System.Text.StringBuilder builder = new System.Text.StringBuilder(inner);
+            for (int i = 0; i < levels; i++)
+            {
+                builder.Insert(0, "{\"k\":");
+                builder.Append('}');
+            }
+
+            return builder.ToString();
+        }
+
+        [Test]
         public void WriteReliableGameDataMatchesLegacyV2WireForm()
         {
             ArrayBufferWriter<byte> reliable = new ArrayBufferWriter<byte>(64);

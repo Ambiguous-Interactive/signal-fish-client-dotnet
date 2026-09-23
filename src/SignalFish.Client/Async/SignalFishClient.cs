@@ -376,7 +376,8 @@ namespace SignalFish.Client.Async
                 ClientCommand.SendGameData,
                 static (FrameBufferWriter writer, GameDataMessage payload) =>
                     EnvelopeWriter.WriteGameData(writer, payload),
-                message
+                message,
+                delivery: message.Class
             );
         }
 
@@ -409,7 +410,10 @@ namespace SignalFish.Client.Async
             lock (_gate)
             {
                 ThrowIfDisposed();
-                AdmissionError refusal = AdmissionRefusal(ClientCommand.SendGameData);
+                AdmissionError refusal = AdmissionRefusal(
+                    ClientCommand.SendGameData,
+                    delivery: message.Class
+                );
                 if (refusal != default(AdmissionError))
                 {
                     return CommandSend.Refused(refusal);
@@ -645,13 +649,14 @@ namespace SignalFish.Client.Async
             ClientCommand command,
             Action<FrameBufferWriter, TState> write,
             TState state,
-            bool becomeAuthority = true
+            bool becomeAuthority = true,
+            GameDataClass delivery = GameDataClass.Reliable
         )
         {
             lock (_gate)
             {
                 ThrowIfDisposed();
-                AdmissionError refusal = AdmissionRefusal(command, becomeAuthority);
+                AdmissionError refusal = AdmissionRefusal(command, becomeAuthority, delivery);
                 if (refusal != default(AdmissionError))
                 {
                     return CommandSend.Refused(refusal);
@@ -685,14 +690,18 @@ namespace SignalFish.Client.Async
         /// first — the machine alone cannot see the connect call — then the
         /// machine's own precedence applies.
         /// </summary>
-        private AdmissionError AdmissionRefusal(ClientCommand command, bool becomeAuthority = true)
+        private AdmissionError AdmissionRefusal(
+            ClientCommand command,
+            bool becomeAuthority = true,
+            GameDataClass delivery = GameDataClass.Reliable
+        )
         {
             if (!_connectCalled || _terminal || _severed)
             {
                 return AdmissionError.NotConnected;
             }
 
-            _machine.TryAdmit(command, becomeAuthority, out AdmissionError refusal);
+            _machine.TryAdmit(command, delivery, becomeAuthority, out AdmissionError refusal);
             return refusal;
         }
 

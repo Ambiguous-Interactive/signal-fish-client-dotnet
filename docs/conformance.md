@@ -64,5 +64,12 @@ Checked items are covered by `tests/SignalFish.Client.E2E`
       repo), so the *live-server* reconnection scenario waits for the v3
       E2E work (M6.6); the v2-floor procedure is fully covered by the
       golden-driven integration tests.
-- [ ] Reconnect (live), v3 dynamics, v3 delivery classes, v3 gap lifecycle
-      — land with their milestones (M6.2+, M6.6).
+- [x] **v3 delivery classes** (M6.2) — on a negotiated-v3 room, reliable
+      rides the v2 wire form while `latest{key}` and `volatile` carry
+      their class metadata end-to-end; received frames surface the
+      sender's class (and key) on the event. The SDK struct makes the
+      illegal class/key pairings behind the server's
+      `INVALID_DELIVERY_CLASS`/`INVALID_INPUT` refusals unrepresentable
+      (local admission refuses classified sends without a negotiated v3).
+- [ ] Reconnect (live), v3 dynamics (mesh, binary game data), v3 gap
+      lifecycle — land with their milestones (M6.3+, M6.6).

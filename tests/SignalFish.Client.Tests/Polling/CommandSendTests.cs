@@ -2,7 +2,9 @@ namespace SignalFish.Client.Tests.Polling
 {
     using System;
     using System.Collections.Generic;
+    using System.IO;
     using System.Text;
+    using System.Text.Json;
     using System.Threading.Tasks;
     using NUnit.Framework;
     using SignalFish.Client.Core;
@@ -326,6 +328,56 @@ namespace SignalFish.Client.Tests.Polling
         }
 
         [Test]
+        public async Task ClassifiedGameDataSendsGoldenV3Wire()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+            JoinGoldenRoom(client, transport);
+            NegotiateV3(client, transport);
+
+            byte[] position = Encoding.UTF8.GetBytes("{\"position\": {\"x\": 12, \"y\": 34}}");
+            CommandSend latest = client.SendGameData(
+                new GameDataMessage(position, GameDataClass.Latest, key: 7)
+            );
+            Assert.That(latest.Accepted, Is.True);
+            Assert.That(LastSent(transport), Is.EqualTo(ReadV3ClientGameData("latest")));
+
+            byte[] effect = Encoding.UTF8.GetBytes("{\"effect\": \"footstep\"}");
+            CommandSend volatileSend = client.SendGameData(
+                new GameDataMessage(effect, GameDataClass.Volatile)
+            );
+            Assert.That(volatileSend.Accepted, Is.True);
+            Assert.That(LastSent(transport), Is.EqualTo(ReadV3ClientGameData("volatile")));
+        }
+
+        [Test]
+        public async Task ClassifiedGameDataWithoutNegotiatedV3IsRefused()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+            JoinGoldenRoom(client, transport);
+
+            byte[] payload = Encoding.UTF8.GetBytes("{\"tick\": 1}");
+            Assert.That(
+                client.SendGameData(new GameDataMessage(payload, GameDataClass.Latest)).Accepted,
+                Is.False,
+                "classified delivery needs a negotiated v3 connection"
+            );
+            Assert.That(
+                client.SendGameData(new GameDataMessage(payload, GameDataClass.Volatile)).Accepted,
+                Is.False
+            );
+
+            NegotiateV3(client, transport);
+            Assert.That(
+                client.SendGameData(new GameDataMessage(payload, GameDataClass.Latest)).Accepted,
+                Is.True
+            );
+        }
+
+        [Test]
         public async Task JoinAsSpectatorSendsGoldenWireAndArmsSpectatorFence()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
@@ -489,6 +541,43 @@ namespace SignalFish.Client.Tests.Polling
             List<PollEvent> events = DrainAll(client);
             Assert.That(events, Has.Count.EqualTo(1), "exactly one event expected");
             return events[0];
+        }
+
+        /// <summary>Feeds the golden v3 ProtocolInfo so the machine negotiates v3.</summary>
+        private static void NegotiateV3(SignalFishPollingClient client, FakeTransport transport)
+        {
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo")
+            );
+            Assert.That(client.Poll(), Is.GreaterThanOrEqualTo(1));
+        }
+
+        /// <summary>
+        /// The v3 client fixture's GameData line for the given class token,
+        /// selected by meaning so the test survives upstream reordering.
+        /// </summary>
+        private static string ReadV3ClientGameData(string classToken)
+        {
+            foreach (
+                string line in File.ReadAllLines(
+                    GoldenFixtures.GoldenDirectory + "/v3-client-messages.jsonl"
+                )
+            )
+            {
+                using JsonDocument document = JsonDocument.Parse(line);
+                if (
+                    document.RootElement.GetProperty("type").GetString() == "GameData"
+                    && document.RootElement.GetProperty("data").GetProperty("class").GetString()
+                        == classToken
+                )
+                {
+                    return line;
+                }
+            }
+
+            Assert.Fail($"v3-client-messages.jsonl has no GameData sample of class {classToken}.");
+            return string.Empty;
         }
     }
 }

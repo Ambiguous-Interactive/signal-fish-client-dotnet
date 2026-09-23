@@ -31,10 +31,24 @@ namespace SignalFish.Client.Protocol
     /// Payload of the outbound <c>GameData</c> message: the relay payload
     /// plus optional v3 delivery classification. <paramref name="payload"/>
     /// is a verbatim JSON value (object, array, scalar, or null) relayed
-    /// without inspection; it must be valid UTF-8 JSON.
+    /// without inspection; it must be valid UTF-8 JSON no deeper than
+    /// <see cref="MaxPayloadContainerDepth"/> containers, checked at
+    /// construction so a refusal precedes every send.
     /// </summary>
     public readonly struct GameDataMessage : IEquatable<GameDataMessage>
     {
+        /// <summary>
+        /// Maximum nesting level (the root value is level 1) accepted in an
+        /// outbound game-data payload, mirroring the server codec's default
+        /// recursion limit. The walk is allocation-free and budget-bounded,
+        /// so it is stack-safe for pathological input. Note the envelope
+        /// embeds a payload two levels deeper than its standalone form, so
+        /// the deepest payload decodable on the wire is two levels tighter
+        /// than this send bound (the Rust SDK carries the same envelope
+        /// overhead).
+        /// </summary>
+        internal const int MaxPayloadContainerDepth = 128;
+
         /// <summary>Gets the game-data JSON value, as UTF-8 bytes (relayed verbatim).</summary>
         public ReadOnlyMemory<byte> Payload => _payload;
 
@@ -70,6 +84,11 @@ namespace SignalFish.Client.Protocol
             uint key = 0
         )
         {
+            EnvelopeWriter.RequireJsonValue(
+                payload.Span,
+                "data (payload)",
+                MaxPayloadContainerDepth
+            );
             _payload = payload;
             Class = classification;
 
@@ -122,6 +141,8 @@ namespace SignalFish.Client.Protocol
 
             ReadOnlyMemory<byte> payload = default;
             bool payloadSeen = false;
+            bool classSeen = false;
+            bool keySeen = false;
             GameDataClass classification = GameDataClass.Reliable;
             uint key = 0;
 
@@ -141,34 +162,24 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "class"))
                 {
-                    if (!scanner.TryReadString(valueRaw, out string? classToken))
+                    if (
+                        classSeen
+                        || !GameDataMessage.TryReadClassToken(scanner, valueRaw, out classification)
+                    )
                     {
                         return false;
                     }
 
-                    if (classToken == "reliable")
-                    {
-                        classification = GameDataClass.Reliable;
-                    }
-                    else if (classToken == "latest")
-                    {
-                        classification = GameDataClass.Latest;
-                    }
-                    else if (classToken == "volatile")
-                    {
-                        classification = GameDataClass.Volatile;
-                    }
-                    else
-                    {
-                        return false;
-                    }
+                    classSeen = true;
                 }
                 else if (scanner.KeyIs(keyRaw, "key"))
                 {
-                    if (!scanner.TryReadUInt32(valueRaw, out key))
+                    if (keySeen || !scanner.TryReadUInt32(valueRaw, out key))
                     {
                         return false;
                     }
+
+                    keySeen = true;
                 }
 
                 state = scanner.EndMember();
@@ -181,6 +192,47 @@ namespace SignalFish.Client.Protocol
 
             message = new GameDataMessage(payload, classification, key);
             return true;
+        }
+
+        /// <summary>
+        /// Reads a wire class token (<c>reliable</c>/<c>latest</c>/<c>volatile</c>)
+        /// as its enum value without materializing the string. Non-string
+        /// values fail; an escaped spelling matches only if it decodes to
+        /// the exact token (any other spelling is a malformed delivery
+        /// class — the server answers <c>INVALID_INPUT</c> for it).
+        /// </summary>
+        internal static bool TryReadClassToken(
+            JsonScanner scanner,
+            Range valueRaw,
+            out GameDataClass classification
+        )
+        {
+            if (!scanner.IsQuotedValue(valueRaw))
+            {
+                classification = default(GameDataClass);
+                return false;
+            }
+
+            if (scanner.KeyIs(valueRaw, "reliable"))
+            {
+                classification = GameDataClass.Reliable;
+                return true;
+            }
+
+            if (scanner.KeyIs(valueRaw, "latest"))
+            {
+                classification = GameDataClass.Latest;
+                return true;
+            }
+
+            if (scanner.KeyIs(valueRaw, "volatile"))
+            {
+                classification = GameDataClass.Volatile;
+                return true;
+            }
+
+            classification = default(GameDataClass);
+            return false;
         }
     }
 }

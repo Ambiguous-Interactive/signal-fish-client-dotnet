@@ -65,7 +65,7 @@ namespace SignalFish.Client.Protocol
         /// match <see cref="EnvelopeReader.MaxDepth"/> so payload decode and
         /// envelope decode enforce the same bound.
         /// </summary>
-        internal const int MaxDepth = 64;
+        internal const int MaxDepth = 128;
 
         /// <summary>Nesting depth of root-level member values (the root object is level 1).</summary>
         private const int RootMemberDepth = 2;
@@ -333,6 +333,18 @@ namespace SignalFish.Client.Protocol
                 default:
                     return JsonMemberState.Error;
             }
+        }
+
+        /// <summary>
+        /// Whether the scanned value range is a (possibly empty) quoted
+        /// string, i.e. safe for <see cref="KeyIs"/>-style quote-stripping
+        /// compares. Raw scalars (numbers, literals) fail instead of
+        /// slicing past the buffer.
+        /// </summary>
+        internal bool IsQuotedValue(Range valueRaw)
+        {
+            (int Offset, int Length) s = valueRaw.GetOffsetAndLength(_buf.Length);
+            return s.Length >= 2 && _buf[s.Offset] == (byte)'"';
         }
 
         /// <summary>

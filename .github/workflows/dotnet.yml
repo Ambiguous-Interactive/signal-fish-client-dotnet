@@ -55,12 +55,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Install SDKs into a cacheable runner-local directory: installing
+      # both SDKs dominated the Windows cell (~80 s), which set the
+      # workflow's wall clock. With a warm cache the setup step is a near
+      # no-op. runner.temp keeps the SDKs out of the workspace (tools that
+      # scan the tree would otherwise see the SDK's files); the step-level
+      # env plus setup-dotnet's PATH entry carry the location through the
+      # rest of the job. The key changes only when the versions file
+      # changes.
+      - name: Cache .NET SDKs
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/dotnet
+          # Keyed on .github/dotnet-versions.txt (keep in sync with the
+          # dotnet-version block below): a version bump changes the hash
+          # and forces a fresh install+cache instead of silently reusing
+          # a stale one.
+          key: dotnet-sdk-${{ runner.os }}-${{ hashFiles('.github/dotnet-versions.txt') }}
+
       # The multi-targeted test project restores both TFMs in one shot
       # (restore cannot be scoped per project reference without breaking
       # the netstandard2.1 library's assets), so every cell installs both
       # SDKs. Builds and tests stay scoped to the cell's framework.
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           dotnet-version: |
             10.0.x

@@ -91,6 +91,7 @@ codebase for siblings:
 | Generator/switch breaks after enum renumbering | Every numeric enum construction (`(Enum)(byte % N)`), ordinal loop, and sentinel-guard added in the same change — test/fuzz generators and perf harnesses included |
 | Repro artifact lands in the repo tree | Tracked files matching fuzz/crash/seed patterns; artifacts belong in gitignored persistence dirs (`.fuzz/`), never the repo root |
 | Workflow `run:` command is wrong (fails or silently no-ops) | Every `run:` line in tag-only/schedule-only workflows — those jobs never self-verify in CI, so PR review is their only execution check; run each new command locally on the CI-pinned toolchain and confirm its effect |
+| Struct `GetHashCode` throws on a `default` instance | Every `Equals`/`GetHashCode` on structs with nullable members — `default(T)` is legal; hash via `System.HashCode` or `?.GetHashCode() ?? 0` |
 
 Fix every sibling in the same change. One-off fixes guarantee the reviewer
 finds the sibling next round.

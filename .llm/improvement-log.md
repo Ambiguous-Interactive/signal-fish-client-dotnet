@@ -9,6 +9,58 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-23 - session 026: M6.2 classified delivery + iteration speed
+
+- Trigger: M6.2 (classified delivery) plus the goal's speed mandates
+  (CI flat-or-down, local iteration drastically faster); issue debt was
+  already zero (no open issues to address).
+- Evidence: windows cell spent 79 s of 146 s in `Setup .NET` — it set the
+  dotnet workflow's wall clock (2m33s). NUnit ran one worker (17 s/TFM for
+  570 tests); the red-green loop cost ~47 s (full solution build + both
+  TFMs).
+- Findings: (1) the depth walk existed but at the wrong bound — the writer
+  reused the envelope decode's 64 while the delivery contract is the
+  server codec's 128; fixed by a dedicated game-data walk at construction.
+  (2) Removing the writer's duplicate payload re-validation made the
+  encode hot path strictly cheaper (validation moved to the constructor,
+  which both clients call exactly once per send).
+- Applied: SDK install-dir cache for CI (`DOTNET_INSTALL_DIR` +
+  actions/cache, version-keyed; two rounds to land it — job-level `env`
+  cannot use the `runner` context, and a workspace-local SDK dir pollutes
+  tree-scanning tools like CSharpier, so the cache path + setup step carry
+  `runner.temp` at step level); fixture-level NUnit parallelization
+  (17 s -> ~7 s, suite green and deterministic on both TFMs);
+  `scripts/fast-check.ps1` (single-TFM, no-restore iteration: ~17 s vs
+  ~47 s, ~2.8x).
+- Open: none — SDK cache hit measured on rerun (windows Setup .NET
+  79 s -> 5 s; workflow wall 2m33s -> ~1m30s, -43%); issue #58 filed for
+  the M6.5 depth-bound sibling.
+
+## 2026-09-23 - session 025b: cross-PR feedback audit - all findings verified landed, equality rule codified
+
+- Trigger: full sweep of Bugbot feedback across PRs #41, #43, #44, #46,
+  #47, #50, #51, #55 (12 findings). Every thread was resolved, but four
+  (#44, #46, #50, #55) had no confirming reply, so each was re-verified
+  against `main` instead of trusted.
+- Evidence: `Wait-ForServer` catches all (run-e2e.ps1:63); the proxied
+  drills join via `ConnectProxiedAuthenticatedClientAsync`; `ReconnectContext.GetHashCode`
+  is null-safe; the authority release/claim waits use combined
+  `WaitForEventsAsync`; `FinalizeLocked` mutates terminal + completes both
+  queues in one gate section; `TryIssueAutoReconnect` carries the
+  fence-guard/supersede/restore-on-refusal layers.
+- Findings: (1) the #50 class (struct `GetHashCode` dereferencing a
+  nullable member) had no codified rule — a sweep of all 27 `src/`
+  implementations found the remaining ones safe, but only by inspection;
+  the class lives wherever the next struct is hand-rolled. (2) The
+  #55 ordering class is structurally closed: `TakeMatching` keeps the
+  unconsumed tail queued and unordered pairs use combined waits; ordered
+  pairs (Authenticated → ProtocolInfo) rest on the documented server
+  contract.
+- Applied: default-instance-safe equality rule added to
+  [api-design](./skills/api-design/SKILL.md) (Events); sweep-table row for
+  the class added to [address-pr-feedback](./skills/address-pr-feedback/SKILL.md).
+- Open: none.
+
 ## 2026-09-22 - session 023: issue #48 - graceful close handshake + merge dedup
 
 - Trigger: issue debt (#48: M4.3's "graceful" shutdown aborted the TCP

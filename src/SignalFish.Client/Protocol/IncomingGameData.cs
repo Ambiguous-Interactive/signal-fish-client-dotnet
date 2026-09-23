@@ -3,12 +3,15 @@ namespace SignalFish.Client.Protocol
     using System;
 
     /// <summary>
-    /// The inbound (S→C) <c>GameData</c> relay frame: the sending player
-    /// plus the verbatim JSON payload. The payload is relayed without
-    /// inspection — the application owns its schema (the MessagePack codec
-    /// surface lands with v3; this is the v2 relay floor). v3 delivery
-    /// metadata (<c>class</c>/<c>key</c>) is tolerated as unknown fields
-    /// until the delivery work.
+    /// The inbound (S→C) <c>GameData</c> relay frame: the sending player,
+    /// the verbatim JSON payload, and the sender's v3 delivery
+    /// classification (omitted metadata means
+    /// <see cref="GameDataClass.Reliable"/>). The payload is relayed
+    /// without inspection — the application owns its schema. The
+    /// server performs all latest-wins coalescing and volatile dropping;
+    /// the client surfaces every delivered frame in arrival order and the
+    /// sequence accounting arrives out-of-band via <c>DeliveryReport</c>
+    /// (decoded with the delivery-accounting work).
     /// </summary>
     public readonly struct IncomingGameData : IEquatable<IncomingGameData>
     {
@@ -18,18 +21,49 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the verbatim JSON payload, as UTF-8 bytes.</summary>
         public ReadOnlyMemory<byte> Payload => _payload;
 
+        /// <summary>
+        /// Gets the sender's delivery class; omitted metadata means
+        /// <see cref="GameDataClass.Reliable"/>.
+        /// </summary>
+        public GameDataClass Class { get; }
+
+        /// <summary>
+        /// Gets the sender's coalescing key; meaningful only for
+        /// <see cref="GameDataClass.Latest"/>.
+        /// </summary>
+        public uint Key { get; }
+
         private readonly ReadOnlyMemory<byte> _payload;
 
         /// <summary>Initializes a new inbound game-data frame.</summary>
         public IncomingGameData(Guid fromPlayer, ReadOnlyMemory<byte> payload)
+            : this(fromPlayer, payload, GameDataClass.Reliable, key: 0) { }
+
+        /// <summary>Initializes a new inbound classified game-data frame.</summary>
+        public IncomingGameData(
+            Guid fromPlayer,
+            ReadOnlyMemory<byte> payload,
+            GameDataClass classification,
+            uint key = 0
+        )
         {
             FromPlayer = fromPlayer;
             _payload = payload;
+            Class = classification;
+
+            /*
+                The key is only meaningful alongside `class: "latest"`, so
+                illegal class/key pairings stay unrepresentable.
+            */
+            Key = classification == GameDataClass.Latest ? key : 0;
         }
 
         /// <inheritdoc />
         public bool Equals(IncomingGameData other) =>
-            FromPlayer == other.FromPlayer && _payload.Span.SequenceEqual(other._payload.Span);
+            FromPlayer == other.FromPlayer
+            && Class == other.Class
+            && Key == other.Key
+            && _payload.Span.SequenceEqual(other._payload.Span);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is IncomingGameData other && Equals(other);
@@ -39,6 +73,8 @@ namespace SignalFish.Client.Protocol
         {
             HashCode hash = default;
             hash.Add(FromPlayer);
+            hash.Add(Class);
+            hash.Add(Key);
             hash.Add(ProtocolHash.Of(_payload.Span));
             return hash.ToHashCode();
         }
@@ -53,10 +89,13 @@ namespace SignalFish.Client.Protocol
 
         /// <summary>
         /// Decodes the <c>data</c> object of a <c>GameData</c> envelope (the
-        /// <see cref="EnvelopeEvent.Data"/> slice) into the sender id and
-        /// the verbatim payload slice. Unknown fields are skipped; a
-        /// repeated known key is rejected. Returns <see langword="false"/>
-        /// for malformed input or a missing <c>from_player</c>/<c>data</c>.
+        /// <see cref="EnvelopeEvent.Data"/> slice) into the sender id, the
+        /// verbatim payload slice, and the delivery classification
+        /// (<c>class</c>/<c>key</c>; omitted means reliable; an unknown
+        /// class token or malformed key fails the frame). Unknown fields
+        /// are skipped; a repeated known key is rejected. Returns
+        /// <see langword="false"/> for malformed input or a missing
+        /// <c>from_player</c>/<c>data</c>.
         /// </summary>
         internal static bool TryDecode(ReadOnlyMemory<byte> data, out IncomingGameData message)
         {
@@ -68,6 +107,10 @@ namespace SignalFish.Client.Protocol
             ReadOnlyMemory<byte> payload = default;
             bool senderSeen = false;
             bool payloadSeen = false;
+            bool classSeen = false;
+            bool keySeen = false;
+            GameDataClass classification = GameDataClass.Reliable;
+            uint key = 0;
 
             while (state == JsonMemberState.Member)
             {
@@ -97,6 +140,27 @@ namespace SignalFish.Client.Protocol
                     payload = data.Slice(slice.Offset, slice.Length);
                     payloadSeen = true;
                 }
+                else if (scanner.KeyIs(keyRaw, "class"))
+                {
+                    if (
+                        classSeen
+                        || !GameDataMessage.TryReadClassToken(scanner, valueRaw, out classification)
+                    )
+                    {
+                        return false;
+                    }
+
+                    classSeen = true;
+                }
+                else if (scanner.KeyIs(keyRaw, "key"))
+                {
+                    if (keySeen || !scanner.TryReadUInt32(valueRaw, out key))
+                    {
+                        return false;
+                    }
+
+                    keySeen = true;
+                }
 
                 state = scanner.EndMember();
             }
@@ -106,7 +170,7 @@ namespace SignalFish.Client.Protocol
                 return false;
             }
 
-            message = new IncomingGameData(fromPlayer, payload);
+            message = new IncomingGameData(fromPlayer, payload, classification, key);
             return true;
         }
     }
