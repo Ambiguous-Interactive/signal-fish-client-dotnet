@@ -9,8 +9,9 @@ namespace SignalFish.Client.FuzzTests
     /// <summary>
     /// Coverage-guided codec fuzz host (PLAN M1.5). Select a target with the
     /// SIGNALFISH_FUZZ_TARGET environment variable: "reader" (envelope decode
-    /// totality) or "writer" (encode validity + roundtrip identity). Under
-    /// the libfuzzer-dotnet driver each target loops forever; standalone
+    /// totality), "writer" (encode validity + roundtrip identity), or
+    /// "msgpack-frame" (binary game-data decode over both protocol shapes).
+    /// Under the libfuzzer-dotnet driver each target loops forever; standalone
     /// (no driver) the first argument is executed once, which keeps local
     /// red-green checks bounded.
     /// </summary>
@@ -131,7 +132,7 @@ namespace SignalFish.Client.FuzzTests
             if (args.Length == 0 && !RunningUnderLibFuzzer())
             {
                 Console.Error.WriteLine(
-                    "Usage: SIGNALFISH_FUZZ_TARGET=reader|writer dotnet SignalFish.Client.FuzzTests.dll [input-file]"
+                    "Usage: SIGNALFISH_FUZZ_TARGET=reader|writer|msgpack-frame dotnet SignalFish.Client.FuzzTests.dll [input-file]"
                 );
                 return 2;
             }
@@ -144,8 +145,13 @@ namespace SignalFish.Client.FuzzTests
                 case "writer":
                     Fuzzer.LibFuzzer.Run(WithCrashDump(FuzzWriter));
                     return 0;
+                case "msgpack-frame":
+                    Fuzzer.LibFuzzer.Run(WithCrashDump(FuzzMsgPackFrame));
+                    return 0;
                 default:
-                    Console.Error.WriteLine("Set SIGNALFISH_FUZZ_TARGET to 'reader' or 'writer'.");
+                    Console.Error.WriteLine(
+                        "Set SIGNALFISH_FUZZ_TARGET to 'reader', 'writer', or 'msgpack-frame'."
+                    );
                     return 2;
             }
         }
@@ -263,6 +269,109 @@ namespace SignalFish.Client.FuzzTests
             )
             {
                 throw new InvalidOperationException("UnknownMessage event lost its type text.");
+            }
+        }
+
+        /// <summary>
+        /// The v3 binary game-data decoder is total over both protocol
+        /// shapes: arbitrary bytes never throw, failures carry a structured
+        /// reason at an in-range offset, and the strict member-count gate
+        /// (five on v3, three on v2) lets at most one mode accept a frame.
+        /// A success pins a consistent field set: a real encoding token
+        /// and, on v3, the non-zero server stamps.
+        /// </summary>
+        private static void FuzzMsgPackFrame(ReadOnlySpan<byte> input)
+        {
+            byte[] frame = input.ToArray();
+
+            bool v3 = BinaryGameDataFrame.TryDecode(
+                frame,
+                protocolV3: true,
+                out BinaryGameDataFrame decodedV3,
+                out DecodeError errorV3,
+                out int offsetV3
+            );
+            bool v2 = BinaryGameDataFrame.TryDecode(
+                frame,
+                protocolV3: false,
+                out BinaryGameDataFrame decodedV2,
+                out DecodeError errorV2,
+                out int offsetV2
+            );
+
+            AssertBoundedFailure("v3", frame.Length, v3, errorV3, offsetV3);
+            AssertBoundedFailure("v2", frame.Length, v2, errorV2, offsetV2);
+
+            if (v3 && v2)
+            {
+                throw new InvalidOperationException("Both protocol modes accepted one frame.");
+            }
+
+            if (v3)
+            {
+                AssertConsistent("v3", decodedV3, expectStamps: true);
+            }
+
+            if (v2)
+            {
+                AssertConsistent("v2", decodedV2, expectStamps: false);
+            }
+        }
+
+        private static void AssertBoundedFailure(
+            string mode,
+            int frameLength,
+            bool decoded,
+            DecodeError error,
+            int errorOffset
+        )
+        {
+            if (decoded)
+            {
+                return;
+            }
+
+            if (error == default(DecodeError))
+            {
+                throw new InvalidOperationException(
+                    $"{mode}: failed decode carries no decode error."
+                );
+            }
+
+            if (errorOffset < 0 || errorOffset > frameLength)
+            {
+                throw new InvalidOperationException(
+                    $"{mode}: failure offset {errorOffset} outside [0, {frameLength}]."
+                );
+            }
+        }
+
+        private static void AssertConsistent(
+            string mode,
+            BinaryGameDataFrame decoded,
+            bool expectStamps
+        )
+        {
+            if (
+                decoded.Format
+                is not (
+                    GameDataFormatToken.Json
+                    or GameDataFormatToken.MessagePack
+                    or GameDataFormatToken.Rkyv
+                    or GameDataFormatToken.Protobuf
+                )
+            )
+            {
+                throw new InvalidOperationException(
+                    $"{mode}: decoded frame carries no encoding token."
+                );
+            }
+
+            if (expectStamps && (decoded.Seq == 0 || decoded.Epoch == 0))
+            {
+                throw new InvalidOperationException(
+                    $"{mode}: decoded frame lost a non-zero server stamp."
+                );
             }
         }
 

@@ -2,6 +2,7 @@ namespace SignalFish.Client.Tests.V3
 {
     using System;
     using System.Collections.Generic;
+    using System.IO;
     using System.Text;
     using NUnit.Framework;
     using SignalFish.Client.Core;
@@ -781,6 +782,81 @@ namespace SignalFish.Client.Tests.V3
 
         /*
             ------------------------------------------------------------------
+            Committed fuzz corpus
+            ------------------------------------------------------------------
+        */
+
+        [Test]
+        public void CommittedMsgPackCorpusDecodesPerNameContract()
+        {
+            /*
+                The msgpack-frame fuzz lane seeds (fuzz host Corpus/
+                msgpack-frame) carry their expected behavior in the name:
+                an "accept-v3-" or "accept-v2-" seed decodes on exactly
+                that protocol shape, a "reject-" seed decodes on neither.
+                The walk keeps the committed corpus pinned to the decoder
+                contract.
+            */
+            string corpus = Path.Combine(AppContext.BaseDirectory, "Corpus", "msgpack-frame");
+            string[] seeds = Directory.Exists(corpus)
+                ? Directory.GetFiles(corpus, "*.bin")
+                : Array.Empty<string>();
+            Assert.That(seeds, Is.Not.Empty, "the committed msgpack fuzz corpus is missing");
+
+            foreach (string seed in seeds)
+            {
+                byte[] frame = File.ReadAllBytes(seed);
+                string name = Path.GetFileName(seed);
+
+                bool v3 = BinaryGameDataFrame.TryDecode(
+                    frame,
+                    protocolV3: true,
+                    out _,
+                    out DecodeError v3Error,
+                    out int v3Offset
+                );
+                bool v2 = BinaryGameDataFrame.TryDecode(
+                    frame,
+                    protocolV3: false,
+                    out _,
+                    out DecodeError v2Error,
+                    out int v2Offset
+                );
+                AssertBoundedFailure(name, frame.Length, "v3", v3, v3Error, v3Offset);
+                AssertBoundedFailure(name, frame.Length, "v2", v2, v2Error, v2Offset);
+
+                Assert.That(
+                    v3 && v2,
+                    Is.False,
+                    $"{name}: the member-count gate let both protocol modes decode"
+                );
+
+                if (name.StartsWith("accept-v3-", StringComparison.Ordinal))
+                {
+                    Assert.That(v3, Is.True, $"{name} must decode on v3");
+                    Assert.That(v2, Is.False, $"{name} must not decode on v2");
+                }
+                else if (name.StartsWith("accept-v2-", StringComparison.Ordinal))
+                {
+                    Assert.That(v2, Is.True, $"{name} must decode on v2");
+                    Assert.That(v3, Is.False, $"{name} must not decode on v3");
+                }
+                else if (name.StartsWith("reject-", StringComparison.Ordinal))
+                {
+                    Assert.That(v3, Is.False, $"{name} must not decode on v3");
+                    Assert.That(v2, Is.False, $"{name} must not decode on v2");
+                }
+                else
+                {
+                    Assert.Fail(
+                        $"{name}: corpus names must start accept-v3-, accept-v2-, or reject-"
+                    );
+                }
+            }
+        }
+
+        /*
+            ------------------------------------------------------------------
             Allocation gate
             ------------------------------------------------------------------
         */
@@ -848,6 +924,36 @@ namespace SignalFish.Client.Tests.V3
             GateVerdict baseline = gate.RebaselineSnapshot(Players(selfWithStamps: true));
             Assert.That(baseline.Suppress, Is.False, baseline.Diagnostic);
             return gate;
+        }
+
+        /// <summary>
+        /// Every failed decode in the corpus walk must name a structured
+        /// reason at an offset inside the frame.
+        /// </summary>
+        private static void AssertBoundedFailure(
+            string name,
+            int frameLength,
+            string mode,
+            bool decoded,
+            DecodeError error,
+            int errorOffset
+        )
+        {
+            if (decoded)
+            {
+                return;
+            }
+
+            Assert.That(
+                error,
+                Is.Not.EqualTo(default(DecodeError)),
+                $"{name}: {mode} failed without a decode error"
+            );
+            Assert.That(
+                errorOffset,
+                Is.InRange(0, frameLength),
+                $"{name}: {mode} failure offset outside the frame"
+            );
         }
 
         private static List<PlayerInfo> Players(bool selfWithStamps)
