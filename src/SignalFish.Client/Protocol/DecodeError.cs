@@ -41,5 +41,20 @@ namespace SignalFish.Client.Protocol
 
         /// <summary>Non-whitespace content follows the envelope object.</summary>
         TrailingContent = 9,
+
+        /// <summary>The binary frame's root is not a MessagePack map.</summary>
+        NotAMap = 10,
+
+        /// <summary>The binary map carries a key outside the frame's key set.</summary>
+        UnknownField = 11,
+
+        /// <summary>A known binary map key repeats.</summary>
+        DuplicateField = 12,
+
+        /// <summary>A required binary map key is absent.</summary>
+        MissingField = 13,
+
+        /// <summary>A binary map value violates its field contract (shape, token, or stamp).</summary>
+        InvalidFieldValue = 14,
     }
 }

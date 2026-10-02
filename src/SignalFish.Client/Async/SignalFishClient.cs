@@ -252,6 +252,12 @@ namespace SignalFish.Client.Async
         /// </summary>
         public CommandSend SendAuthenticate(in AuthenticateMessage message)
         {
+            /*
+                The requested encoding rides the wire: the gate resolves it
+                against ProtocolInfo's advertisement (the reconnect replay
+                below notes its own handshake).
+            */
+            _deliveryGate.NoteRequestedFormat(message.GameDataFormat);
             return QueueCommand(
                 ClientCommand.Authenticate,
                 static (FrameBufferWriter writer, AuthenticateMessage payload) =>
@@ -1152,7 +1158,9 @@ namespace SignalFish.Client.Async
                         configured credentials (M5.3).
                     */
                     _pingBuffer.Reset();
-                    EnvelopeWriter.WriteAuthenticate(_pingBuffer, BuildHandshakeMessage());
+                    AuthenticateMessage handshake = BuildHandshakeMessage();
+                    _deliveryGate.NoteRequestedFormat(handshake.GameDataFormat);
+                    EnvelopeWriter.WriteAuthenticate(_pingBuffer, handshake);
                     _commands.TryEnqueue(_pingBuffer.WrittenSpan.ToArray());
                 }
             }

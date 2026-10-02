@@ -211,6 +211,11 @@ namespace SignalFish.Client.Polling
                 return CommandSend.Refused(refusal);
             }
 
+            /*
+                The requested encoding rides the wire: the gate resolves it
+                against ProtocolInfo's advertisement.
+            */
+            _deliveryGate.NoteRequestedFormat(message.GameDataFormat);
             _sendBuffer.Reset();
             EnvelopeWriter.WriteAuthenticate(_sendBuffer, message);
             DispatchEncodedFrame();
