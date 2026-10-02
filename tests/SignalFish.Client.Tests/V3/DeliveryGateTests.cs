@@ -176,6 +176,80 @@ namespace SignalFish.Client.Tests.V3
         }
 
         [Test]
+        public void TranslateFeedAllocatesNothing()
+        {
+            /*
+                The wired receive surface this milestone adds: envelope
+                decode, gate feed, engine stamp recording, and the frame
+                translation together stay at zero bytes on the relay hot
+                path. (The polling client's own receive-task machinery is
+                measured separately by the idle-poll gate.)
+            */
+            byte[] negotiation = Encoding.UTF8.GetBytes(
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo")
+            );
+            byte[] join = Encoding.UTF8.GetBytes(V3JoinWithBothSenders);
+            byte[][] frames = new byte[400][];
+            for (int i = 0; i < frames.Length; i++)
+            {
+                frames[i] = Encoding.UTF8.GetBytes(
+                    "{\"type\": \"GameData\", \"data\": {\"from_player\": "
+                        + "\"00000000-0000-0000-0000-00000000000b\", \"data\": {\"n\": "
+                        + (i + 1)
+                        + "}, \"seq\": "
+                        + (43 + i)
+                        + ", \"epoch\": 1}}"
+                );
+            }
+
+            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            FramePipeline.Translate(
+                new TransportFrame(negotiation, isText: true),
+                negotiation.Length,
+                gate,
+                out _
+            );
+            FramePipeline.Translate(
+                new TransportFrame(join, isText: true),
+                join.Length,
+                gate,
+                out FrameTranslation primed
+            );
+            Assert.That(primed.HasViolation, Is.False, primed.Violation.Diagnostic);
+
+            long minDelta = long.MaxValue;
+            int violations = 0;
+            for (int pass = 0; pass < 4; pass++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                for (int iteration = 0; iteration < 100; iteration++)
+                {
+                    byte[] frame = frames[(pass * 100) + iteration];
+                    FramePipeline.Translate(
+                        new TransportFrame(frame, isText: true),
+                        frame.Length,
+                        gate,
+                        out FrameTranslation translated
+                    );
+                    if (translated.HasViolation)
+                    {
+                        violations++;
+                    }
+                }
+
+                long after = GC.GetAllocatedBytesForCurrentThread();
+                minDelta = Math.Min(minDelta, after - before);
+            }
+
+            Assert.That(violations, Is.Zero, "the relay stream must stay accepted");
+            Assert.That(
+                minDelta,
+                Is.EqualTo(0),
+                "Relayed stamped GameData must flow through decode + gate + engine without allocating."
+            );
+        }
+
+        [Test]
         public void PipelineSurfacesViolationAheadOfSuppressedGameData()
         {
             /*
