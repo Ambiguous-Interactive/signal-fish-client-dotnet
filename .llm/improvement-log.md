@@ -170,7 +170,6 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 - Applied: gate + policy + pipeline wiring landed (PR #67); #66 closed;
   integration remainder narrowed to the M6.6 live gap leg. Open: none.
 
-
 Entries pruned 2026-09-23 (sessions 011-014, 017b, 022-023, 025b-026):
 knowledge graduated into skills/rules; open items resolved or tracked as
 issues; originals in git history.
