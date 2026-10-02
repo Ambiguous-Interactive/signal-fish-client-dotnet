@@ -371,7 +371,7 @@ namespace SignalFish.Client.E2E
         /// One non-async drain walk (the ref-struct enumerator must not
         /// cross an await); breaking early keeps the unconsumed tail queued.
         /// </summary>
-        private static PollEvent? TakeMatching(
+        internal static PollEvent? TakeMatching(
             SignalFishPollingClient client,
             Func<PollEvent, bool> match
         )

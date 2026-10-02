@@ -184,8 +184,6 @@ changes (CI, tests, tooling, docs) are not listed.
   The handshake is best-effort with a short bounded wait; an unresponsive
   server or dead wire falls back to the previous abort.
 
-### Changed
-
 - One depth contract for outbound verbatim payloads: game data, signal,
   and connection info share a single 128-container bound, validated once
   at message construction; encoding no longer re-validates payloads.

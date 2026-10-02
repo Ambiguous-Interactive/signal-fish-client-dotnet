@@ -254,14 +254,19 @@ namespace SignalFish.Client.E2E
                 Assert.That(pollEvent.GameData.Epoch!.Value, Is.GreaterThan(0u));
             }
 
-            foreach (PollEvent drained in bob.DrainEvents())
-            {
-                Assert.That(
-                    drained.Kind,
-                    Is.Not.EqualTo(PollEventKind.ProtocolViolation),
-                    "a conforming v3 relay must not raise delivery violations"
-                );
-            }
+            /*
+                TakeMatching's non-async walk is the drain: the ref-struct
+                enumerator must not cross an await (C# 12).
+            */
+            PollEvent? violation = E2EHarness.TakeMatching(
+                bob,
+                e => e.Kind == PollEventKind.ProtocolViolation
+            );
+            Assert.That(
+                violation.HasValue,
+                Is.False,
+                "a conforming v3 relay must not raise delivery violations"
+            );
             Assert.That(bob.Snapshot.Quarantined, Is.False);
 
             Assert.That(reliable.GameData.FromPlayer, Is.EqualTo(aliceSeat.PlayerId));
