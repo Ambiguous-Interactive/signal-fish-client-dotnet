@@ -281,7 +281,15 @@ namespace SignalFish.Client.Protocol
                     _ => unchecked((int)BinaryPrimitives.ReadUInt32BigEndian(body)),
                 };
                 _offset += width;
-                if (length < 0 || _offset + length > _bytes.Length)
+                /*
+                    Wide arithmetic: the length is wire-controlled, so the
+                    bounded-int sum can wrap negative and pass the check —
+                    a declared 0x7FFFFFFF then walked the cursor out of the
+                    buffer and faulted the loop. Compare against the
+                    remaining bytes instead.
+                */
+                long remaining = _bytes.Length - _offset;
+                if (length < 0 || length > remaining)
                 {
                     return Fail(DecodeError.Truncated, _offset, out error, out errorOffset);
                 }

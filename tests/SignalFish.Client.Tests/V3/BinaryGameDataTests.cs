@@ -258,6 +258,61 @@ namespace SignalFish.Client.Tests.V3
         }
 
         [Test]
+        public void DeclaredLengthsBeyondTheBufferTruncateInsteadOfThrowing()
+        {
+            /*
+                A bin32/str32 length prefix is attacker-controlled bytes:
+                0x7FFFFFFF wraps the bounded remaining-bytes check and
+                walked the cursor out of the buffer — a malformed frame
+                faulted the receive loop instead of surfacing as
+                DecodeFailed. The negative spelling (all ones) must stay
+                truncation too.
+            */
+            byte[] FrameWithDeclaredBin32(byte[] declaredLength)
+            {
+                List<byte> frame = new List<byte> { 0x85 };
+                WriteKey(frame, "from_player");
+                WriteBin(frame, SenderB.ToNetworkOrderBytes());
+                WriteKey(frame, "encoding");
+                WriteStr(frame, "message_pack");
+                WriteKey(frame, "payload");
+                frame.Add(0xc6);
+                frame.AddRange(declaredLength);
+                frame.Add(0x01);
+                WriteKey(frame, "seq");
+                WriteUInt(frame, 43);
+                WriteKey(frame, "epoch");
+                WriteUInt(frame, 1);
+                return frame.ToArray();
+            }
+
+            foreach (
+                byte[] declared in new[]
+                {
+                    new byte[] { 0x7f, 0xff, 0xff, 0xff },
+                    new byte[] { 0xff, 0xff, 0xff, 0xff },
+                }
+            )
+            {
+                Assert.That(
+                    BinaryGameDataFrame.TryDecode(
+                        FrameWithDeclaredBin32(declared),
+                        protocolV3: true,
+                        out _,
+                        out DecodeError error,
+                        out int errorOffset
+                    ),
+                    Is.False
+                );
+                Assert.That(
+                    error,
+                    Is.EqualTo(DecodeError.Truncated),
+                    $"declared {BitConverter.ToString(declared)} at {errorOffset}"
+                );
+            }
+        }
+
+        [Test]
         public void V2ShapeDecodesWithoutStamps()
         {
             List<byte> frame = new List<byte> { 0x83 };
@@ -330,6 +385,30 @@ namespace SignalFish.Client.Tests.V3
             unknown.NoteRequestedFormat("cbor");
             Assert.That(unknown.OnProtocolInfo(3, CanonicalFormats, out _), Is.True);
             Assert.That(unknown.NegotiatedEncoding, Is.EqualTo(GameDataFormatToken.Json));
+        }
+
+        [Test]
+        public void RejectedReEchoKeepsTheSettledEncoding()
+        {
+            /*
+                A version-changing ProtocolInfo re-echo with a non-canonical
+                advertisement is rejected — and rejection must not clobber
+                the encoding the connection already settled: state mutates
+                only after validation succeeds.
+            */
+            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            gate.NoteRequestedFormat("message_pack");
+            Assert.That(gate.OnProtocolInfo(3, CanonicalFormats, out _), Is.True);
+            Assert.That(gate.NegotiatedEncoding, Is.EqualTo(GameDataFormatToken.MessagePack));
+
+            Assert.That(gate.OnProtocolInfo(2, NonCanonicalFormats, out string? refusal), Is.False);
+            Assert.That(refusal, Does.Contain("canonical Server 0.8 negotiation order"));
+            Assert.That(
+                gate.NegotiatedEncoding,
+                Is.EqualTo(GameDataFormatToken.MessagePack),
+                "a rejected frame leaves the settled negotiation alone"
+            );
+            Assert.That(gate.IsProtocolV3, Is.True, "the prior negotiation still stands");
         }
 
         [Test]

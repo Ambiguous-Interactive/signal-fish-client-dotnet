@@ -400,9 +400,16 @@ namespace SignalFish.Client.V3
             out string? refusal
         )
         {
-            _negotiatedFormat = GameDataFormatToken.Json;
+            /*
+                Resolve into a local and assign only on success: a rejected
+                advertisement (a version-changing re-echo the canonical
+                check refuses) must leave the already-settled encoding
+                alone — state mutates after validation, never before.
+            */
+            GameDataFormatToken resolved = GameDataFormatToken.Json;
             if (gameDataFormats is null || gameDataFormats.Count == 0)
             {
+                _negotiatedFormat = resolved;
                 refusal = null;
                 return true;
             }
@@ -429,9 +436,10 @@ namespace SignalFish.Client.V3
                 && ContainsToken(gameDataFormats, _requestedFormatToken)
             )
             {
-                _negotiatedFormat = _requestedFormat;
+                resolved = _requestedFormat;
             }
 
+            _negotiatedFormat = resolved;
             refusal = null;
             return true;
         }
