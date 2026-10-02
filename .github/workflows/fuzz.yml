@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       seconds_per_target:
-        description: 'Fuzzing budget per target, in seconds'
+        description: 'Fuzzing budget per target, in seconds (max 600)'
         required: false
         default: '600'
 

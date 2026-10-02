@@ -72,6 +72,23 @@ routine drift check. M6.5 mesh stays the next focused surface.
   local attempt stays cached; harmless on x86-64 hosts, and `-DriverPath`
   remains the arm64 escape hatch.
 
+## Review round
+
+Adversarial review approved with two should-fix findings, both fixed:
+
+- `reject-seq-on-v2.bin` was byte-identical to `reject-missing-key.bin`
+  — the count gate masks the key branch the name claimed. Rebuilt as
+  fixmap(3) so the v2 count gate passes and the v3-only seq key reaches
+  the unknown-key branch; the unit matrix's `seq-on-v2` case now uses
+  the same shape. The duplicate class was pure corpus bloat.
+- `.gitattributes` had no `*.bin` rule: NUL-free seeds rode the
+  `text=auto` lane where a future `0d 0a` byte pair would be rewritten
+  per-platform. Added `*.bin binary`.
+
+Nits applied: class-minimum asserts in the corpus-contract test (catch
+whole-class pruning), and the dispatch input now advertises the 600 s
+cap. Findings folded into `.llm/improvement-log.md` (2026-10-02).
+
 ## Follow-ups
 
 - M6.5 mesh is the next focused surface (PLAN updated).

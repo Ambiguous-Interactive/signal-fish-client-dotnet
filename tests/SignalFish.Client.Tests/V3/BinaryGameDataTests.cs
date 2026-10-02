@@ -803,6 +803,9 @@ namespace SignalFish.Client.Tests.V3
                 : Array.Empty<string>();
             Assert.That(seeds, Is.Not.Empty, "the committed msgpack fuzz corpus is missing");
 
+            int acceptV3 = 0;
+            int acceptV2 = 0;
+            int reject = 0;
             foreach (string seed in seeds)
             {
                 byte[] frame = File.ReadAllBytes(seed);
@@ -833,16 +836,19 @@ namespace SignalFish.Client.Tests.V3
 
                 if (name.StartsWith("accept-v3-", StringComparison.Ordinal))
                 {
+                    acceptV3++;
                     Assert.That(v3, Is.True, $"{name} must decode on v3");
                     Assert.That(v2, Is.False, $"{name} must not decode on v2");
                 }
                 else if (name.StartsWith("accept-v2-", StringComparison.Ordinal))
                 {
+                    acceptV2++;
                     Assert.That(v2, Is.True, $"{name} must decode on v2");
                     Assert.That(v3, Is.False, $"{name} must not decode on v3");
                 }
                 else if (name.StartsWith("reject-", StringComparison.Ordinal))
                 {
+                    reject++;
                     Assert.That(v3, Is.False, $"{name} must not decode on v3");
                     Assert.That(v2, Is.False, $"{name} must not decode on v2");
                 }
@@ -853,6 +859,14 @@ namespace SignalFish.Client.Tests.V3
                     );
                 }
             }
+
+            /*
+                Class-level minimums catch accidental pruning of a whole
+                seed class without pinning the exact corpus size.
+            */
+            Assert.That(acceptV3, Is.GreaterThanOrEqualTo(1), "no accept-v3- seeds remain");
+            Assert.That(acceptV2, Is.GreaterThanOrEqualTo(1), "no accept-v2- seeds remain");
+            Assert.That(reject, Is.GreaterThanOrEqualTo(5), "the reject- seeds were pruned");
         }
 
         /*
@@ -1098,13 +1112,16 @@ namespace SignalFish.Client.Tests.V3
                     return V3Frame(seq: 1, epoch: 1, encoding: "cbor");
                 case "seq-on-v2":
                 {
-                    List<byte> frame = new List<byte> { 0x84 };
+                    /*
+                        Exactly three members so the v2 count gate passes
+                        and the v3-only seq key reaches the unknown-key
+                        branch it names — the rejection under test.
+                    */
+                    List<byte> frame = new List<byte> { 0x83 };
                     WriteKey(frame, "from_player");
                     WriteBin(frame, SenderB.ToNetworkOrderBytes());
                     WriteKey(frame, "encoding");
                     WriteStr(frame, "message_pack");
-                    WriteKey(frame, "payload");
-                    WriteBin(frame, PayloadBytes);
                     WriteKey(frame, "seq");
                     WriteUInt(frame, 1);
                     return frame.ToArray();

@@ -9,6 +9,29 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-02 - msgpack-frame fuzz corpus red-green catches
+
+- Trigger: session 032 (issue #68, fuzz the MessagePack binary frame
+  decoder); adversarial review hunted the committed corpus and lane.
+- Evidence: the seed generator's `Str8` helper dropped the str8 length
+  byte — the corpus-contract test failed on first run and named the
+  exact seed. Review then found `reject-seq-on-v2.bin` byte-identical
+  to `reject-missing-key.bin` (the count gate masks the key branch the
+  name claimed), and `.gitattributes` left NUL-free `.bin` seeds on the
+  `text=auto` path where a future `0d 0a` byte pair would be rewritten
+  per-platform.
+- Findings: name-labeled binary data can silently duplicate; a
+  contract test over the labels catches both generator and duplication
+  bugs for free. Seed classes whose failure fires at an earlier gate
+  than the name claims need shape choices that reach the named branch.
+  Any committed binary format needs an explicit `.gitattributes`
+  `binary` rule — NUL-heuristics are not a guarantee.
+- Applied: rebuilt the seed as fixmap(3) (v2 count gate passes, the
+  seq key reaches the unknown-key branch; same shape in the unit
+  matrix), added `*.bin binary`, and class-minimum asserts to the
+  corpus-contract test.
+- Open: none.
+
 ## 2026-09-24 - devcontainer OpenCode v2 lifecycle RCA
 
 - Trigger: Dev Containers log showed `onCreateCommand` exit 1 while opening
