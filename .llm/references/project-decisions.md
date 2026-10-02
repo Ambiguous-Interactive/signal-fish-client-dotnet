@@ -40,7 +40,7 @@ publishing, Unity-in-CI, source-generated serializers.
 
 ## Upstream references
 
-- Server repo: https://github.com/Ambiguous-Interactive/signal-fish-server
+- Server repo: <https://github.com/Ambiguous-Interactive/signal-fish-server>
   - Client-author contract: `docs/guides/building-a-client.md`
     (conformance checklist + pitfalls — authoritative; the E2E suite maps
     1:1 to it, and each implemented item flips a row in
@@ -54,7 +54,7 @@ publishing, Unity-in-CI, source-generated serializers.
   - Worked scenarios: `docs/scenarios/v2-two-player-relay.md`,
     `v3-mesh-webrtc.md`, `v3-host-topology.md`, `v3-host-failover.md`
 - Rust client (API parity source):
-  https://github.com/Ambiguous-Interactive/signal-fish-client-rust
+  <https://github.com/Ambiguous-Interactive/signal-fish-client-rust>
   (`docs/client.md` is the API mirror target; events/errors/testing/
   transport pages)
 - Local canonical facts:

@@ -65,6 +65,7 @@ The Z.ai launchers always target the `api.z.ai` coding-plan endpoints; with
 launchers keep the coding-plan endpoint (they warn about it). `Z_AI_API_KEY`
 wins when set; aliases are fallbacks, and two aliases that disagree without a
 canonical value are rejected instead of guessed.
+
 - **Model switching**: `claude-zai` reads `CLAUDE_ZAI_{SONNET,OPUS,HAIKU}_MODEL`;
   `claude-openrouter` reads `CLAUDE_OPENROUTER_{FABLE,OPUS,SONNET,HAIKU}_MODEL`
   (defaults: `~anthropic/claude-{fable,opus,sonnet}-latest[1m]`), and exposes the
@@ -131,6 +132,7 @@ your host environment or `~/.bashrc` instead — `.env.local` simply wins when
 present.
 
 ## Design
+
 - **No sudo for normal setup.** `NPM_CONFIG_PREFIX` points at
   `/home/vscode/.npm-global` (a user-owned volume), so `npm install -g` works
   as the `vscode` user.

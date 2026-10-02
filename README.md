@@ -45,8 +45,8 @@ is the single source of truth, with thin pointer files for each agent
 front-end (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursor/rules/`,
 `.github/copilot-instructions.md`, `llms.txt`) and standards-compliant
 [Agent Skills](https://agentskills.io) under `.llm/skills/`. A generated index,
-pre-commit hooks, and CI keep everything validated. See the
-[AI disclosure](#ai-disclosure) above.
+pre-commit hooks, and CI keep everything validated. The disclosure blockquote
+at the top of this file states the project's AI-assistance policy.
 
 ## License
 
