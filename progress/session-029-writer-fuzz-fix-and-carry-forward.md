@@ -55,12 +55,23 @@ integration (#61) to an executable design.
   replays clean (exit 0).
 - 656/656 unit tests pass (net8.0 + net10.0); all nine repo lints pass;
   CSharpier via pre-commit.
+- Fuzz lane re-proven on CI: a `workflow_dispatch` run (180 s per
+  target, coverage-guided, seeded corpus) completed green on the PR
+  branch.
+- PR #65 fully green: build-and-test (3 TFMs/OSes), Lint, conformance
+  (live server), Docs suite, and both native devcontainer builds
+  (aarch64 + x86_64 — the x86_64 Docker execution that session 028
+  could not run locally).
+- Adversarial review of the fix approved after corrections: the
+  regression test's comment mis-derived the recipe's class/key (the
+  cursor casts to byte before the modulo: Reliable/245, not
+  Latest/501) — corrected; the seed-refusal literal is shared and
+  carries the refusing exception as its inner exception.
 
 ## Follow-ups
 
 - M6.3 integration (#61) is the next session's focused surface; the
-  PLAN section now carries the confirmed design and the open question.
-- The fuzz lane's own scheduled run is the final proof; a
-  `workflow_dispatch` run on the PR validates the lane early.
+  PLAN section now carries the confirmed design and the open question
+  (tracked as #66).
 - `.env.local` was created world-readable (0777) and restricted to 600
   within the hour; rotate the PAT if the workspace is shared.
