@@ -13,3 +13,8 @@ reconnection, spectators, authority, and WebRTC signaling.
 - Rust client (API parity source): <https://github.com/Ambiguous-Interactive/signal-fish-client-rust>
 - Roadmap and open work: the repository's [issue tracker](https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/issues)
 - Releasing the SDK: the [operator runbook](releasing.md)
+
+> **AI disclosure:** This project was developed with substantial assistance
+> from AI coding agents (Codex, Gemini, GLM, and others). Humans created the
+> protocol concepts and core design and retained oversight of architecture
+> and code review.

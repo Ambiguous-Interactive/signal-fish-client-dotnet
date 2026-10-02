@@ -43,9 +43,19 @@ permissions:
 
 jobs:
   build:
-    name: Build devcontainer image + self-test
-    runs-on: ubuntu-latest
+    name: Build devcontainer + self-test (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            platform: linux/arm64
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -66,11 +76,18 @@ jobs:
           # run inside this container — self-test.sh covers them.
           imageName: signal-fish-devcontainer-ci
           push: never
+          platform: ${{ matrix.platform }}
+          useNativeRunner: true
           # Layer cache via the GitHub Actions cache backend: repeated PR
           # builds reuse unchanged base-image/sdk/node/uv layers instead of
           # re-resolving them. mode=max caches intermediate stages too.
           cacheFrom: type=gha
           cacheTo: type=gha,mode=max
           runCmd: |
+            # Fail fast: each phase must pass or the whole runCmd fails. A bare
+            # command list runs under bash without -e, so only the LAST command
+            # would decide the job's outcome.
+            set -euo pipefail
+            test "$(uname -m)" = '${{ matrix.arch }}'
             bash .devcontainer/scripts/post-start.sh
             bash .devcontainer/scripts/self-test.sh

@@ -32,6 +32,8 @@ scripts/tests/           Self-tests for the automation scripts
 .github/                 CI workflows + Copilot instructions
 src/SignalFish.Client/   The library (netstandard2.1)
 tests/                   Test projects (NUnit, net8.0;net10.0 runner)
+progress/                Per-session work records (session-NNN-*.md) - the historical narrative
+PLAN.md                  Rolling-wave plan (local-only, gitignored): status + in-progress + future work
 CLAUDE.md, AGENTS.md,    Thin pointer files that delegate to this file
 GEMINI.md, llms.txt
 ```
@@ -144,6 +146,14 @@ the outcome in [improvement-log.md](./improvement-log.md) (see rule 15).
     for fields and properties. Enforced by
     `scripts/lint-member-order.ps1`; CI runs all six convention lints via
     `scripts/lint-conventions.ps1` (hook + CI).
+22. **PLAN.md is a rolling-wave plan — in-progress and future work only**
+    (local-only, gitignored, 300-line budget: run
+    `pwsh -NoProfile -File scripts/lint-file-sizes.ps1 -Paths PLAN.md`).
+    Completed work collapses to one status row per milestone citing the
+    session numbers; narratives belong in `progress/session-*.md`, and
+    durable context (decisions, references, checkpoints) in
+    [project-decisions](./references/project-decisions.md). Follow
+    [maintain-plan](./skills/maintain-plan/SKILL.md) when updating it.
 
 ## Protocol Essentials
 

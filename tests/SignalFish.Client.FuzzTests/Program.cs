@@ -119,6 +119,13 @@ namespace SignalFish.Client.FuzzTests
             }
         }
 
+        /// <summary>
+        /// The invariant breach reported when the writer refuses a payload
+        /// that is valid JSON by construction (a seed); shared by the
+        /// construction and encode refusal points.
+        /// </summary>
+        private const string SeedRefusedMessage = "Writer refused a valid JSON seed payload.";
+
         private static int Main(string[] args)
         {
             if (args.Length == 0 && !RunningUnderLibFuzzer())
@@ -309,19 +316,28 @@ namespace SignalFish.Client.FuzzTests
 
                 case 2:
                 {
-                    GameDataMessage message = BuildGameData(ref cursor, out bool seededPayload);
+                    /*
+                        Construction validates the payload (the refusal must
+                        precede every send), so the documented ArgumentException
+                        can surface here as well as at encode time. A refusal of
+                        a valid JSON seed is a writer regression at either point.
+                    */
+                    if (
+                        !TryBuildGameData(
+                            ref cursor,
+                            out GameDataMessage message,
+                            out bool seededPayload
+                        )
+                    )
+                    {
+                        return;
+                    }
+
                     if (!TryEncode(buffer, () => EnvelopeWriter.WriteGameData(buffer, message)))
                     {
                         if (seededPayload)
                         {
-                            /*
-                                Seed payloads are valid JSON by construction;
-                                refusing one is a writer regression, not a
-                                documented misuse.
-                            */
-                            throw new InvalidOperationException(
-                                "Writer refused a valid JSON seed payload."
-                            );
+                            throw new InvalidOperationException(SeedRefusedMessage);
                         }
 
                         return;
@@ -381,17 +397,20 @@ namespace SignalFish.Client.FuzzTests
                 password: cursor.OptionalString()
             );
 
-        private static GameDataMessage BuildGameData(ref FuzzCursor cursor, out bool seededPayload)
+        /// <summary>
+        /// Builds a <see cref="GameDataMessage"/> from fuzz input. Returns
+        /// <see langword="false"/> when construction refused the payload with
+        /// its documented <see cref="ArgumentException"/> (raw-byte payloads
+        /// may be invalid JSON). Seed payloads are valid JSON by construction,
+        /// so refusing one at construction is the same writer regression as
+        /// refusing it at encode.
+        /// </summary>
+        private static bool TryBuildGameData(
+            ref FuzzCursor cursor,
+            out GameDataMessage message,
+            out bool seededPayload
+        )
         {
-            /*
-                Half the inputs start from a valid JSON seed so the fuzzer can
-                explore the classified-delivery paths without first having to
-                synthesize valid JSON; the rest mutate raw bytes (the writer
-                must refuse those with its documented ArgumentException).
-                Whitespace is trimmed: the writer emits the payload verbatim
-                while the reader slices the bare value token (JSON whitespace
-                is insignificant), so padded payloads cannot roundtrip bytes.
-            */
             seededPayload = (cursor.Byte() & 1) == 0;
             ReadOnlyMemory<byte> payload = seededPayload
                 ? cursor.JsonSeed()
@@ -405,7 +424,22 @@ namespace SignalFish.Client.FuzzTests
             */
             GameDataClass classification = (GameDataClass)(1u + (cursor.Byte() % 3u));
             uint key = cursor.OptionalUint() ?? 0u;
-            return new GameDataMessage(payload, classification, key);
+
+            try
+            {
+                message = new GameDataMessage(payload, classification, key);
+                return true;
+            }
+            catch (ArgumentException exception)
+            {
+                if (seededPayload)
+                {
+                    throw new InvalidOperationException(SeedRefusedMessage, exception);
+                }
+
+                message = default;
+                return false;
+            }
         }
 
         /// <summary>Strips JSON whitespace from both ends of a raw payload.</summary>

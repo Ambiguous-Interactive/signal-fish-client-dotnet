@@ -9,6 +9,123 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-09-24 - devcontainer OpenCode v2 lifecycle RCA
+
+- Trigger: Dev Containers log showed `onCreateCommand` exit 1 while opening
+  the ARM64 workspace; user requested a seamless OpenCode V2 experience.
+- Evidence: the actionable tail is log lines 7782/7786/7792: npm installed
+  `@opencode/cli`, but the anchored `^v?2\.` probe rejected the real output
+  `opencode v2.0.16`. A second red reproduction hit `readJson is not defined`
+  after the config reader was renamed. ARM64 self-test also reproduced nested
+  `pwsh` `Exec format error` (ARM64 apphost, x86-64 managed payload).
+- Findings: lifecycle failures need effect-level assertions and actionable
+  diagnostics; renamed helpers need a runtime smoke test; direct binary version
+  checks miss architecture-mismatched nested payloads; generated global config
+  must preserve unrelated policy and JSONC, and active OpenCode services need
+  a restart when environment-backed credentials change.
+- Applied: fixed the V2 probe, added npm failure output and recovery preflight,
+  repaired the MCP writer (nested paths, atomic writes, JSONC preservation,
+  V2 `mcp.servers`/Code Mode, OAuth policy), added `waitFor` plus the official
+  V2 VS Code extension, isolated V2 data from the existing V1 database,
+  made config/credential changes restart an active OpenCode service, and
+  installed checksum-verified PowerShell archives for ARM64/x64. Follow-up
+  hardening made JSONC deletion conditional, preflighted/rolled back all JSON
+  targets, allowlisted env-file keys, pinned the npm prefix, made Codex TOML
+  writes atomic/escaped, required every core CLI in readiness checks, isolated
+  self-test HOME/config state, and made CI platform selection explicit. The
+  disposable self-test now passes 167/167 checks; direct Dockerfile smoke skips
+  only the feature-provided `gh` binary.
+- Evidence: the first V2 `mcp list` after a cold service boot can race
+  location-scoped MCP registration and briefly print `No MCP servers
+  configured`; a second call succeeds. The lifecycle now retries this bounded
+  check after restarting an active service, and the README distinguishes
+  `debug config` source output from runtime status. The follow-up review also
+  reproduced JSONC-without-`mcp`, partial-write, env-prefix, TOML-escape,
+  symlink, and self-test-contamination failure classes before their fixes.
+- Open: rebuild the user's existing container once so its lifecycle marker is
+  rerun and re-authenticate against the fresh V2 data volume; native x86_64 CI
+  is still the cross-build authority (the local ARM builder cannot emulate
+  amd64). Rotate credentials in `.env.local` if it has been readable by
+  another user.
+
+## 2026-09-24 - devcontainer follow-up hardening (credential paths, locks, propagation)
+
+- Trigger: second review pass over the same session found nine unresolved
+  failure classes: a malformed later `.env.local` could resurrect a stale
+  inherited credential; `CODEX_HOME` and OpenCode override paths
+  (`XDG_CONFIG_HOME`, `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR`,
+  `OPENCODE_CONFIG_CONTENT`) were ignored by the writers; `ai-backends.sh`
+  used a different Z.AI key precedence and ignored `ZHIPU_API_KEY`; global npm
+  installs had no lock; the install stamp was written before any readiness
+  probe; a failed OpenCode restart was downgraded to a warning and never
+  retried; CRLF Codex configs could produce duplicate TOML tables; the Node
+  writer's rollback could clobber a concurrent writer; and the CI `runCmd`
+  ran three commands without `errexit` so only the last failure was visible.
+- Evidence: red reproductions for each class — stale-credential resurrection
+  (inherited token survives a corrupt `.env.local`), split-brain `CODEX_HOME`
+  (readiness checked `$CODEX_HOME`, MCP writer wrote `~/.codex`), ai-backends
+  selecting an ambient `ZAI_API_KEY` over the canonical file value, parallel
+  writers interleaving, a failed restart leaving unchanged fingerprints (never
+  retried), CRLF markers not matching (old block kept + duplicate tables), and
+  a concurrent-writer rollback race in the Node writer.
+- Applied: per-source credential semantics in `env.sh` (later value wins,
+  blank = no override, malformed/competing = clear + warn; one parser aligned
+  with the ai-backends reader); a shared `paths.sh` resolver layer
+  (`CODEX_HOME`, OpenCode override chain) used by both writers, readiness
+  probes, and the post-start fingerprint; fail-closed rejection of
+  managed-name overrides via `OPENCODE_CONFIG_CONTENT`; a single
+  mkdir-token config lock shared by the Node writer, Codex TOML writers, and
+  `ai-backends.sh` (10-minute stale takeover); parent-directory symlink
+  checks plus post-`mkdir` re-checks and a CRLF-normalizing marker match; one
+  serialized npm transaction that stamps only after the full readiness probe
+  (legacy OpenCode packages now fail readiness), invalidates the old stamp
+  first, and treats future-dated stamps as stale; split core-CLI vs
+  AI-backend repair paths; a restart-pending marker so the next start retries
+  a failed OpenCode reconciliation; strict expected-name gating of
+  `opencode mcp list` after restart; self-test `USERPROFILE`/XDG/launcher-bin
+  isolation, `.env` backup, `must_run` setup gating, exact-value
+  launcher-key assertions, `set -euo pipefail` in the CI `runCmd`, and a
+  Dockerfile `flock` assertion.
+- Evidence: 17 disposable env.sh source-semantics tests and 28 disposable
+  Linux writer/lock/symlink/CRLF tests pass (Debian bash 5.2 + Node 22);
+  ShellCheck warnings cleared; bash syntax verified on Debian and Git Bash.
+  The rebuilt ARM64 image passes the full in-container lifecycle
+  (post-create → post-start → self-test) with 211/211 checks green,
+  including the new source-semantics, override-path, lock, CRLF, symlink,
+  propagation, and hermeticity regressions.
+- Open: native x86_64 CI run is still the cross-build authority (the local
+  ARM builder cannot emulate amd64); rebuild the user's existing container
+  once so its lifecycle marker reruns, then re-authenticate OpenCode and
+  rotate any `.env.local` credential that has been readable by another user.
+
+## 2026-09-23 - PLAN.md bloat: rolling-wave restructure + maintain-plan guard
+
+- Trigger: audit request — PLAN.md had grown to 640 lines; keep it simple,
+  in-progress + future only, and prevent recurrence.
+- Evidence: ~440 lines (~69%) narrated completed work (M0-M6.3, sessions
+  001-027) duplicating `progress/session-*.md`; decisions/product scope/
+  references duplicated `.llm` context. GOAL.md already said "keep PLAN.md
+  current" but nothing enforced or operationalized it — 27 sessions of
+  unbounded growth.
+- Findings: (1) PLAN.md and GOAL.md are gitignored local-only docs, so
+  hook/CI can never enforce them — the guard must live in committed
+  agentic knowledge (rule + skill), with the existing 300-line lint as the
+  local budget check (`lint-file-sizes.ps1 -Paths PLAN.md`; no tool change
+  needed). (2) A plan that narrates completion stops being a plan — the
+  rolling-wave shape (status table + in-progress + coarse future) keeps
+  the next task visible. (3) Collapsing task IDs breaks references;
+  remaining IDs (M6.4+, M7.x, M8.x, M9.x) stay stable, past IDs are
+  history recorded in progress/ and git.
+- Applied: PLAN.md rewritten 640 -> 138 lines (red-green: lint failed at
+  640, passes at 138); locked decisions/scope/upstream/checkpoints moved
+  to [project-decisions](./references/project-decisions.md); rule 22 added
+  to context.md; new [maintain-plan](./skills/maintain-plan/SKILL.md)
+  skill with the session upkeep workflow; GOAL.md progress bullet now
+  points at the skill; dangling `PLAN.md M1.6` reference in
+  docs/benchmarks.md repointed to session 008; UUID-decode trap classes
+  from pruned session-012 entry folded into json-serialization.
+- Open: none.
+
 ## 2026-09-23 - session 027: M6.3 core (accountability engine + v3 decodes)
 
 - Trigger: M6.3 core (engine + decode surface), issue-debt round, and the
@@ -30,233 +147,6 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   the shared `MaxVerbatimPayloadDepth` contract; integration follow-up
   issue filed. Open: none.
 
-## 2026-09-23 - session 026: M6.2 classified delivery + iteration speed
-
-- Trigger: M6.2 (classified delivery) plus the goal's speed mandates
-  (CI flat-or-down, local iteration drastically faster); issue debt was
-  already zero (no open issues to address).
-- Evidence: windows cell spent 79 s of 146 s in `Setup .NET` — it set the
-  dotnet workflow's wall clock (2m33s). NUnit ran one worker (17 s/TFM for
-  570 tests); the red-green loop cost ~47 s (full solution build + both
-  TFMs).
-- Findings: (1) the depth walk existed but at the wrong bound — the writer
-  reused the envelope decode's 64 while the delivery contract is the
-  server codec's 128; fixed by a dedicated game-data walk at construction.
-  (2) Removing the writer's duplicate payload re-validation made the
-  encode hot path strictly cheaper (validation moved to the constructor,
-  which both clients call exactly once per send).
-- Applied: SDK install-dir cache for CI (`DOTNET_INSTALL_DIR` +
-  actions/cache, version-keyed; two rounds to land it — job-level `env`
-  cannot use the `runner` context, and a workspace-local SDK dir pollutes
-  tree-scanning tools like CSharpier, so the cache path + setup step carry
-  `runner.temp` at step level); fixture-level NUnit parallelization
-  (17 s -> ~7 s, suite green and deterministic on both TFMs);
-  `scripts/fast-check.ps1` (single-TFM, no-restore iteration: ~17 s vs
-  ~47 s, ~2.8x).
-- Open: none — SDK cache hit measured on rerun (windows Setup .NET
-  79 s -> 5 s; workflow wall 2m33s -> ~1m30s, -43%); issue #58 filed for
-  the M6.5 depth-bound sibling.
-
-## 2026-09-23 - session 025b: cross-PR feedback audit - all findings verified landed, equality rule codified
-
-- Trigger: full sweep of Bugbot feedback across PRs #41, #43, #44, #46,
-  #47, #50, #51, #55 (12 findings). Every thread was resolved, but four
-  (#44, #46, #50, #55) had no confirming reply, so each was re-verified
-  against `main` instead of trusted.
-- Evidence: `Wait-ForServer` catches all (run-e2e.ps1:63); the proxied
-  drills join via `ConnectProxiedAuthenticatedClientAsync`; `ReconnectContext.GetHashCode`
-  is null-safe; the authority release/claim waits use combined
-  `WaitForEventsAsync`; `FinalizeLocked` mutates terminal + completes both
-  queues in one gate section; `TryIssueAutoReconnect` carries the
-  fence-guard/supersede/restore-on-refusal layers.
-- Findings: (1) the #50 class (struct `GetHashCode` dereferencing a
-  nullable member) had no codified rule — a sweep of all 27 `src/`
-  implementations found the remaining ones safe, but only by inspection;
-  the class lives wherever the next struct is hand-rolled. (2) The
-  #55 ordering class is structurally closed: `TakeMatching` keeps the
-  unconsumed tail queued and unordered pairs use combined waits; ordered
-  pairs (Authenticated → ProtocolInfo) rest on the documented server
-  contract.
-- Applied: default-instance-safe equality rule added to
-  [api-design](./skills/api-design/SKILL.md) (Events); sweep-table row for
-  the class added to [address-pr-feedback](./skills/address-pr-feedback/SKILL.md).
-- Open: none.
-
-## 2026-09-22 - session 023: issue #48 - graceful close handshake + merge dedup
-
-- Trigger: issue debt (#48: M4.3's "graceful" shutdown aborted the TCP
-  wire) plus the origin/main merge carrying PR #51's post-review fixes.
-- Findings: (1) a grace claim needs a wire counterpart — the handshake
-  lives in the transport's own `DisposeAsync`, so both clients inherit it
-  with zero new surface; the issue's capability-interface option was
-  rejected as public surface without a capability. (2) Adversarial review
-  caught a dead poll condition (`Disposed` can never CAS to `Closed`, so
-  the exit check never fired) — the honest exit signal was
-  `_closeFrameDelivered`; derive wait-exit conditions from the field that
-  actually records the event, not a state that transition is barred from.
-  (3) The review also verified red-green empirically (tests run against
-  the pre-change code in a worktree), not just asserted.
-- Applied: close-out 1000 + bounded echo window in
-  `WebSocketTransport.DisposeAsync`; prior-state-returning transition
-  (atomic connected-check); `_handshakeActive` gate-dispose guard;
-  duplicate session-022 progress brief deleted (merge shipped two).
-- Open: two pre-existing transport races filed for follow-up (release
-  between receive completion and CloseStatus read; dispose racing
-  connect's socket assignment).
-
-## 2026-09-22 - session 022: M4.5 opt-in reconnect policy - three adversarial rounds
-
-- Trigger: PLAN.md M4.5 + M4 gate. Three sub-agent review rounds; two
-  majors found and fixed post-implementation, plus minors.
-- Findings: (1) nonblocking `TryEnqueue` for scheduling markers silently
-  drops them under event-queue backpressure — the never-drop contract must
-  hold for synthetic events too; blocking enqueue is safe because disposal
-  completes the queue. (2) In a reconnecting session, applying the
-  `Disconnected` fact to the machine leaves `Phase == Terminal`
-  mid-session — phase-gated consumers stop draining and stall the session;
-  a fresh machine per round (plus a severed-admission check) keeps the
-  phase truthful. (3) Seat capture at sever must be OR-ed with the pending
-  seat: a capture from a membership-less machine (death before
-  re-authentication) must not clobber a retained seat, while an
-  issued-but-unanswered reclaim still loses it. (4) Session-sticky flags
-  that gate one-shot deliveries need per-round resets when rounds repeat.
-- Applied: driver session/round split, blocking marker enqueues, machine
-  swap at sever, seat OR-semantics, `FinalizeLocked` prefers observed
-  death close, `FakeTransport.DoomWithClose`/`FailHeldSends`.
-- Open: none.
-
-## 2026-09-22 - session 022b: PR #51 feedback - refused-reclaim livelock (restore+restart class)
-
-- Trigger: Bugbot High on the fix commit: restoring `_autoSeatPending` on
-  a refused reclaim while still restarting the round iteration made a
-  persistent refusal (fence held, full queue) a same-condition hot loop —
-  drain, receive, and heartbeat never ran again.
-- Findings: (1) restore-on-refusal + unconditional iteration restart is a
-  livelock class: an automatic retry must be paced by external progress
-  (a frame, a wake, a heartbeat deadline), never by a same-condition
-  `continue`. (2) Re-attempt guards must test the actual blocker
-  (`PendingOperation == default`), not just the trigger flag. (3) A
-  trigger that a confirmed foreign state supersedes (membership from a
-  deliberate join) must be cleared, not retried forever. (4) Sweep: every
-  other `continue` in src/ is progress-guaranteed (parser position
-  advances, frame consumed, cancelled waiter skipped).
-- Applied: fence guard + supersede-clear in `TryIssueAutoReconnect`,
-  fall-through instead of restart, deterministic red-green test
-  (capacity-1 queue forces a real `SendBufferFull` refusal; recovery is
-  asserted; the red state cannot complete at all). Rules folded into
-  async-threading and reconnection skills.
-- Open: none.
-
-## 2026-09-22 - session 017b: PR feedback round - silent snupkg skip in nuget.org publish (bugbot finding)
-
-- Trigger: Cursor Bugbot flagged the nuget.org push as invalid. Bot's
-  mechanism was wrong (two paths parse and both nupkg push); executing the
-  command on the CI-pinned SDK 8.0.425 exposed a worse truth: a positional
-  `.snupkg` is silently skipped (exit 0, no warning) — symbols would never
-  reach nuget.org. A prior sub-agent's "empirically confirmed" defense of
-  the one-command form was itself wrong.
-- Findings: (1) `dotnet nuget push` (SDK 8) silently ignores `.snupkg`
-  positional args; symbol publish needs an explicit snupkg push (nuget.org
-  documented flow). (2) Verification must observe effects, not exit codes
-  or success output. (3) Tag-only/schedule-only workflows never self-verify
-  in CI — their `run:` commands are the class that ships untested.
-- Applied: release.yml nuget.org step split into explicit nupkg + snupkg
-  pushes with the evidence in a comment; `address-pr-feedback` skill step 3
-  gained the execute-on-pinned-toolchain / verify-effects / re-execute-
-  claims rules and the sweep-table row for never-exercised workflow
-  commands.
-- Open: none.
-
-## 2026-09-21 - session 014: issue-debt round (server spec adoption, test-name + comment-form gates)
-
-- Trigger: issue debt after M3.3/M3.4 groundwork (#34 new server spec,
-  #26 style directives, #20 comment forms) plus the standing CI-time goal.
-- Findings: (1) #34 needed no new work - the pin `07a6fd08` IS server 0.9.2
-  (latest upstream main); session 013 had already vendored and routed it;
-  byte-identical verify + green corpus closed it with evidence. (2) The
-  sibling repos (unity-helpers, DoxReloaded) both ban underscores in test
-  method names (unity-helpers lint UNH004) and enforce one `/* */` block
-  for any multi-line non-doc comment - our `Method_Scenario_Expectation`
-  convention and 42 `//` stacks predated that guidance. (3) A PS7 ternary
-  cannot break before `?` - the assignment silently parses as a new
-  statement (bit the new lint's path handling). (4) Assertion patterns
-  must match rendered text literally: `...` is an ellipsis, not `. . .`.
-- Applied: 111 test methods renamed to PascalCase (320 x 2 TFM green,
-  discovery count unchanged); `scripts/lint-test-names.ps1` +
-  `scripts/lint-comment-form.ps1` (C#-only lexer, string-aware) with
-  self-tests, wired into hook + CI; 42 comment runs converted to blocks;
-  `.llm` naming table + create-test skill updated (rules 19/20);
-  dotnet.yml matrix 4 -> 3 cells (windows+net10 dropped: OS and TFM
-  assurances carried by other cells) - drops the measured 202s longest
-  cell (last PR run); expected wall ~3m30s -> ~2m, code coverage unchanged.
-- Open: DoxReloaded member-ordering lint adoption and the TUnit spike
-  remain from #26 (follow-up issues filed); unity-helpers WUH analyzers
-  are Unity-object-coupled - lint scripts adopted instead (decision
-  recorded on #26).
-
-## 2026-09-21 - session 012: M3.3 v2 session-fact wire mapping + wire-truth audit
-
-- Trigger: PLAN M3.3 (inbound payload decode -> SessionEvent) exposed two
-  wire-truth classes the golden corpus could not catch (corpus has no
-  Failed/spectator frames and a placeholder-only RoomJoined).
-- Findings: (1) routing-table completeness needs an independent source (the
-  server AsyncAPI spec) — kind sets derived from samples alone silently
-  strand session facts as `UnknownMessage` (the whole `*Failed`/spectator
-  family was unroutable). (2) `Guid.Parse` parity for hand-rolled UUID text
-  decode has three trap classes: field big-endianity (first three groups
-  are MSB-first but serialize little-endian into the binary Guid), group
-  boundaries (8-4-4-4-12, hyphens at 8/13/18/23 — the group after the
-  third hyphen starts at 19, not 18), and the -1 error sentinel aliasing
-  an all-FFFF field (validate each pair, never OR combined signed ints).
-  (3) required-field
-  enforcement needs per-field seen flags — `default(Guid)` is a valid
-  value, absence is not. (4) 0 B allocation gates must scope by path:
-  join mapping legitimately allocates the membership's room-code string
-  (cold); payload-less session facts (per-frame traffic) stay 0 B.
-- Applied: mapper + routing tests data-driven from spec-shaped frames;
-  `TryReadGuid` pinned against `Guid.Parse` as oracle; fence semantics
-  unchanged; appended MessageKinds keep ordinals stable (fuzz seeds).
-- Open: fold (2) into json-serialization skill when next edited (300-line
-  cap).
-
-## 2026-09-20 - session 011: polling core (M3.1/M3.2) + enum-default and this.-ban project sweep
-
-- Trigger: PR #30 human review: (1) force every enum's default (0) to a
-  non-valid `None` sentinel with `[Obsolete]`, project-wide; (2) ban `this.`
-  qualification. Supersedes the PR #11-era decision to leave
-  `MessageKind`/`DecodeError` unmarked.
-- Evidence: 13 enums inventoried; only `EnvelopeEventKind` was compliant.
-  `ConnectionPhase`/`ClientCommand`/`JsonMemberState`/`GameDataClass`/
-  `RoomOperationCommandKind` had valid members at 0 — worst case,
-  `default(GameDataMessage)` silently claimed *reliable* delivery. Marking
-  sentinels `[Obsolete]` first turned `-warnaserror` into the sweep linter:
-  CS0618 enumerated all 57 reference sites, each swept to `default(T)`.
-- Findings: (1) `EnforceCodeStyleInBuild` does NOT enforce IDE0003
-  (this. qualification) or naming rules (IDE1006) — Roslyn computes them
-  IDE-side only; build-time enforcement needs the repo-conventional lint
-  script (new `lint-no-this-qualification.ps1` + self-test + hook + CI,
-  mirroring `lint-no-linq.ps1`; dotted `this.` is always a violation —
-  ctor chaining `: this(` and indexers `this[` carry no dot). (2) Mechanical
-  identifier renames contaminate XML-doc prose — grep `///` for the old
-  token after any scripted rename. (3) The writer now refuses
-  `default(GameDataMessage)` (unset delivery class) — encode misuse throws,
-  matching the codec philosophy. (4) Public API flipped `Admit` →
-  `TryAdmit(command, out AdmissionError)` so callers never reference the
-  sentinel by name.
-- Applied: enum sweep (all 13 enums), `this.` ban sweep + `_camelCase`
-  field renames, `.editorconfig` qualification/naming rules (IDE-side),
-  lint script + hook + CI step, rules 17-18 in context.md, enum-default
-  pattern in [api-design](./skills/api-design/SKILL.md). 287 tests x 2 TFMs.
-- Bugbot round 2 (own fallout, red-green proven): the sentinel insertion
-  silently renumbered `GameDataClass`, so the fuzz writer generator's
-  `(GameDataClass)(byte % 3)` sampled `None` a third of the time and never
-  `Volatile`; a seeded payload then hit the new writer refusal and the
-  lane crashed (standalone seed replay: exit 134 pre-fix, 0 post-fix).
-  Findings: (1) numeric enum sampling/iteration is ordinal-coupled — every
-  sentinel insertion must re-check generators, ordinal loops, and guards
-  added in the same change (sweep-table row added to address-pr-feedback;
-  generator rule + standalone seed-replay technique added to create-test).
-  (2) the standalone fuzz host (`SIGNALFISH_FUZZ_TARGET=... dotnet <dll>
-  seed.bin`) gives a seconds-scale deterministic red-green for generator
-  bugs without the instrumented driver.
-- Open: none.
+Entries pruned 2026-09-23 (sessions 011-014, 017b, 022-023, 025b-026):
+knowledge graduated into skills/rules; open items resolved or tracked as
+issues; originals in git history.
