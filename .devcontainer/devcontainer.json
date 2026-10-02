@@ -19,13 +19,14 @@
     // npm: global tools + cache persist across (full) rebuilds.
     "source=${localWorkspaceFolderBasename}-npm-global,target=/home/vscode/.npm-global,type=volume",
     "source=${localWorkspaceFolderBasename}-npm-cache,target=/home/vscode/.npm,type=volume",
-    // Agent harness state (auth, sessions) persists across rebuilds.
+    // Agent harness state (auth, sessions) persists across rebuilds. Keep the
+    // OpenCode volume versioned so V1 and V2 databases never share a schema.
     "source=${localWorkspaceFolderBasename}-claude-home,target=/home/vscode/.claude,type=volume",
     "source=${localWorkspaceFolderBasename}-claude-zai-home,target=/home/vscode/.claude-zai,type=volume",
     "source=${localWorkspaceFolderBasename}-claude-openrouter-home,target=/home/vscode/.claude-openrouter,type=volume",
     "source=${localWorkspaceFolderBasename}-codex-home,target=/home/vscode/.codex,type=volume",
     "source=${localWorkspaceFolderBasename}-copilot-home,target=/home/vscode/.copilot,type=volume",
-    "source=${localWorkspaceFolderBasename}-opencode-data,target=/home/vscode/.local/share/opencode,type=volume",
+    "source=${localWorkspaceFolderBasename}-opencode-v2-data,target=/home/vscode/.local/share/opencode,type=volume",
     "source=${localWorkspaceFolderBasename}-gh-config,target=/home/vscode/.config/gh,type=volume",
     // uv cache: python envs/tool deps for the git MCP server resolve once.
     "source=${localWorkspaceFolderBasename}-uv-cache,target=/home/vscode/.cache/uv,type=volume",
@@ -38,6 +39,8 @@
   "onCreateCommand": "bash .devcontainer/scripts/post-create.sh",
   // Fast work (env + MCP config sync + throttled background refresh) on every start.
   "postStartCommand": "bash .devcontainer/scripts/post-start.sh",
+  // Do not let an integrated terminal race the foreground config sync.
+  "waitFor": "postStartCommand",
 
   "forwardPorts": [3536],
 
@@ -52,6 +55,7 @@
         // Agent front-ends (same CLIs the terminal gets).
         "anthropic.claude-code",
         "openai.chatgpt",
+        "sst-dev.opencode-v2",
         // Git-heavy workflow support.
         "eamodio.gitlens",
         "github.vscode-github-actions",

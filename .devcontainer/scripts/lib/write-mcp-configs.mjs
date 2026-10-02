@@ -4,7 +4,9 @@
 // Idempotent: merges our managed server entries into each harness's config
 // file, preserving all other user content. Prunes managed entries whose
 // matching credential has disappeared (secret hygiene). Skips token-gated
-// servers when the matching key is absent. Diagnostics on stderr; exits 0.
+// servers when the matching key is absent. Fail-closed: malformed or
+// ambiguous configs, symlinked paths, and write failures exit nonzero and
+// roll back files this run already changed. Diagnostics on stderr.
 //
 // Managed entries (written to every supported harness):
 //   github          https://api.githubcopilot.com/mcp/         (Bearer PAT)
@@ -21,7 +23,15 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+
+const npmRoot = spawnSync("npm", ["root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+if (npmRoot.status !== 0) throw new Error("cannot resolve the global npm module root");
+const { applyEdits, modify, parse: parseJsonc } = createRequire(import.meta.url)(
+  path.join(npmRoot.stdout.trim(), "jsonc-parser"),
+);
 
 const GITHUB_MCP_URL = "https://api.githubcopilot.com/mcp/";
 const MS_DOCS_MCP_URL = "https://learn.microsoft.com/api/mcp";
@@ -42,28 +52,241 @@ const context7Key = env.CONTEXT7_API_KEY || "";
 
 const log = (msg) => console.error(`write-mcp-configs: ${msg}`);
 
-const ZAI_MANAGED_NAMES = ["zai-vision", "zai-web-search", "zai-web-reader", "zai-zread"];
+const OPENCODE_SCHEMA = "https://opencode.ai/config.json";
+const JSONC_FORMATTING = { insertSpaces: true, tabSize: 2, eol: "\n" };
+const MANAGED_SERVER_NAMES = [
+  "github",
+  "zai-vision",
+  "zai-web-search",
+  "zai-web-reader",
+  "zai-zread",
+  "microsoft-docs",
+  "context7",
+  "git",
+];
+const ZAI_MANAGED_NAMES = MANAGED_SERVER_NAMES.filter((name) => name.startsWith("zai-"));
 
-function readJson(file) {
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch {
-    return {};
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function requireObject(value, location) {
+  if (!isObject(value)) throw new TypeError(`${location} must be an object`);
+  return value;
+}
+
+function absolutePath(value) {
+  const text = String(value || "");
+  if (text === "~") return path.resolve(env.HOME || os.homedir());
+  if (text.startsWith("~/")) return path.resolve(env.HOME || os.homedir(), text.slice(2));
+  return path.resolve(text);
+}
+
+function assertNoSymlinkPath(file) {
+  let current = path.resolve(file);
+  while (true) {
+    try {
+      const stat = fs.lstatSync(current);
+      if (stat.isSymbolicLink()) throw new Error(`refusing symlinked config path ${current}`);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return;
+    current = parent;
   }
 }
 
-function writeJson(file, obj) {
+function ensureSafeParent(file) {
+  assertNoSymlinkPath(file);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(obj, null, 2) + "\n", { mode: 0o600 });
+  assertNoSymlinkPath(file);
+}
+
+function readConfig(file, jsonc = false) {
+  assertNoSymlinkPath(file);
+  if (!fs.existsSync(file)) return { text: jsonc ? "{}\n" : "{}", value: {} };
+  if (fs.lstatSync(file).isSymbolicLink()) {
+    throw new Error(`refusing to manage symlinked config ${file}`);
+  }
+  const text = fs.readFileSync(file, "utf8");
+  try {
+    const errors = [];
+    const value = jsonc
+      ? parseJsonc(text, errors, { allowTrailingComma: true, disallowComments: false })
+      : JSON.parse(text);
+    if (errors.length) throw new TypeError(errors.map((error) => error.errorText).join("; "));
+    return { text, value: requireObject(value, file) };
+  } catch (error) {
+    throw new Error(`cannot parse ${file}`, { cause: error });
+  }
+}
+
+function applyJsoncChanges(text, changes) {
+  return changes.reduce(
+    (current, [jsonPath, value]) =>
+      applyEdits(
+        current,
+        modify(current, jsonPath, value, { formattingOptions: JSONC_FORMATTING }),
+      ),
+    text,
+  );
+}
+
+function updateOpencodeJsonc(text, config) {
+  const changes = [[["$schema"], OPENCODE_SCHEMA]];
+  // jsonc-parser cannot delete a path that is absent (notably when a valid
+  // JSONC file has no `mcp` object yet). Only remove legacy direct entries
+  // when they are actually present; nested entries are written below.
+  if (isObject(config.mcp)) {
+    for (const name of MANAGED_SERVER_NAMES) {
+      if (Object.prototype.hasOwnProperty.call(config.mcp, name)) {
+        changes.push([["mcp", name], undefined]);
+      }
+    }
+  }
+  changes.push(
+    ...MANAGED_SERVER_NAMES.map((name) => [
+      ["mcp", "servers", name],
+      config.mcp?.servers?.[name],
+    ]),
+  );
+  return applyJsoncChanges(text, changes);
+}
+
+function writeFileAtomic(file, content) {
+  ensureSafeParent(file);
+  if (fs.existsSync(file) && fs.lstatSync(file).isSymbolicLink()) {
+    throw new Error(`refusing to replace symlinked config ${file}`);
+  }
+  const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`);
+  let descriptor;
+  try {
+    descriptor = fs.openSync(temporary, "wx", 0o600);
+    fs.writeFileSync(descriptor, content);
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, file);
+    const stat = fs.lstatSync(file);
+    if (stat.isSymbolicLink()) throw new Error(`config became a symlink during write ${file}`);
+    fs.chmodSync(file, 0o600);
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+  }
+}
+
+function sleepSync(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function withMcpLock(callback) {
+  // Shell-managed syncs (post-start, ai-backends) hold the same lock via
+  // paths.sh before invoking this script; the env marker avoids deadlock.
+  // Direct invocations serialize with them through an identical mkdir lock:
+  // <state>/mcp-config.lock.d + owner token + 10 minute staleness takeover.
+  if (env.DEVCONTAINER_CONFIG_LOCK_HELD === "1") return callback();
+  const home = os.homedir();
+  const lockRoot = path.join(home, ".cache", "signal-fish-devcontainer");
+  const lockDir = path.join(lockRoot, "mcp-config.lock.d");
+  fs.mkdirSync(lockRoot, { recursive: true });
+  assertNoSymlinkPath(lockDir);
+
+  const token = `${process.pid}:${randomUUID()}`;
+  let acquired = false;
+  for (let attempt = 0; attempt < 600 && !acquired; attempt += 1) {
+    try {
+      fs.mkdirSync(lockDir, { mode: 0o700 });
+      fs.writeFileSync(path.join(lockDir, "owner"), `${token}\n`, { mode: 0o600 });
+      acquired = true;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      const lockStat = fs.lstatSync(lockDir);
+      if (lockStat.isSymbolicLink()) throw new Error(`refusing symlinked MCP lock ${lockDir}`);
+      const age = Date.now() - lockStat.mtimeMs;
+      if (age > 10 * 60 * 1000) {
+        fs.rmSync(lockDir, { recursive: true, force: true });
+      } else {
+        sleepSync(100);
+      }
+    }
+  }
+  if (!acquired) throw new Error(`timed out waiting for MCP config lock ${lockDir}`);
+
+  try {
+    return callback();
+  } finally {
+    try {
+      const owner = fs.readFileSync(path.join(lockDir, "owner"), "utf8").trim();
+      if (owner === token) {
+        fs.unlinkSync(path.join(lockDir, "owner"));
+        fs.rmdirSync(lockDir);
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") log(`could not release MCP lock: ${error}`);
+    }
+  }
+}
+
+function snapshotFile(file) {
+  assertNoSymlinkPath(file);
+  if (!fs.existsSync(file)) return { file, exists: false };
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile()) throw new Error(`managed config is not a regular file: ${file}`);
+  return {
+    file,
+    exists: true,
+    content: fs.readFileSync(file),
+    mode: stat.mode & 0o7777,
+    dev: stat.dev,
+    ino: stat.ino,
+  };
+}
+
+function sameFileState(snapshot, expected) {
+  if (!fs.existsSync(expected.file)) return !expected.exists;
+  const stat = fs.lstatSync(expected.file);
+  if (!stat.isFile() || stat.isSymbolicLink()) return false;
+  if (expected.exists && (stat.mode & 0o7777) !== expected.mode) return false;
+  return fs.readFileSync(expected.file).equals(expected.content);
+}
+
+function restoreFile(snapshot, expected) {
+  if (!sameFileState(snapshot, expected)) {
+    throw new Error(`refusing rollback because ${snapshot.file} changed outside this writer`);
+  }
+  if (!snapshot.exists) {
+    fs.rmSync(snapshot.file, { force: true });
+    return;
+  }
+  writeFileAtomic(snapshot.file, snapshot.content);
+  fs.chmodSync(snapshot.file, snapshot.mode);
+}
+
+function parentAt(obj, parts, location) {
+  let current = obj;
+  for (const part of parts) {
+    if (!Object.prototype.hasOwnProperty.call(current, part)) return undefined;
+    current = requireObject(current[part], `${location}.${parts.join(".")}`);
+  }
+  return current;
 }
 
 function upsert(obj, section, name, entry) {
-  obj[section] = { ...(obj[section] || {}), [name]: entry };
+  let current = obj;
+  for (const part of section.split(".")) {
+    if (!Object.prototype.hasOwnProperty.call(current, part)) current[part] = {};
+    current = requireObject(current[part], `config path ${section}.${part}`);
+  }
+  current[name] = entry;
 }
 
 function prune(obj, section, name) {
-  if (obj[section] && Object.prototype.hasOwnProperty.call(obj[section], name)) {
-    delete obj[section][name];
+  const parts = section.split(".");
+  const parent = parentAt(obj, parts, `config path ${section}`);
+  if (parent && Object.prototype.hasOwnProperty.call(parent, name)) {
+    delete parent[name];
     return true;
   }
   return false;
@@ -104,33 +327,31 @@ const opencode = {
   github: () => ({
     type: "remote",
     url: GITHUB_MCP_URL,
-    enabled: true,
+    disabled: !ghPat || undefined,
     oauth: false,
     headers: { Authorization: "Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}" },
   }),
   vision: () => ({
     type: "local",
     command: ["zai-mcp-server"],
-    enabled: true,
+    disabled: !zaiKey || undefined,
     environment: { Z_AI_API_KEY: "{env:Z_AI_API_KEY}", Z_AI_MODE: zaiMode },
   }),
   remote: (url) => ({
     type: "remote",
     url,
-    enabled: true,
+    disabled: !zaiKey || undefined,
     oauth: false,
     headers: { Authorization: "Bearer {env:Z_AI_API_KEY}" },
   }),
-  docs: () => ({ type: "remote", url: MS_DOCS_MCP_URL, enabled: true }),
+  docs: () => ({ type: "remote", url: MS_DOCS_MCP_URL, oauth: false }),
   context7: () => ({
     type: "remote",
     url: CONTEXT7_MCP_URL,
-    enabled: true,
-    ...(context7Key
-      ? { headers: { Authorization: "Bearer {env:CONTEXT7_API_KEY}" } }
-      : {}),
+    oauth: false,
+    ...(context7Key ? { headers: { Authorization: "Bearer {env:CONTEXT7_API_KEY}" } } : {}),
   }),
-  git: () => ({ type: "local", command: ["uvx", "mcp-server-git"], enabled: true }),
+  git: () => ({ type: "local", command: ["uvx", "mcp-server-git"] }),
 };
 
 const nanocoder = {
@@ -214,10 +435,69 @@ function uvxAvailable() {
   }
 }
 
+function assertAuthorization(entry, label, secret) {
+  const auth = entry?.headers?.Authorization;
+  if (!auth || typeof auth !== "string") throw new Error(`${label}: missing Authorization header`);
+  if (secret && !auth.includes(secret) && !auth.includes("{env:") && !auth.includes("${")) {
+    throw new Error(`${label}: Authorization does not carry the credential or an environment reference`);
+  }
+}
+
 // ---------- config writers ----------
+
+function opencodeConfigTarget() {
+  // OPENCODE_CONFIG_DIR is searched after the project tree and therefore wins
+  // over OPENCODE_CONFIG for effective managed settings. An explicit file is
+  // still honored when no custom directory is supplied.
+  const customDir = env.OPENCODE_CONFIG_DIR;
+  if (customDir) {
+    const dir = absolutePath(customDir);
+    const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((name) => path.join(dir, name));
+    const existing = candidates.filter((file) => fs.existsSync(file));
+    if (existing.length > 1) {
+      throw new Error(`OpenCode has multiple config files in ${dir}; keep one custom config file`);
+    }
+    const file = existing[0] || candidates[1];
+    return { file, jsonc: file.endsWith(".jsonc"), source: "OPENCODE_CONFIG_DIR" };
+  }
+  if (env.OPENCODE_CONFIG) {
+    const file = absolutePath(env.OPENCODE_CONFIG);
+    return { file, jsonc: file.endsWith(".jsonc"), source: "OPENCODE_CONFIG" };
+  }
+  const xdg = env.XDG_CONFIG_HOME || path.join(env.HOME || os.homedir(), ".config");
+  const dir = absolutePath(path.join(xdg, "opencode"));
+  const candidates = ["opencode.jsonc", "opencode.json", "config.json"].map((name) => path.join(dir, name));
+  const existing = candidates.filter((file) => fs.existsSync(file));
+  if (existing.length > 1) {
+    throw new Error(`OpenCode has multiple global config files in ${dir}; keep one global config file`);
+  }
+  const file = existing[0] || candidates[1];
+  return { file, jsonc: file.endsWith(".jsonc"), source: "XDG_CONFIG_HOME" };
+}
+
+function validateInlineOpencodeConfig() {
+  if (!env.OPENCODE_CONFIG_CONTENT) return;
+  const errors = [];
+  let value;
+  try {
+    value = parseJsonc(env.OPENCODE_CONFIG_CONTENT, errors, { allowTrailingComma: true, disallowComments: false });
+  } catch (error) {
+    throw new Error(`OPENCODE_CONFIG_CONTENT is not valid JSONC: ${error.message}`);
+  }
+  if (errors.length || !isObject(value)) throw new Error("OPENCODE_CONFIG_CONTENT must be a JSON object");
+  const servers = value.mcp?.servers;
+  if (isObject(servers)) {
+    const conflicts = MANAGED_SERVER_NAMES.filter((name) => Object.prototype.hasOwnProperty.call(servers, name));
+    if (conflicts.length) {
+      throw new Error(`OPENCODE_CONFIG_CONTENT overrides managed MCP servers: ${conflicts.join(", ")}`);
+    }
+  }
+}
 
 function targets() {
   const home = os.homedir();
+  const opencodeTarget = opencodeConfigTarget();
+  log(`OpenCode config target (${opencodeTarget.source}): ${opencodeTarget.file}`);
   return [
     {
       harness: "claude",
@@ -240,8 +520,9 @@ function targets() {
     },
     {
       harness: "opencode",
-      file: path.join(home, ".config", "opencode", "opencode.json"),
-      section: "mcp",
+      file: opencodeTarget.file,
+      jsonc: opencodeTarget.jsonc,
+      section: "mcp.servers",
       builder: opencode,
       skipGithub: false, // uses {env:...} refs; nothing secret on disk
       skipZai: false,
@@ -286,16 +567,27 @@ const zaiRemotes = [
 const uvxOk = uvxAvailable();
 if (!uvxOk) log("uvx not found; git server entries will be pruned");
 
-for (const t of targets()) {
-  const existing = readJson(t.file);
+function prepareTarget(t) {
+  const loaded = readConfig(t.file, t.jsonc);
+  const existing = loaded.value;
   const before = JSON.stringify(existing);
+  if (t.harness === "opencode") {
+    existing.$schema = OPENCODE_SCHEMA;
+    for (const name of MANAGED_SERVER_NAMES) {
+      if (existing.mcp && Object.prototype.hasOwnProperty.call(existing.mcp, name)) {
+        delete existing.mcp[name];
+      }
+    }
+  }
   const written = [];
   const pruned = [];
 
   if (t.skipGithub) {
     if (prune(existing, t.section, t.githubName)) pruned.push(t.githubName);
   } else {
-    upsert(existing, t.section, t.githubName, t.builder.github(ghPat));
+    const entry = t.builder.github(ghPat);
+    assertAuthorization(entry, `${t.harness}: github`, ghPat);
+    upsert(existing, t.section, t.githubName, entry);
     written.push(t.githubName);
   }
   if (t.skipZai) {
@@ -303,7 +595,8 @@ for (const t of targets()) {
       if (prune(existing, t.section, name)) pruned.push(name);
     }
   } else {
-    upsert(existing, t.section, "zai-vision", t.builder.vision(zaiKey));
+    const vision = t.builder.vision(zaiKey);
+    upsert(existing, t.section, "zai-vision", vision);
     written.push("zai-vision");
     for (const [name, url] of zaiRemotes) {
       const entry = t.builder.remote(url, zaiKey);
@@ -311,10 +604,7 @@ for (const t of targets()) {
       // header; a call forgetting the argument would persist "Bearer
       // undefined" and fail auth even with a valid key. Ref-embedding
       // builders ({env:...}/${VAR}) omit the header field instead.
-      const auth = entry.headers && entry.headers.Authorization;
-      if (auth !== undefined && !auth.includes(zaiKey) && !auth.includes("{") && !auth.includes("$")) {
-        throw new Error(`${t.harness}: ${name} Authorization does not carry the Z.AI key or an env ref: ${JSON.stringify(auth)}`);
-      }
+      assertAuthorization(entry, `${t.harness}: ${name}`, zaiKey);
       upsert(existing, t.section, name, entry);
       written.push(name);
     }
@@ -336,13 +626,74 @@ for (const t of targets()) {
     pruned.push("git");
   }
 
-  if (JSON.stringify(existing) === before) {
-    log(`${t.harness}: already up to date (${t.file})`);
-    continue;
+  const semanticUnchanged = JSON.stringify(existing) === before;
+  const output = t.jsonc
+    ? updateOpencodeJsonc(loaded.text, existing)
+    : JSON.stringify(existing, null, 2) + "\n";
+  if (t.jsonc) {
+    const errors = [];
+    const parsed = parseJsonc(output, errors, { allowTrailingComma: true, disallowComments: false });
+    if (errors.length || !isObject(parsed)) {
+      throw new Error(`generated invalid JSONC for ${t.file}`);
+    }
   }
-  writeJson(t.file, existing);
-  const parts = [];
-  if (written.length) parts.push(`wrote ${written.join(", ")}`);
-  if (pruned.length) parts.push(`pruned ${pruned.join(", ")}`);
-  log(`${t.harness}: ${parts.join("; ")} -> ${t.file}`);
+  return {
+    target: t,
+    output,
+    unchanged: semanticUnchanged && (!t.jsonc || output === loaded.text),
+    written,
+    pruned,
+  };
 }
+
+function run() {
+  validateInlineOpencodeConfig();
+  // Prepare and validate every target before replacing any file. A malformed or
+  // symlinked config in a later harness must not leave earlier harnesses updated
+  // with a different credential set.
+  const prepared = targets().map(prepareTarget);
+  const snapshots = prepared.map((item) => snapshotFile(item.target.file));
+  const applied = [];
+
+  try {
+    for (let index = 0; index < prepared.length; index += 1) {
+      const item = prepared[index];
+      const snapshot = snapshots[index];
+      const t = item.target;
+      if (item.unchanged) {
+        assertNoSymlinkPath(t.file);
+        if (fs.existsSync(t.file)) fs.chmodSync(t.file, 0o600);
+        log(`${t.harness}: already up to date (${t.file})`);
+        continue;
+      }
+      const output = t.jsonc && !item.output.endsWith("\n") ? `${item.output}\n` : item.output;
+      const expected = {
+        file: t.file,
+        exists: true,
+        content: Buffer.from(output),
+        mode: 0o600,
+      };
+      applied.push({ snapshot, expected });
+      writeFileAtomic(t.file, output);
+      const parts = [];
+      if (item.written.length) parts.push(`wrote ${item.written.join(", ")}`);
+      if (item.pruned.length) parts.push(`pruned ${item.pruned.join(", ")}`);
+      log(`${t.harness}: ${parts.join("; ")} -> ${t.file}`);
+    }
+  } catch (error) {
+    // Best-effort rollback keeps a failed multi-file sync from exposing a mixed
+    // credential set. The lock prevents another managed writer from changing a
+    // file underneath us; the state check also refuses to clobber an unrelated
+    // external edit made while this process was running.
+    for (const { snapshot, expected } of applied.toReversed()) {
+      try {
+        restoreFile(snapshot, expected);
+      } catch (rollbackError) {
+        log(`rollback failed for ${snapshot.file}: ${rollbackError}`);
+      }
+    }
+    throw error;
+  }
+}
+
+withMcpLock(run);

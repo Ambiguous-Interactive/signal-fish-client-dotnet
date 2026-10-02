@@ -42,11 +42,44 @@ RUN node --version && npm --version
 COPY --from=uv /uv /uvx /usr/local/bin/
 RUN uv --version && uvx --version
 
+# The .NET base image currently ships an ARM64 PowerShell launcher whose
+# nested managed payload is x86-64. Direct `pwsh --version` succeeds, but a
+# nested invocation (used by the repo's git hooks) fails with exec format
+# error. Replace it with the official, checksum-verified archive for the
+# target architecture so both direct and nested invocations are usable.
+ARG POWERSHELL_VERSION=7.6.6
+ARG POWERSHELL_ARM64_SHA256=924829e54c983648f6f1419a2dc7f9433c861b2fb5bd57736ff096c24f133729
+ARG POWERSHELL_X64_SHA256=ddbc4a2d113bbd46d283cfedcbcd117a70caefd7673f41f2b4e0000badf103bc
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) ps_arch=x64; ps_sha256="${POWERSHELL_X64_SHA256}" ;; \
+      arm64 | aarch64) ps_arch=arm64; ps_sha256="${POWERSHELL_ARM64_SHA256}" ;; \
+      *) echo "unsupported PowerShell architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    ps_archive="/tmp/powershell-${POWERSHELL_VERSION}-linux-${ps_arch}.tar.gz"; \
+    curl --fail --location --retry 3 --retry-all-errors \
+      "https://github.com/PowerShell/PowerShell/releases/download/v${POWERSHELL_VERSION}/powershell-${POWERSHELL_VERSION}-linux-${ps_arch}.tar.gz" \
+      --output "$ps_archive"; \
+    printf '%s  %s\n' "$ps_sha256" "$ps_archive" | sha256sum --check --status; \
+    rm -rf /opt/microsoft/powershell/7; \
+    mkdir -p /opt/microsoft/powershell/7; \
+    tar -xzf "$ps_archive" -C /opt/microsoft/powershell/7; \
+    chmod 0755 /opt/microsoft/powershell/7/pwsh; \
+    ln -sfn /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh; \
+    ln -sfn /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh; \
+    rm -f "$ps_archive"; \
+    pwsh --version; \
+    pwsh -NoProfile -Command '& pwsh -NoProfile -Command "exit 0"'
+
 # Global npm tools install to a user-writable prefix: "npm install -g" never
 # needs sudo. Image ENV (not containerEnv) so every process inherits it.
 ENV NPM_CONFIG_PREFIX="/home/vscode/.npm-global" \
     NPM_CONFIG_UPDATE_NOTIFIER="false" \
     PATH="/home/vscode/.npm-global/bin:${PATH}"
+
+# The lifecycle scripts serialize npm installs and config writes with flock;
+# a missing util-linux binary would silently disable that protection.
+RUN command -v flock >/dev/null && flock --version
 
 # Pre-create every devcontainer.json volume mountpoint, owned by vscode.
 # Two ways this matters (both observed 2026-09-19: the ~/.cache/uv volume
