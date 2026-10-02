@@ -119,6 +119,13 @@ namespace SignalFish.Client.FuzzTests
             }
         }
 
+        /// <summary>
+        /// The invariant breach reported when the writer refuses a payload
+        /// that is valid JSON by construction (a seed); shared by the
+        /// construction and encode refusal points.
+        /// </summary>
+        private const string SeedRefusedMessage = "Writer refused a valid JSON seed payload.";
+
         private static int Main(string[] args)
         {
             if (args.Length == 0 && !RunningUnderLibFuzzer())
@@ -330,9 +337,7 @@ namespace SignalFish.Client.FuzzTests
                     {
                         if (seededPayload)
                         {
-                            throw new InvalidOperationException(
-                                "Writer refused a valid JSON seed payload."
-                            );
+                            throw new InvalidOperationException(SeedRefusedMessage);
                         }
 
                         return;
@@ -425,13 +430,11 @@ namespace SignalFish.Client.FuzzTests
                 message = new GameDataMessage(payload, classification, key);
                 return true;
             }
-            catch (ArgumentException)
+            catch (ArgumentException exception)
             {
                 if (seededPayload)
                 {
-                    throw new InvalidOperationException(
-                        "Writer refused a valid JSON seed payload."
-                    );
+                    throw new InvalidOperationException(SeedRefusedMessage, exception);
                 }
 
                 message = default;
