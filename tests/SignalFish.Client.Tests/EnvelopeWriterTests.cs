@@ -301,6 +301,30 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
+        public void GameDataConstructionRefusalForRawNonJsonPayloadIsArgumentException()
+        {
+            /*
+                Graduated fuzz regression (scheduled writer lane crash on
+                2026-09-28, input `22 07`). The codec fuzz host derives raw
+                payloads deterministically from exhausted input; this is the
+                exact 33-byte sequence it built (cursor positions 3-35,
+                byte = 13*position + 7), with class Latest + key 501 from the
+                same recipe. The documented refusal must surface from the
+                constructor — as exactly an ArgumentException, before any
+                send — because the fuzz host and clients rely on that type
+                to distinguish misuse from bugs.
+            */
+            byte[] crashPayload = Convert.FromHexString(
+                "2E3B4855626F7C8996A3B0BDCAD7E4F1FE0B1825323F4C596673808D9AA7B4C1CE"
+            );
+
+            Assert.That(
+                (Action)(() => _ = new GameDataMessage(crashPayload, GameDataClass.Latest, 501)),
+                Throws.ArgumentException
+            );
+        }
+
+        [Test]
         public void SignalAndConnectionInfoPayloadsShareTheVerbatimDepthBoundary()
         {
             const int limit = EnvelopeWriter.MaxVerbatimPayloadDepth;
