@@ -52,6 +52,13 @@ namespace SignalFish.Client.Core
         /// </summary>
         public uint? NegotiatedProtocolVersion { get; }
 
+        /// <summary>
+        /// True while the quarantine policy suppresses the room's game
+        /// data after a delivery-accountability violation; cleared by the
+        /// next authoritative rebaseline or session end.
+        /// </summary>
+        public bool Quarantined { get; }
+
         /// <summary>Initializes a new snapshot.</summary>
         public ClientSnapshot(
             bool connected,
@@ -63,7 +70,8 @@ namespace SignalFish.Client.Core
             string? roomCode,
             string? reconnectionToken,
             bool isAuthority = false,
-            uint? negotiatedProtocolVersion = null
+            uint? negotiatedProtocolVersion = null,
+            bool quarantined = false
         )
         {
             Connected = connected;
@@ -76,6 +84,7 @@ namespace SignalFish.Client.Core
             ReconnectionToken = reconnectionToken;
             IsAuthority = isAuthority;
             NegotiatedProtocolVersion = negotiatedProtocolVersion;
+            Quarantined = quarantined;
         }
 
         public static bool operator ==(ClientSnapshot left, ClientSnapshot right)
@@ -103,7 +112,8 @@ namespace SignalFish.Client.Core
                     StringComparison.Ordinal
                 )
                 && IsAuthority == other.IsAuthority
-                && NegotiatedProtocolVersion == other.NegotiatedProtocolVersion;
+                && NegotiatedProtocolVersion == other.NegotiatedProtocolVersion
+                && Quarantined == other.Quarantined;
         }
 
         public override bool Equals(object obj)
@@ -127,6 +137,7 @@ namespace SignalFish.Client.Core
                     (hash * 31) + (ReconnectionToken?.GetHashCode(StringComparison.Ordinal) ?? 0);
                 hash = (hash * 31) + IsAuthority.GetHashCode();
                 hash = (hash * 31) + NegotiatedProtocolVersion.GetHashCode();
+                hash = (hash * 31) + Quarantined.GetHashCode();
                 return hash;
             }
         }
@@ -163,7 +174,28 @@ namespace SignalFish.Client.Core
                     ) ?? "<none>"
                 )
                 + ", ReconnectionToken="
-                + (ReconnectionToken is null ? "<none>" : "<redacted>");
+                + (ReconnectionToken is null ? "<none>" : "<redacted>")
+                + ", "
+                + nameof(Quarantined)
+                + "="
+                + Quarantined;
+        }
+
+        internal ClientSnapshot WithQuarantined()
+        {
+            return new ClientSnapshot(
+                Connected,
+                TransportReady,
+                Authenticated,
+                Role,
+                PlayerId,
+                RoomId,
+                RoomCode,
+                ReconnectionToken,
+                IsAuthority,
+                NegotiatedProtocolVersion,
+                quarantined: true
+            );
         }
     }
 }

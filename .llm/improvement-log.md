@@ -147,6 +147,35 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   the shared `MaxVerbatimPayloadDepth` contract; integration follow-up
   issue filed. Open: none.
 
+## 2026-10-02 - session 030b: Bugbot review round on PR #67
+
+- Trigger: Cursor Bugbot flagged 2 High findings on commit 0a36a6e;
+  addressed per [address-pr-feedback](./skills/address-pr-feedback/SKILL.md).
+- Evidence: both findings reproduced red before fixing (a stale-engine
+  RelayStats interval refusal; a NullReferenceException from a default
+  struct) and green after. The red-green run also caught the fix's own
+  first draft: a nullable-struct signal turned every routed fact
+  (`Authenticated`) into a violation — caught by the suite, re-cut to
+  the Try/out idiom.
+- Findings: (1) a "swap once" guard keyed only on the negotiated
+  version is not once-per-connection — the latch must reset at the
+  terminal boundary, or a reconnect inherits dead monotonic state and
+  quarantines on arrival. (2) A mapper can validate a frame with a
+  looser decoder than the consumer's typed re-decode (join decoder
+  ignores `sender_watermarks`; reconnect decoder validates them), so an
+  ignored `TryDecode` feeding a default struct is authoritative-input
+  poison — `default` bypasses the ctor's null-coalescing. (3) `return
+  default;` in a `T?`-returning method means *fail*, not "empty but
+  valid".
+- Applied: `DeliveryGate.ObserveTerminal` resets the negotiation latch;
+  the pipeline guards all snapshot re-decodes (routed-fact violation on
+  failure); `MapRoster` is null-safe. Two regression tests pinned red
+  (verified against the unfixed tree). Classes folded into
+  [reconnection](./skills/reconnection/SKILL.md) hard rule 6,
+  [json-serialization](./skills/json-serialization/SKILL.md) debugging
+  note 4, and three [address-pr-feedback](./skills/address-pr-feedback/SKILL.md)
+  sweep rows. Open: none.
+
 Entries pruned 2026-09-23 (sessions 011-014, 017b, 022-023, 025b-026):
 knowledge graduated into skills/rules; open items resolved or tracked as
 issues; originals in git history.

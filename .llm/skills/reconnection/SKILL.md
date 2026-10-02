@@ -38,6 +38,14 @@ metadata:
    be re-created.
 5. `SERVER_DRAINING` teardown races do not consume the token — retry within
    the window.
+6. **Per-connection state resets at the terminal boundary.** Anything a
+   connection accumulates — delivery counters, monotonic baselines,
+   "seen once" latches (negotiation), quarantine latches — must clear
+   when the connection ends, or the fresh connection inherits dead
+   state: monotonicity checks refuse its first reports and the room
+   quarantines on arrival. A "swap once" guard keyed only on the
+   negotiated version is not once-per-connection unless its latch
+   resets with the connection (see `DeliveryGate.ObserveTerminal`).
 
 ## Backoff policy
 

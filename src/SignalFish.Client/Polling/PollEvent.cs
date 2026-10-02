@@ -133,6 +133,13 @@ namespace SignalFish.Client.Polling
         /// <summary>The complete raw frame, as received (advanced inspection; empty for synthetic events).</summary>
         public ReadOnlyMemory<byte> Raw { get; }
 
+        /// <summary>
+        /// The accountability diagnostic; meaningful only for
+        /// <see cref="PollEventKind.ProtocolViolation"/> (null for
+        /// transport-level violations).
+        /// </summary>
+        public string? Diagnostic { get; }
+
         private PollEvent(
             PollEventKind kind,
             RoomMembership membership,
@@ -159,7 +166,8 @@ namespace SignalFish.Client.Polling
             DeliveryReportMessage deliveryReport,
             RelayStatsMessage relayStats,
             GoingAwayMessage goingAway,
-            ReadOnlyMemory<byte> raw
+            ReadOnlyMemory<byte> raw,
+            string? diagnostic
         )
         {
             Kind = kind;
@@ -188,6 +196,7 @@ namespace SignalFish.Client.Polling
             RelayStats = relayStats;
             GoingAway = goingAway;
             Raw = raw;
+            Diagnostic = diagnostic;
         }
 
         /// <summary>Creates the transport-ready event (no wire frame behind it).</summary>
@@ -219,7 +228,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                default
+                default,
+                null
             );
         }
 
@@ -252,7 +262,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                default
+                default,
+                null
             );
         }
 
@@ -285,7 +296,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                default
+                default,
+                null
             );
         }
 
@@ -323,7 +335,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -360,12 +373,26 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
         /// <summary>Creates a protocol-violation event.</summary>
         internal static PollEvent FromViolation(MessageKind kind, ReadOnlyMemory<byte> raw)
+        {
+            return FromViolation(kind, null, raw);
+        }
+
+        /// <summary>
+        /// Creates a protocol-violation event with an accountability
+        /// diagnostic (the rule the frame broke, prefixed for triage).
+        /// </summary>
+        internal static PollEvent FromViolation(
+            MessageKind kind,
+            string? diagnostic,
+            ReadOnlyMemory<byte> raw
+        )
         {
             return new PollEvent(
                 PollEventKind.ProtocolViolation,
@@ -393,7 +420,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                diagnostic
             );
         }
 
@@ -426,7 +454,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -463,7 +492,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -499,7 +529,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -535,7 +566,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -571,7 +603,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -607,7 +640,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -640,7 +674,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -673,7 +708,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -709,7 +745,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -745,7 +782,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -781,7 +819,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -817,7 +856,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -853,7 +893,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -889,7 +930,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -925,7 +967,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -961,7 +1004,8 @@ namespace SignalFish.Client.Polling
                 payload,
                 default,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -997,7 +1041,8 @@ namespace SignalFish.Client.Polling
                 default,
                 payload,
                 default,
-                raw
+                raw,
+                null
             );
         }
 
@@ -1033,7 +1078,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
-                raw
+                raw,
+                null
             );
         }
 
@@ -1066,7 +1112,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                default
+                default,
+                null
             );
         }
 
@@ -1099,7 +1146,8 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
-                default
+                default,
+                null
             );
         }
     }

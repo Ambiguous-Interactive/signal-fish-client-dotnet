@@ -131,7 +131,17 @@ namespace SignalFish.Client.Tests.Polling
                 BuildTimed();
             await ConnectAndAuthenticate(client, transport);
 
-            EnqueueGolden(transport, "RoomJoined");
+            /*
+                The roster-bearing join runs against the v3 golden sample:
+                the delivery gate refuses any non-empty roster on the v2
+                floor (roster entries are delivery baselines there), so a
+                populated snapshot needs the negotiated-v3 wire.
+            */
+            NegotiateV3(client, transport);
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "RoomJoined")
+            );
             Assert.That(client.Poll(), Is.EqualTo(1));
 
             List<PollEvent> events = DrainAll(client);
@@ -145,8 +155,8 @@ namespace SignalFish.Client.Tests.Polling
             Assert.That(client.Membership.Role, Is.EqualTo(RoomRole.Player));
 
             RoomSnapshot snapshot = events[0].Snapshot;
-            Assert.That(snapshot.GameName, Is.EqualTo("my-game"));
-            Assert.That(snapshot.MaxPlayers, Is.EqualTo(8u));
+            Assert.That(snapshot.GameName, Is.EqualTo("test_game"));
+            Assert.That(snapshot.MaxPlayers, Is.EqualTo(4u));
             Assert.That(snapshot.SupportsAuthority, Is.True);
             Assert.That(snapshot.IsAuthority, Is.True);
             Assert.That(snapshot.LobbyState, Is.EqualTo("waiting"));
@@ -155,8 +165,10 @@ namespace SignalFish.Client.Tests.Polling
             Assert.That(snapshot.CurrentSpectators, Is.Empty);
             Assert.That(snapshot.CurrentPlayers, Has.Count.EqualTo(1));
             Assert.That(snapshot.CurrentPlayers![0].Id, Is.EqualTo(PlayerId));
-            Assert.That(snapshot.CurrentPlayers[0].Name, Is.EqualTo("Player 1"));
+            Assert.That(snapshot.CurrentPlayers[0].Name, Is.EqualTo("Alice"));
             Assert.That(snapshot.CurrentPlayers[0].IsAuthority, Is.True);
+            Assert.That(snapshot.CurrentPlayers[0].Epoch, Is.EqualTo(1u));
+            Assert.That(snapshot.CurrentPlayers[0].Seq, Is.EqualTo(0ul));
 
             EnqueueGolden(transport, "RoomLeft");
             Assert.That(client.Poll(), Is.EqualTo(1));
@@ -173,6 +185,7 @@ namespace SignalFish.Client.Tests.Polling
                 M3.5 end-to-end: the coherent snapshot mirrors the machine
                 through a token-bearing join and clears whole at teardown —
                 the game-loop read never observes a half-applied fact.
+                The join is the golden v2 sample with a token injected.
             */
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
                 BuildTimed();
@@ -342,6 +355,16 @@ namespace SignalFish.Client.Tests.Polling
                 BuildTimed();
             await ConnectAndAuthenticate(client, transport);
 
+            /*
+                Classified delivery is v3-only: negotiate, then baseline the
+                golden GameData's sender (...b at seq 42, adjacent to the
+                stamp 43) with the coherent two-sender join.
+            */
+            NegotiateV3(client, transport);
+            EnqueueWire(transport, GoldenFixtures.V3JoinWithBothSenders);
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
             EnqueueWire(
                 transport,
                 GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "GameData")
@@ -427,11 +450,19 @@ namespace SignalFish.Client.Tests.Polling
         }
 
         [Test]
-        public async Task GameDataWithKeyOnNonLatestClassNormalizesKeyAway()
+        public async Task GameDataWithKeyOnNonLatestClassIsAViolation()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
                 BuildTimed();
             await ConnectAndAuthenticate(client, transport);
+
+            /*
+                The delivery contract (ValidateClassKey) refuses a coalescing
+                key on a class that never carries one; only "latest" is
+                keyed. The delivery gate surfaces the refusal instead of
+                normalizing the key away.
+            */
+            NegotiateV3(client, transport);
 
             EnqueueWire(
                 transport,
@@ -442,9 +473,8 @@ namespace SignalFish.Client.Tests.Polling
             Assert.That(client.Poll(), Is.EqualTo(1));
 
             PollEvent pollEvent = Single(client);
-            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.GameData));
-            Assert.That(pollEvent.GameData.Class, Is.EqualTo(GameDataClass.Volatile));
-            Assert.That(pollEvent.GameData.Key, Is.EqualTo(0u));
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.ProtocolViolation));
+            Assert.That(pollEvent.Violation, Is.EqualTo(MessageKind.GameData));
         }
 
         [Test]
@@ -453,6 +483,16 @@ namespace SignalFish.Client.Tests.Polling
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
                 BuildTimed();
             await ConnectAndAuthenticate(client, transport);
+
+            /*
+                Delivery accounting is v3-only: negotiate, then baseline the
+                report's gap sender (...b one below the gap start) with the
+                coherent join.
+            */
+            NegotiateV3(client, transport);
+            EnqueueWire(transport, GoldenFixtures.V3JoinWithGapSender);
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
 
             EnqueueWire(
                 transport,
@@ -480,6 +520,9 @@ namespace SignalFish.Client.Tests.Polling
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
                 BuildTimed();
             await ConnectAndAuthenticate(client, transport);
+
+            // RelayStats is a v3-only frame: negotiate first.
+            NegotiateV3(client, transport);
 
             EnqueueWire(
                 transport,
@@ -581,6 +624,13 @@ namespace SignalFish.Client.Tests.Polling
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
                 BuildTimed();
             await ConnectAndAuthenticate(client, transport);
+
+            /*
+                The live /v3 order: ProtocolInfo settles the negotiated
+                version immediately after Authenticated, before any room
+                frame. The v3 join then carries its epoch/seq baselines.
+            */
+            NegotiateV3(client, transport);
 
             /*
                 The live /v3 RoomJoined: no connected_at (stripped server-
@@ -689,7 +739,8 @@ namespace SignalFish.Client.Tests.Polling
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
                 BuildTimed();
             await ConnectAndSettle(client);
-            EnqueueGolden(transport, "Authenticated", "RoomJoined");
+            EnqueueGolden(transport, "Authenticated");
+            EnqueueGolden(transport, "RoomJoined");
             Assert.That(client.Poll(), Is.EqualTo(2));
             DrainAll(client);
             Assert.That(client.Snapshot.IsAuthority, Is.True);
@@ -899,7 +950,7 @@ namespace SignalFish.Client.Tests.Polling
         public async Task FullRingBackpressuresWithoutFrameLoss()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) = BuildTimed(
-                new PollingClientOptions(maxFramesPerPoll: 8, eventCapacity: 3)
+                new PollingClientOptions(maxFramesPerPoll: 8, eventCapacity: 4)
             );
             await ConnectAndSettle(client);
 
@@ -909,8 +960,10 @@ namespace SignalFish.Client.Tests.Polling
             }
 
             /*
-                Capacity 3 reserves one slot for the terminal event, so at
-                most 2 regular events queue before backpressure.
+                Capacity 4 reserves two slots — the terminal event plus the
+                margin a two-event frame (a delivery violation plus its
+                payload) consumes — so at most 2 regular events queue
+                before backpressure.
             */
             Assert.That(client.Poll(), Is.EqualTo(2), "stops when the regular capacity fills");
             Assert.That(client.PendingEventCount, Is.EqualTo(2));
@@ -957,12 +1010,14 @@ namespace SignalFish.Client.Tests.Polling
         public async Task TeardownOnFullRingStillDeliversDisconnected()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock clock) =
-                BuildTimed(new PollingClientOptions(eventCapacity: 3));
+                BuildTimed(new PollingClientOptions(eventCapacity: 4));
             await ConnectAndAuthenticate(client, transport);
 
             /*
-                Two events fill capacity - 1: the frame loop stops before
-                the last slot so the terminal event always fits.
+                Two slots of capacity 4 are reserved — the terminal event
+                plus the margin a two-event frame consumes — so the regular
+                cap is 2: the third frame backpressures, and the teardown's
+                Disconnected still fits.
             */
             EnqueueGolden(transport, "LobbyStateChanged", "LobbyStateChanged", "LobbyStateChanged");
             Assert.That(client.Poll(), Is.EqualTo(2), "reserved slot stops frame consumption");
@@ -1077,6 +1132,21 @@ namespace SignalFish.Client.Tests.Polling
                     GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", wireType)
                 );
             }
+        }
+
+        /// <summary>
+        /// Feeds the golden v3 ProtocolInfo so the machine negotiates v3 —
+        /// the live wire order is Authenticated, ProtocolInfo, then any
+        /// room frame.
+        /// </summary>
+        private static void NegotiateV3(SignalFishPollingClient client, FakeTransport transport)
+        {
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
         }
 
         private static void EnqueueWire(FakeTransport transport, string wire)

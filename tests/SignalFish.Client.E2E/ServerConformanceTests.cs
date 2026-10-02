@@ -241,6 +241,34 @@ namespace SignalFish.Client.E2E
                 e.GameData.Class == GameDataClass.Volatile
             );
 
+            /*
+                The delivery gate's live contract: every relayed frame
+                carries the sender's stamp, nothing refused, and the room
+                never latched quarantined.
+            */
+            foreach (PollEvent pollEvent in delivered)
+            {
+                Assert.That(pollEvent.GameData.Seq, Is.Not.Null);
+                Assert.That(pollEvent.GameData.Seq!.Value, Is.GreaterThan(0ul));
+                Assert.That(pollEvent.GameData.Epoch, Is.Not.Null);
+                Assert.That(pollEvent.GameData.Epoch!.Value, Is.GreaterThan(0u));
+            }
+
+            /*
+                TakeMatching's non-async walk is the drain: the ref-struct
+                enumerator must not cross an await (C# 12).
+            */
+            PollEvent? violation = E2EHarness.TakeMatching(
+                bob,
+                e => e.Kind == PollEventKind.ProtocolViolation
+            );
+            Assert.That(
+                violation.HasValue,
+                Is.False,
+                "a conforming v3 relay must not raise delivery violations"
+            );
+            Assert.That(bob.Snapshot.Quarantined, Is.False);
+
             Assert.That(reliable.GameData.FromPlayer, Is.EqualTo(aliceSeat.PlayerId));
             Assert.That(
                 E2EHarness.PayloadJsonEquals(reliable.GameData.Payload.Span, @"{""n"": 1}"),

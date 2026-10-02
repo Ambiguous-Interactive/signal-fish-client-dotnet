@@ -8,13 +8,26 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Delivery accountability is now enforced on received relay traffic
+  (M6.3): on a negotiated-v3 connection, the client validates every
+  `GameData` stamp, `DeliveryReport` gap range, `RelayStats` interval, and
+  roster watermark against the delivery contract. Violations surface as a
+  `ProtocolViolation` event carrying the diagnostic text. How the session
+  reacts is your choice: `SignalFishClientOptions`/`PollingClientOptions`
+  accept a `ViolationPolicy` — `Quarantine` (default) suppresses the
+  room's game data until the next authoritative rebaseline and exposes it
+  as `ClientSnapshot.Quarantined`, `Disconnect` tears the session down,
+  `Observe` keeps everything flowing. Received game-data frames also
+  expose the sender's `Seq`/`Epoch` stamps, and violations carry their
+  diagnostic on `PollEvent.Diagnostic`.
+- Incoming JSON `GameData` decodes the optional v3 relay stamps
+  (`seq`/`epoch`) the server already sends — previously dropped, which
+  left delivery accounting nothing to validate.
 - v3 delivery accountability decodes (M6.3 core): room snapshots and
   reconnections now expose the sender epoch/seq baselines and
   `sender_watermarks` the server already sends on v3 connections, and
   `DeliveryReport`, `RelayStats`, and `GoingAway` frames surface as events
-  instead of being dropped (RelayStats was previously unroutable). The
-  client-side accounting engine behind these events ships in the next
-  release.
+  instead of being dropped (RelayStats was previously unroutable).
 - v3 classified delivery (M6.2): on a negotiated-v3 connection, relayed
   game data carries a delivery class — `reliable` (the unchanged v2 wire
   form), `latest{key}` (server keeps only the newest value per key), or
@@ -25,6 +38,15 @@ changes (CI, tests, tooling, docs) are not listed.
   locally (`ProtocolUnsupported`); payloads deeper than the protocol's
   128-level JSON bound are refused at construction, before anything is
   sent.
+
+### Changed
+
+- A game-data frame carrying a coalescing key on a non-`latest` class is
+  now a delivery violation (surfaced and handled per `ViolationPolicy`)
+  instead of being silently normalized — the server refuses such sends,
+  so a conforming deployment never sees this. The `PollingClientOptions`
+  event ring requires a capacity of at least 3 (two slots are reserved:
+  the terminal disconnect and a violation-plus-payload frame).
 
 - Deeper game-data payloads decode: the frame depth bound rises from 64 to
   the protocol's 128 nesting levels, matching the server codec — payloads
@@ -161,8 +183,6 @@ changes (CI, tests, tooling, docs) are not listed.
   clean-vs-abnormal disconnect telemetry classify graceful exits correctly.
   The handshake is best-effort with a short bounded wait; an unresponsive
   server or dead wire falls back to the previous abort.
-
-### Changed
 
 - One depth contract for outbound verbatim payloads: game data, signal,
   and connection info share a single 128-container bound, validated once

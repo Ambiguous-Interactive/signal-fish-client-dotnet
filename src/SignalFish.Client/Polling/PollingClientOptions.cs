@@ -1,6 +1,7 @@
 namespace SignalFish.Client.Polling
 {
     using System;
+    using SignalFish.Client.Core;
 
     /// <summary>
     /// Budgets and heartbeat timing for <see cref="SignalFishPollingClient"/>.
@@ -33,7 +34,12 @@ namespace SignalFish.Client.Polling
         /// <summary>Gets the maximum inbound frame size in bytes; larger frames are protocol violations.</summary>
         public int MaxFrameBytes { get; }
 
-        /// <summary>Gets the event-ring capacity; a full ring pauses frame consumption until drained.</summary>
+        /// <summary>
+        /// Gets the event-ring capacity (minimum 3: one slot is reserved
+        /// for the terminal Disconnected event, one for the two-event
+        /// frame a delivery violation produces); a full ring pauses frame
+        /// consumption until drained.
+        /// </summary>
         public int EventCapacity { get; }
 
         /// <summary>Gets the heartbeat cadence in milliseconds (elapsed since the last ping sent).</summary>
@@ -46,13 +52,21 @@ namespace SignalFish.Client.Polling
         /// </summary>
         public int HeartbeatTimeoutMilliseconds { get; }
 
+        /// <summary>
+        /// Gets the response to delivery-accountability violations
+        /// (negotiated-v3 relay contract); the default quarantines the
+        /// room's game data while the session stays usable.
+        /// </summary>
+        public DeliveryViolationPolicy ViolationPolicy { get; }
+
         /// <summary>Initializes the options; every parameter has the documented default.</summary>
         public PollingClientOptions(
             int maxFramesPerPoll = DefaultMaxFramesPerPoll,
             int maxFrameBytes = DefaultMaxFrameBytes,
             int eventCapacity = DefaultEventCapacity,
             int heartbeatIntervalMilliseconds = DefaultHeartbeatIntervalMilliseconds,
-            int heartbeatTimeoutMilliseconds = DefaultHeartbeatTimeoutMilliseconds
+            int heartbeatTimeoutMilliseconds = DefaultHeartbeatTimeoutMilliseconds,
+            DeliveryViolationPolicy violationPolicy = DeliveryViolationPolicy.Quarantine
         )
         {
             if (maxFramesPerPoll < 1)
@@ -71,11 +85,11 @@ namespace SignalFish.Client.Polling
                 );
             }
 
-            if (eventCapacity < 1)
+            if (eventCapacity < 3)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(eventCapacity),
-                    "The event-ring capacity must be positive."
+                    "The event-ring capacity must leave room for the reserved terminal slot plus the two-event-frame margin."
                 );
             }
 
@@ -95,11 +109,24 @@ namespace SignalFish.Client.Polling
                 );
             }
 
+            if (
+                violationPolicy != DeliveryViolationPolicy.Quarantine
+                && violationPolicy != DeliveryViolationPolicy.Disconnect
+                && violationPolicy != DeliveryViolationPolicy.Observe
+            )
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(violationPolicy),
+                    "The violation policy must be a named policy."
+                );
+            }
+
             MaxFramesPerPoll = maxFramesPerPoll;
             MaxFrameBytes = maxFrameBytes;
             EventCapacity = eventCapacity;
             HeartbeatIntervalMilliseconds = heartbeatIntervalMilliseconds;
             HeartbeatTimeoutMilliseconds = heartbeatTimeoutMilliseconds;
+            ViolationPolicy = violationPolicy;
         }
     }
 }

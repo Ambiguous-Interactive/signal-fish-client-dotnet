@@ -114,6 +114,16 @@ of scope for 0.1.0; if added later it must pass the zero-dependency and
 2. Check casing: PascalCase `type`, snake_case fields.
 3. Check bounds: truncated frames and over-deep nesting surface as a
    bounded decode error, not a crash.
+4. One frame can pass a loose decoder and fail a stricter one. Layered
+   decode (a mapper validating with one type, a consumer re-decoding
+   with the full typed decoder) means "the fact decoded" does not imply
+   "the typed re-decode succeeds" — the join decoder ignores
+   `sender_watermarks`; the reconnect decoder validates them. Never let
+   an ignored `TryDecode` result feed a `default` struct into
+   authoritative logic: `default` of a message struct carries null
+   reference members (the constructor's null-coalescing never ran).
+   Guard the re-decode and refuse the frame as the routed-fact wire
+   violation.
 
 ## Related Skills
 

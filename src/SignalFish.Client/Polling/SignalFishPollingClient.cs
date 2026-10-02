@@ -6,6 +6,7 @@ namespace SignalFish.Client.Polling
     using SignalFish.Client.Core;
     using SignalFish.Client.Protocol;
     using SignalFish.Client.Transport;
+    using SignalFish.Client.V3;
 
     /// <summary>
     /// Frame-driven client for Unity <c>Update()</c>-style loops: every
@@ -45,7 +46,14 @@ namespace SignalFish.Client.Polling
         /// membership identity, latest reconnection token) — prefer it
         /// whenever multiple fields must describe the same instant.
         /// </summary>
-        public ClientSnapshot Snapshot => _machine.CreateSnapshot();
+        public ClientSnapshot Snapshot
+        {
+            get
+            {
+                ClientSnapshot snapshot = _machine.CreateSnapshot();
+                return _deliveryGate.Quarantined ? snapshot.WithQuarantined() : snapshot;
+            }
+        }
 
         /// <summary>Gets the in-flight directed room operation, if any.</summary>
         public PendingRoomOperation PendingOperation => _machine.PendingOperation;
@@ -59,6 +67,7 @@ namespace SignalFish.Client.Polling
         private readonly SignalFishStateMachine _machine;
         private readonly EventRingBuffer _events;
         private readonly FrameBufferWriter _sendBuffer;
+        private readonly DeliveryGate _deliveryGate;
 
         private Task<TransportFrame>? _pendingReceive;
         private bool _connectCalled;
@@ -80,6 +89,7 @@ namespace SignalFish.Client.Polling
             _machine = new SignalFishStateMachine();
             _events = new EventRingBuffer(_options.EventCapacity);
             _sendBuffer = new FrameBufferWriter();
+            _deliveryGate = new DeliveryGate(_options.ViolationPolicy);
         }
 
         /// <summary>
@@ -137,12 +147,14 @@ namespace SignalFish.Client.Polling
             }
 
             /*
-                One ring slot is always reserved for the terminal
-                Disconnected event: a teardown on a full ring (heartbeat
-                timeout, ping failure, dispose) must never lose the one
-                event the game cannot reconstruct from Phase.
+                Two ring slots are always reserved for the terminal
+                Disconnected event and the margin a two-event frame (a
+                delivery violation plus its payload) consumes: a teardown
+                on a full ring (heartbeat timeout, ping failure, dispose)
+                must never lose the one event the game cannot reconstruct
+                from Phase.
             */
-            int regularEventCap = _options.EventCapacity - 1;
+            int regularEventCap = _options.EventCapacity - 2;
             int frames = 0;
             while (
                 frames < _options.MaxFramesPerPoll
@@ -414,16 +426,26 @@ namespace SignalFish.Client.Polling
         private void ProcessFrame(TransportFrame frame)
         {
             _lastServerFrameMs = _clock.ElapsedMilliseconds;
-            FramePipeline.Translate(frame, _options.MaxFrameBytes, out FrameTranslation translated);
+            FramePipeline.Translate(
+                frame,
+                _options.MaxFrameBytes,
+                _deliveryGate,
+                out FrameTranslation translated
+            );
+            if (translated.HasFact)
+            {
+                _machine.Apply(translated.Fact);
+            }
+
+            if (translated.HasViolation)
+            {
+                _events.TryEnqueue(translated.Violation);
+            }
+
             if (translated.IsClose)
             {
                 Teardown(translated.Close);
                 return;
-            }
-
-            if (translated.HasFact)
-            {
-                _machine.Apply(translated.Fact);
             }
 
             if (translated.HasEvent)
@@ -565,6 +587,7 @@ namespace SignalFish.Client.Polling
             }
 
             _terminal = true;
+            _deliveryGate.ObserveTerminal();
             _machine.Apply(SessionEvent.From(SessionEventKind.Disconnected));
             _events.TryEnqueue(PollEvent.Disconnected(close));
             _ = DisposeTransportQuietlyAsync();

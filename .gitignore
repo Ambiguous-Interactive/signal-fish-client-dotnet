@@ -70,3 +70,4 @@ BenchmarkDotNet.Artifacts/
 .fuzz/
 # Crash seeds a driver may drop in the repo root (they belong in .fuzz/crashes/)
 crash-*.bin
+.env.local

@@ -8,6 +8,7 @@ namespace SignalFish.Client.Async
     using SignalFish.Client.Protocol;
     using SignalFish.Client.Reconnection;
     using SignalFish.Client.Transport;
+    using SignalFish.Client.V3;
 
     /// <summary>
     /// Thread-safe async client: one background driver loop multiplexes
@@ -97,7 +98,8 @@ namespace SignalFish.Client.Async
             {
                 lock (_gate)
                 {
-                    return _machine.CreateSnapshot();
+                    ClientSnapshot snapshot = _machine.CreateSnapshot();
+                    return _deliveryGate.Quarantined ? snapshot.WithQuarantined() : snapshot;
                 }
             }
         }
@@ -137,6 +139,7 @@ namespace SignalFish.Client.Async
         private readonly ISignalFishClock _clock;
         private readonly SignalFishClientOptions _options;
         private SignalFishStateMachine _machine = new SignalFishStateMachine();
+        private readonly DeliveryGate _deliveryGate;
         private readonly IBoundedQueue<PollEvent> _events;
         private IBoundedQueue<byte[]> _commands;
         private readonly FrameBufferWriter _sendBuffer = new FrameBufferWriter();
@@ -174,6 +177,7 @@ namespace SignalFish.Client.Async
             _options = options ?? new SignalFishClientOptions();
             _events = new BoundedQueue<PollEvent>(_options.EventCapacity);
             _commands = new BoundedQueue<byte[]>(_options.CommandCapacity);
+            _deliveryGate = new DeliveryGate(_options.ViolationPolicy);
         }
 
         /// <summary>
@@ -1217,9 +1221,49 @@ namespace SignalFish.Client.Async
         private async Task ProcessFrameAsync(TransportFrame frame)
         {
             _lastServerFrameMs = _clock.ElapsedMilliseconds;
-            FramePipeline.Translate(frame, _options.MaxFrameBytes, out FrameTranslation translated);
+            FramePipeline.Translate(
+                frame,
+                _options.MaxFrameBytes,
+                _deliveryGate,
+                out FrameTranslation translated
+            );
+
+            /*
+                Backpressure: a full event queue parks the loop here —
+                events are never dropped, and the pause is what trips
+                server-side slow-consumer detection. A false return
+                means the connection ended mid-wait (a sever or the
+                terminal superseded the frame): the in-flight frame is
+                dropped, never reordered past the Disconnected marker.
+                The violation event surfaces ahead of the close/fact/
+                payload event, matching the Rust client's event order.
+            */
+            if (translated.HasViolation)
+            {
+                lock (_gate)
+                {
+                    if (_severed || _terminal)
+                    {
+                        return;
+                    }
+                }
+
+                await _events.EnqueueAsync(translated.Violation).ConfigureAwait(false);
+            }
+
             if (translated.IsClose)
             {
+                if (translated.PolicyTeardown)
+                {
+                    /*
+                        A policy-driven disconnect terminates the session —
+                        never reconnected (Rust parity): the connection
+                        just broke a negotiated contract.
+                    */
+                    Finalize(translated.Close);
+                    return;
+                }
+
                 Sever(translated.Close);
                 return;
             }
@@ -1245,14 +1289,6 @@ namespace SignalFish.Client.Async
 
             if (translated.HasEvent)
             {
-                /*
-                    Backpressure: a full event queue parks the loop here —
-                    events are never dropped, and the pause is what trips
-                    server-side slow-consumer detection. A false return
-                    means the connection ended mid-wait (a sever or the
-                    terminal superseded the frame): the in-flight frame is
-                    dropped, never reordered past the Disconnected marker.
-                */
                 lock (_gate)
                 {
                     if (_severed || _terminal)
@@ -1357,6 +1393,7 @@ namespace SignalFish.Client.Async
 
                 _severed = true;
                 _severClose = close;
+                _deliveryGate.ObserveTerminal();
 
                 /*
                     The seat outlives a round whose reclaim never went out
@@ -1453,6 +1490,7 @@ namespace SignalFish.Client.Async
 
             _terminal = true;
             _teardownClose = close;
+            _deliveryGate.ObserveTerminal();
             _machine.Apply(SessionEvent.From(SessionEventKind.Disconnected));
             _events.Complete();
             _commands.Complete();

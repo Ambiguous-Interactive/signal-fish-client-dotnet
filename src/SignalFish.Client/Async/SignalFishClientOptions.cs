@@ -2,6 +2,7 @@ namespace SignalFish.Client.Async
 {
     using System;
     using System.Collections.Generic;
+    using SignalFish.Client.Core;
     using SignalFish.Client.Reconnection;
 
     /// <summary>
@@ -131,6 +132,13 @@ namespace SignalFish.Client.Async
         /// </summary>
         public IReadOnlyList<string>? RequestedCapabilities { get; }
 
+        /// <summary>
+        /// Gets the response to delivery-accountability violations
+        /// (negotiated-v3 relay contract); the default quarantines the
+        /// room's game data while the session stays usable.
+        /// </summary>
+        public DeliveryViolationPolicy ViolationPolicy { get; }
+
         /// <summary>Initializes the options; every parameter has the documented default.</summary>
         public SignalFishClientOptions(
             int eventCapacity = DefaultEventCapacity,
@@ -148,7 +156,8 @@ namespace SignalFish.Client.Async
             uint? protocolVersion = null,
             IReadOnlyList<string>? supportedTransports = null,
             IReadOnlyList<string>? supportedTopologies = null,
-            IReadOnlyList<string>? requestedCapabilities = null
+            IReadOnlyList<string>? requestedCapabilities = null,
+            DeliveryViolationPolicy violationPolicy = DeliveryViolationPolicy.Quarantine
         )
         {
             if (eventCapacity < 1)
@@ -207,6 +216,18 @@ namespace SignalFish.Client.Async
                 );
             }
 
+            if (
+                violationPolicy != DeliveryViolationPolicy.Quarantine
+                && violationPolicy != DeliveryViolationPolicy.Disconnect
+                && violationPolicy != DeliveryViolationPolicy.Observe
+            )
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(violationPolicy),
+                    "The violation policy must be a named policy."
+                );
+            }
+
             /*
                 Fail-fast here instead of mid-handshake: a malformed token
                 list would otherwise throw inside the reconnect round's
@@ -243,6 +264,7 @@ namespace SignalFish.Client.Async
             SdkVersion = sdkVersion ?? SignalFishClientInfo.SdkVersion;
             Platform = platform ?? SignalFishClientInfo.Platform;
             ProtocolVersion = protocolVersion;
+            ViolationPolicy = violationPolicy;
         }
 
         /// <summary>
