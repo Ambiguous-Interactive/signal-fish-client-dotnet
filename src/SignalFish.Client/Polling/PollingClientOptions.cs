@@ -1,6 +1,7 @@
 namespace SignalFish.Client.Polling
 {
     using System;
+    using SignalFish.Client.Core;
 
     /// <summary>
     /// Budgets and heartbeat timing for <see cref="SignalFishPollingClient"/>.
@@ -46,13 +47,21 @@ namespace SignalFish.Client.Polling
         /// </summary>
         public int HeartbeatTimeoutMilliseconds { get; }
 
+        /// <summary>
+        /// Gets the response to delivery-accountability violations
+        /// (negotiated-v3 relay contract); the default quarantines the
+        /// room's game data while the session stays usable.
+        /// </summary>
+        public DeliveryViolationPolicy ViolationPolicy { get; }
+
         /// <summary>Initializes the options; every parameter has the documented default.</summary>
         public PollingClientOptions(
             int maxFramesPerPoll = DefaultMaxFramesPerPoll,
             int maxFrameBytes = DefaultMaxFrameBytes,
             int eventCapacity = DefaultEventCapacity,
             int heartbeatIntervalMilliseconds = DefaultHeartbeatIntervalMilliseconds,
-            int heartbeatTimeoutMilliseconds = DefaultHeartbeatTimeoutMilliseconds
+            int heartbeatTimeoutMilliseconds = DefaultHeartbeatTimeoutMilliseconds,
+            DeliveryViolationPolicy violationPolicy = DeliveryViolationPolicy.Quarantine
         )
         {
             if (maxFramesPerPoll < 1)
@@ -95,11 +104,24 @@ namespace SignalFish.Client.Polling
                 );
             }
 
+            if (
+                violationPolicy != DeliveryViolationPolicy.Quarantine
+                && violationPolicy != DeliveryViolationPolicy.Disconnect
+                && violationPolicy != DeliveryViolationPolicy.Observe
+            )
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(violationPolicy),
+                    "The violation policy must be a named policy."
+                );
+            }
+
             MaxFramesPerPoll = maxFramesPerPoll;
             MaxFrameBytes = maxFrameBytes;
             EventCapacity = eventCapacity;
             HeartbeatIntervalMilliseconds = heartbeatIntervalMilliseconds;
             HeartbeatTimeoutMilliseconds = heartbeatTimeoutMilliseconds;
+            ViolationPolicy = violationPolicy;
         }
     }
 }

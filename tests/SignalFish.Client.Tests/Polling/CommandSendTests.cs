@@ -22,6 +22,21 @@ namespace SignalFish.Client.Tests.Polling
     [TestFixture]
     public class CommandSendTests
     {
+        /// <summary>
+        /// The golden v2 join shape: a roster without delivery stamps (the
+        /// v2 wire omits them), which the gate maps to no senders.
+        /// </summary>
+        private const string V2Join =
+            "{\"type\": \"RoomJoined\", \"data\": {\"room_id\": "
+            + "\"11111111-1111-1111-1111-111111111111\", "
+            + "\"room_code\": \"ABC123\", \"player_id\": "
+            + "\"00000000-0000-0000-0000-00000000000a\", "
+            + "\"game_name\": \"my-game\", \"max_players\": 8, "
+            + "\"supports_authority\": true, \"current_players\": [{\"id\": \"00000000-0000-0000-0000-00000000000a\", \"name\": \"Alice\", \"is_authority\": true, \"is_ready\": false, \"connected_at\": \"2026-09-20T12:00:00Z\"}], "
+            + "\"is_authority\": true, \"lobby_state\": \"waiting\", "
+            + "\"ready_players\": [], \"relay_type\": \"matchbox\", "
+            + "\"current_spectators\": []}}";
+
         private static readonly Guid PlayerId = new Guid("00000000-0000-0000-0000-00000000000a");
         private static readonly Guid RoomId = new Guid("11111111-1111-1111-1111-111111111111");
 
@@ -64,7 +79,7 @@ namespace SignalFish.Client.Tests.Polling
                 The typed result releases the fence; a generic server error
                 would leave it armed (fail-closed).
             */
-            EnqueueGolden(transport, "RoomJoined");
+            EnqueueWire(transport, V2Join);
             Assert.That(client.Poll(), Is.EqualTo(1));
             Assert.That(client.PendingOperation, Is.EqualTo(default(PendingRoomOperation)));
             Assert.That(client.Phase, Is.EqualTo(ConnectionPhase.InRoom));
@@ -132,7 +147,7 @@ namespace SignalFish.Client.Tests.Polling
                 BuildTimed();
             await ConnectAndAuthenticate(playerClient, transport);
 
-            EnqueueGolden(transport, "RoomJoined");
+            EnqueueWire(transport, V2Join);
             Assert.That(playerClient.Poll(), Is.EqualTo(1));
             DrainAll(playerClient);
 
@@ -498,7 +513,7 @@ namespace SignalFish.Client.Tests.Polling
 
         private static void JoinGoldenRoom(SignalFishPollingClient client, FakeTransport transport)
         {
-            EnqueueGolden(transport, "RoomJoined");
+            EnqueueWire(transport, V2Join);
             Assert.That(client.Poll(), Is.EqualTo(1));
             DrainAll(client);
         }
