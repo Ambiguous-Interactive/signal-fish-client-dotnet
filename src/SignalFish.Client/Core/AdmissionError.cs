@@ -55,5 +55,13 @@ namespace SignalFish.Client.Core
         /// role verdicts take precedence, Rust parity.
         /// </summary>
         ProtocolUnsupported = 9,
+
+        /// <summary>
+        /// A binary game-data send was refused: the connection negotiated
+        /// the JSON game-data encoding (or none), so raw binary frames are
+        /// not part of this session's contract. Checked after the v3
+        /// verdict — the encoding rides a negotiated-v3 connection.
+        /// </summary>
+        BinaryFormatNotNegotiated = 10,
     }
 }

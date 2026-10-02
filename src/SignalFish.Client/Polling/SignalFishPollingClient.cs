@@ -355,6 +355,28 @@ namespace SignalFish.Client.Polling
         }
 
         /// <summary>
+        /// Relays one raw binary game-data payload to the other players
+        /// (player role, negotiated v3, non-JSON game-data encoding). The
+        /// payload rides the wire verbatim as one binary frame — binary
+        /// game data is always reliable and carries no class metadata.
+        /// </summary>
+        public CommandSend SendBinaryGameData(ReadOnlyMemory<byte> payload)
+        {
+            if (!AdmitForSend(ClientCommand.SendBinaryGameData, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            if (!_deliveryGate.IsBinaryGameDataNegotiated)
+            {
+                return CommandSend.Refused(AdmissionError.BinaryFormatNotNegotiated);
+            }
+
+            DispatchBinaryFrame(payload);
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
         /// Synchronous admission on the poll thread; a refused command never
         /// touches the wire. Sends before <see cref="ConnectAsync"/> are
         /// refused (the machine alone cannot see the connect call).
@@ -425,7 +447,17 @@ namespace SignalFish.Client.Polling
         /// </summary>
         private void DispatchEncodedFrame()
         {
-            _ = SendFrameAsync(_sendBuffer.WrittenSpan.ToArray());
+            _ = SendFrameAsync(_sendBuffer.WrittenSpan.ToArray(), binary: false);
+        }
+
+        /// <summary>
+        /// Hands the raw binary payload to the transport fire-and-forget
+        /// (no envelope: binary game data is the payload itself); the same
+        /// dead-wire folding as an encoded frame.
+        /// </summary>
+        private void DispatchBinaryFrame(ReadOnlyMemory<byte> payload)
+        {
+            _ = SendFrameAsync(payload.ToArray(), binary: true);
         }
 
         private void ProcessFrame(TransportFrame frame)
@@ -548,11 +580,13 @@ namespace SignalFish.Client.Polling
             DispatchEncodedFrame();
         }
 
-        private async Task SendFrameAsync(byte[] frame)
+        private async Task SendFrameAsync(byte[] frame, bool binary)
         {
             try
             {
-                ValueTask<int> send = _transport.SendAsync(frame);
+                ValueTask<int> send = binary
+                    ? _transport.SendBinaryAsync(frame)
+                    : _transport.SendAsync(frame);
                 if (!send.IsCompletedSuccessfully)
                 {
                     await send.ConfigureAwait(false);

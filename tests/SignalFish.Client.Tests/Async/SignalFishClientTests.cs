@@ -88,6 +88,93 @@ namespace SignalFish.Client.Tests.Async
         }
 
         [Test]
+        public async Task BinaryGameDataRefusedOutsideARoom()
+        {
+            (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed();
+
+            CommandSend beforeConnect = client.SendBinaryGameData(new byte[] { 0x01 });
+            Assert.That(beforeConnect.Refusal, Is.EqualTo(AdmissionError.NotConnected));
+
+            await client.ConnectAsync(Endpoint());
+            CommandSend outsideRoom = client.SendBinaryGameData(new byte[] { 0x01 });
+            Assert.That(outsideRoom.Refusal, Is.EqualTo(AdmissionError.NotInRoom));
+            Assert.That(transport.SentBinary, Is.Empty, "a refused send never touches the wire");
+
+            await client.DisposeAsync();
+        }
+
+        [Test]
+        public async Task BinaryGameDataSendsRawBytesOnTheBinaryLane()
+        {
+            (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed();
+            await client.ConnectAsync(Endpoint());
+            Assert.That(
+                (await NextEventAsync(client)).Kind,
+                Is.EqualTo(PollEventKind.TransportReady)
+            );
+
+            Assert.That(
+                client
+                    .SendAuthenticate(
+                        new AuthenticateMessage(
+                            appId: "async-binary",
+                            gameDataFormat: "message_pack",
+                            protocolVersion: 3,
+                            supportedTransports: RelayOnlyTransports,
+                            supportedTopologies: RelayOnlyTransports
+                        )
+                    )
+                    .Accepted,
+                Is.True
+            );
+            transport.Enqueue(
+                Encoding.UTF8.GetBytes(
+                    GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "Authenticated")
+                ),
+                isText: true
+            );
+            Assert.That(
+                (await NextEventAsync(client)).Kind,
+                Is.EqualTo(PollEventKind.Authenticated)
+            );
+
+            /*
+                The server negotiates during the handshake: ProtocolInfo
+                lands before any room traffic, so the v3-stamped join
+                snapshot baselines the negotiated engine.
+            */
+            transport.Enqueue(
+                Encoding.UTF8.GetBytes(
+                    GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo")
+                ),
+                isText: true
+            );
+            Assert.That(
+                (await NextEventAsync(client)).Kind,
+                Is.EqualTo(PollEventKind.ProtocolInfo)
+            );
+
+            Assert.That(
+                client.SendJoinRoom(new JoinRoomMessage("my-game", "P1", "ABC123", 8)).Accepted,
+                Is.True
+            );
+            transport.Enqueue(
+                Encoding.UTF8.GetBytes(
+                    GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "RoomJoined")
+                ),
+                isText: true
+            );
+            Assert.That((await NextEventAsync(client)).Kind, Is.EqualTo(PollEventKind.RoomJoined));
+
+            byte[] payload = { 0x81, 0xa1, (byte)'n', 0x01 };
+            Assert.That(client.SendBinaryGameData(payload).Accepted, Is.True);
+            await WaitForAsync(() => transport.SentBinary.Count >= 1, "binary relay on the wire");
+            Assert.That(transport.SentBinary[0], Is.EqualTo(payload));
+
+            await client.DisposeAsync();
+        }
+
+        [Test]
         public async Task RefusedCommandsNeverTouchTheWire()
         {
             (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed();

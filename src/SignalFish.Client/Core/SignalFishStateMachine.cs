@@ -362,8 +362,11 @@ namespace SignalFish.Client.Core
         /// </summary>
         internal static bool RequiresNegotiatedV3(ClientCommand command, GameDataClass delivery)
         {
-            return command == ClientCommand.SendGameData
-                && (delivery == GameDataClass.Latest || delivery == GameDataClass.Volatile);
+            return (
+                    command == ClientCommand.SendGameData
+                    && (delivery == GameDataClass.Latest || delivery == GameDataClass.Volatile)
+                )
+                || command == ClientCommand.SendBinaryGameData;
         }
 
         private AdmissionError Admit(ClientCommand command, bool becomeAuthority)
@@ -410,6 +413,7 @@ namespace SignalFish.Client.Core
                 case ClientCommand.SetReady:
                 case ClientCommand.StartGame:
                 case ClientCommand.SendGameData:
+                case ClientCommand.SendBinaryGameData:
                     if (!_membership.IsPresent)
                     {
                         return AdmissionError.NotInRoom;

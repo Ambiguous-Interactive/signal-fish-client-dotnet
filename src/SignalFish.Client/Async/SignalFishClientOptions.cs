@@ -139,6 +139,15 @@ namespace SignalFish.Client.Async
         /// </summary>
         public DeliveryViolationPolicy ViolationPolicy { get; }
 
+        /// <summary>
+        /// Gets the preferred game-data encoding token advertised on every
+        /// automatic-reconnect <c>Authenticate</c> (<c>null</c> or
+        /// <c>json</c> omits the field — the JSON text default; the
+        /// caller's explicit handshake must carry the same token). Binary
+        /// sends require a non-JSON encoding the server advertises.
+        /// </summary>
+        public string? GameDataFormat { get; }
+
         /// <summary>Initializes the options; every parameter has the documented default.</summary>
         public SignalFishClientOptions(
             int eventCapacity = DefaultEventCapacity,
@@ -157,7 +166,8 @@ namespace SignalFish.Client.Async
             IReadOnlyList<string>? supportedTransports = null,
             IReadOnlyList<string>? supportedTopologies = null,
             IReadOnlyList<string>? requestedCapabilities = null,
-            DeliveryViolationPolicy violationPolicy = DeliveryViolationPolicy.Quarantine
+            DeliveryViolationPolicy violationPolicy = DeliveryViolationPolicy.Quarantine,
+            string? gameDataFormat = null
         )
         {
             if (eventCapacity < 1)
@@ -265,6 +275,7 @@ namespace SignalFish.Client.Async
             Platform = platform ?? SignalFishClientInfo.Platform;
             ProtocolVersion = protocolVersion;
             ViolationPolicy = violationPolicy;
+            GameDataFormat = gameDataFormat;
         }
 
         /// <summary>

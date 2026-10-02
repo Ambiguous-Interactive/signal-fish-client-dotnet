@@ -138,69 +138,18 @@ namespace SignalFish.Client.Transport
         }
 
         /// <inheritdoc />
-        public async ValueTask<int> SendAsync(
+        public ValueTask<int> SendAsync(ReadOnlyMemory<byte> frame, CancellationToken ct = default)
+        {
+            return SendFrameAsync(frame, WebSocketMessageType.Text, ct);
+        }
+
+        /// <inheritdoc />
+        public ValueTask<int> SendBinaryAsync(
             ReadOnlyMemory<byte> frame,
             CancellationToken ct = default
         )
         {
-            ThrowIfDisposed();
-            if (Volatile.Read(ref _state) != StateConnected)
-            {
-                throw new TransportClosedException(
-                    new TransportClose(Volatile.Read(ref _closeCode))
-                );
-            }
-
-            if (frame.Length > _outboundCapBytes)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(frame),
-                    frame.Length,
-                    FormattableString.Invariant(
-                        $"Frame exceeds the outbound cap of {_outboundCapBytes} bytes (server inbound limit)."
-                    )
-                );
-            }
-
-            await _sendGate.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                ThrowIfDisposed();
-                if (Volatile.Read(ref _state) != StateConnected)
-                {
-                    throw new TransportClosedException(
-                        new TransportClose(Volatile.Read(ref _closeCode))
-                    );
-                }
-
-                ClientWebSocket socket = _socket!;
-                try
-                {
-                    await socket
-                        .SendAsync(frame, WebSocketMessageType.Text, endOfMessage: true, ct)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception exception) when (IsTransportFault(exception))
-                {
-                    int code = ResolveFaultCode();
-                    MarkClosed(code);
-                    throw new TransportClosedException(new TransportClose(code), exception);
-                }
-
-                return frame.Length;
-            }
-            finally
-            {
-                try
-                {
-                    _sendGate.Release();
-                }
-                catch (ObjectDisposedException) { }
-            }
+            return SendFrameAsync(frame, WebSocketMessageType.Binary, ct);
         }
 
         /// <inheritdoc />
@@ -253,6 +202,72 @@ namespace SignalFish.Client.Transport
 
             Interlocked.CompareExchange(ref _closeCode, AbnormalCloseCode, 0);
             ReleaseResources();
+        }
+
+        private async ValueTask<int> SendFrameAsync(
+            ReadOnlyMemory<byte> frame,
+            WebSocketMessageType messageType,
+            CancellationToken ct
+        )
+        {
+            ThrowIfDisposed();
+            if (Volatile.Read(ref _state) != StateConnected)
+            {
+                throw new TransportClosedException(
+                    new TransportClose(Volatile.Read(ref _closeCode))
+                );
+            }
+
+            if (frame.Length > _outboundCapBytes)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(frame),
+                    frame.Length,
+                    FormattableString.Invariant(
+                        $"Frame exceeds the outbound cap of {_outboundCapBytes} bytes (server inbound limit)."
+                    )
+                );
+            }
+
+            await _sendGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                ThrowIfDisposed();
+                if (Volatile.Read(ref _state) != StateConnected)
+                {
+                    throw new TransportClosedException(
+                        new TransportClose(Volatile.Read(ref _closeCode))
+                    );
+                }
+
+                ClientWebSocket socket = _socket!;
+                try
+                {
+                    await socket
+                        .SendAsync(frame, messageType, endOfMessage: true, ct)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception) when (IsTransportFault(exception))
+                {
+                    int code = ResolveFaultCode();
+                    MarkClosed(code);
+                    throw new TransportClosedException(new TransportClose(code), exception);
+                }
+
+                return frame.Length;
+            }
+            finally
+            {
+                try
+                {
+                    _sendGate.Release();
+                }
+                catch (ObjectDisposedException) { }
+            }
         }
 
         /// <summary>

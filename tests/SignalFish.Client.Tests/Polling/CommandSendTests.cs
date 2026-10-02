@@ -378,6 +378,84 @@ namespace SignalFish.Client.Tests.Polling
         }
 
         [Test]
+        public async Task BinaryGameDataRequiresNegotiatedV3AndFormat()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+            JoinGoldenRoom(client, transport);
+
+            byte[] payload = { 0x01, 0x02, 0x03 };
+            CommandSend beforeV3 = client.SendBinaryGameData(payload);
+            Assert.That(beforeV3.Refusal, Is.EqualTo(AdmissionError.ProtocolUnsupported));
+
+            NegotiateV3(client, transport);
+            CommandSend withoutFormat = client.SendBinaryGameData(payload);
+            Assert.That(
+                withoutFormat.Refusal,
+                Is.EqualTo(AdmissionError.BinaryFormatNotNegotiated)
+            );
+            Assert.That(transport.SentBinary, Is.Empty, "a refused send never touches the wire");
+        }
+
+        [Test]
+        public async Task BinaryGameDataSendsRawPayloadOnTheBinaryLane()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await client.ConnectAsync(Endpoint());
+            DrainAll(client);
+            Assert.That(
+                client
+                    .SendAuthenticate(new AuthenticateMessage(gameDataFormat: "message_pack"))
+                    .Accepted,
+                Is.True
+            );
+            EnqueueGolden(transport, "Authenticated");
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+            JoinGoldenRoom(client, transport);
+            NegotiateV3(client, transport);
+
+            byte[] payload = { 0x81, 0xa1, (byte)'n', 0x01 };
+            CommandSend send = client.SendBinaryGameData(payload);
+            Assert.That(send.Accepted, Is.True);
+            Assert.That(client.PendingOperation, Is.EqualTo(default(PendingRoomOperation)));
+
+            Assert.That(transport.SentBinary.Count, Is.EqualTo(1), "one raw binary frame");
+            Assert.That(transport.SentBinary[0], Is.EqualTo(payload));
+            Assert.That(
+                LastSent(transport),
+                Does.Not.Contain("GameData"),
+                "binary sends carry no JSON envelope"
+            );
+        }
+
+        [Test]
+        public async Task BinaryGameDataRefusedForSpectators()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+            CommandSend spectatorJoin = client.SendJoinAsSpectator(
+                new JoinAsSpectatorMessage("my-game", "ABC123", "Observer")
+            );
+            Assert.That(spectatorJoin.Accepted, Is.True);
+            EnqueueGolden(transport, "SpectatorJoined");
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+            NegotiateV3(client, transport);
+
+            /*
+                The role verdict leads (the machine checks membership before
+                the pipeline's encoding state is ever consulted).
+            */
+            CommandSend send = client.SendBinaryGameData(new byte[] { 0x01 });
+            Assert.That(send.Refusal, Is.EqualTo(AdmissionError.WrongRoomRole));
+            Assert.That(transport.SentBinary, Is.Empty);
+        }
+
+        [Test]
         public async Task JoinAsSpectatorSendsGoldenWireAndArmsSpectatorFence()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =

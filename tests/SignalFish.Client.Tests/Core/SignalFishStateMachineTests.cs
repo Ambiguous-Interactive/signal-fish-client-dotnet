@@ -702,14 +702,14 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void OnlyClassifiedGameDataRequiresNegotiatedV3()
+        public void OnlyV3GatedSendsRequireNegotiatedV3()
         {
             /*
                 The sweep walks the full command x delivery-class value
                 space so an appended command cannot skip classification:
                 exactly the classified game-data sends (latest, volatile)
-                require a negotiated v3 connection; reliable relay stays on
-                the v2 floor.
+                and the raw binary relay require a negotiated v3
+                connection; reliable JSON relay stays on the v2 floor.
             */
             for (int value = 1; value <= 255; value++)
             {
@@ -724,7 +724,11 @@ namespace SignalFish.Client.Tests.Core
                 )
                 {
                     bool expected =
-                        command == ClientCommand.SendGameData && delivery != GameDataClass.Reliable;
+                        (
+                            command == ClientCommand.SendGameData
+                            && delivery != GameDataClass.Reliable
+                        )
+                        || command == ClientCommand.SendBinaryGameData;
                     Assert.That(
                         SignalFishStateMachine.RequiresNegotiatedV3(command, delivery),
                         Is.EqualTo(expected),
