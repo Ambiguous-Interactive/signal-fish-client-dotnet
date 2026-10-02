@@ -147,15 +147,15 @@ namespace SignalFish.Client.Polling
         {
             if (!gate.TryAdmitBinaryFrame(out GateVerdict admission, out _))
             {
-                if (ApplyVerdict(default(MessageKind), frame.Payload, admission, ref translated))
-                {
-                    return;
-                }
-
                 /*
-                    Observe: the violation surfaced and the frame keeps its
-                    own path — the negotiation judgment is not a decode one.
+                    The refusal applies per policy; under Observe the
+                    violation surfaces but the frame still stops here — an
+                    out-of-contract frame is never decoded into game data,
+                    and its bytes can never move the cursors. The session
+                    keeps flowing either way.
                 */
+                ApplyVerdict(default(MessageKind), frame.Payload, admission, ref translated);
+                return;
             }
 
             if (
@@ -262,6 +262,13 @@ namespace SignalFish.Client.Polling
                     )
                 )
                 {
+                    /*
+                        Deliberately outside the violation policy: a frame
+                        that cannot be trusted as session input is rejected
+                        outright (the fact never applies), whatever the
+                        configured reaction — matching the routed-fact
+                        wire-violation precedent.
+                    */
                     translated.HasEvent = true;
                     translated.Event = PollEvent.FromViolation(
                         envelope.Message,

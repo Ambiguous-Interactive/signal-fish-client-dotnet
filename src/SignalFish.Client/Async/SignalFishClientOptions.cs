@@ -275,7 +275,7 @@ namespace SignalFish.Client.Async
             Platform = platform ?? SignalFishClientInfo.Platform;
             ProtocolVersion = protocolVersion;
             ViolationPolicy = violationPolicy;
-            GameDataFormat = gameDataFormat;
+            GameDataFormat = gameDataFormat == "json" ? null : gameDataFormat;
         }
 
         /// <summary>

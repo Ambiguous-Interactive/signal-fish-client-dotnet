@@ -58,6 +58,108 @@ namespace SignalFish.Client.Tests.V3
         }
 
         [Test]
+        public void AnyKeyOrderDecodesTheSameFrame()
+        {
+            /*
+                MessagePack maps are unordered: a strict decoder must bind
+                each value to its key, not to its position — the payload
+                must stay the payload even when from_player follows it.
+            */
+            List<byte> frame = new List<byte> { 0x85 };
+            WriteKey(frame, "payload");
+            WriteBin(frame, PayloadBytes);
+            WriteKey(frame, "encoding");
+            WriteStr(frame, "message_pack");
+            WriteKey(frame, "from_player");
+            WriteBin(frame, SenderB.ToNetworkOrderBytes());
+            WriteKey(frame, "seq");
+            WriteUInt(frame, 43);
+            WriteKey(frame, "epoch");
+            WriteUInt(frame, 1);
+
+            Assert.That(
+                BinaryGameDataFrame.TryDecode(
+                    frame.ToArray(),
+                    protocolV3: true,
+                    out BinaryGameDataFrame gameData,
+                    out DecodeError error,
+                    out int errorOffset
+                ),
+                Is.True,
+                $"{error} at {errorOffset}"
+            );
+            Assert.That(gameData.FromPlayer, Is.EqualTo(SenderB));
+            Assert.That(gameData.Payload.ToArray(), Is.EqualTo(PayloadBytes));
+            Assert.That(gameData.Seq, Is.EqualTo(43uL));
+        }
+
+        [Test]
+        public void ContainerAndStringWidthsDecodeOnTheSuccessPath()
+        {
+            /*
+                The server's encoder is not minimal-length on containers
+                either: a map16 root with str8 keys and bin16 values is the
+                same frame as the fix* spelling.
+            */
+            List<byte> frame = new List<byte> { 0xde, 0x00, 0x05 };
+            WriteWideStr(frame, "from_player");
+            WriteWideBin(frame, SenderB.ToNetworkOrderBytes());
+            WriteWideStr(frame, "encoding");
+            WriteWideStr(frame, "message_pack");
+            WriteWideStr(frame, "payload");
+            WriteWideBin(frame, PayloadBytes);
+            WriteKey(frame, "seq");
+            WriteUInt(frame, 43);
+            WriteKey(frame, "epoch");
+            WriteUInt(frame, 1);
+
+            Assert.That(
+                BinaryGameDataFrame.TryDecode(
+                    frame.ToArray(),
+                    protocolV3: true,
+                    out BinaryGameDataFrame gameData,
+                    out DecodeError error,
+                    out int errorOffset
+                ),
+                Is.True,
+                $"{error} at {errorOffset}"
+            );
+            Assert.That(gameData.FromPlayer, Is.EqualTo(SenderB));
+            Assert.That(gameData.Payload.ToArray(), Is.EqualTo(PayloadBytes));
+            Assert.That(gameData.Seq, Is.EqualTo(43uL));
+        }
+
+        [Test]
+        public void EpochBeyondTheUintRangeIsRejected()
+        {
+            List<byte> frame = new List<byte> { 0x85 };
+            WriteKey(frame, "from_player");
+            WriteBin(frame, SenderB.ToNetworkOrderBytes());
+            WriteKey(frame, "encoding");
+            WriteStr(frame, "message_pack");
+            WriteKey(frame, "payload");
+            WriteBin(frame, PayloadBytes);
+            WriteKey(frame, "seq");
+            WriteUInt(frame, 43);
+            WriteKey(frame, "epoch");
+            frame.Add(0xcf);
+            frame.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 });
+
+            Assert.That(
+                BinaryGameDataFrame.TryDecode(
+                    frame.ToArray(),
+                    protocolV3: true,
+                    out _,
+                    out DecodeError error,
+                    out int errorOffset
+                ),
+                Is.False
+            );
+            Assert.That(error, Is.EqualTo(DecodeError.InvalidFieldValue));
+            Assert.That(errorOffset, Is.GreaterThan(0));
+        }
+
+        [Test]
         public void UuidBytesReadInTheNetworkOrderTheJsonRosterSpells()
         {
             /*
@@ -463,13 +565,13 @@ namespace SignalFish.Client.Tests.V3
         }
 
         [Test]
-        public void ObservePolicySurfacesViolationsAndKeepsBinaryFlowing()
+        public void ObservePolicySurfacesRefusalsAndKeepsTheSessionFlowing()
         {
             /*
-                Observe never suppresses: the JSON-negotiated session
-                reports the physical refusal and still surfaces the
-                decoded payload — informational, never advancing the
-                cursors.
+                Observe never suppresses and never tears down: the
+                JSON-negotiated session reports the physical refusal and
+                stays fully usable — the refused frame is not decoded into
+                game data, and the cursors never move.
             */
             DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Observe);
             Assert.That(gate.OnProtocolInfo(3, CanonicalFormats, out _), Is.True);
@@ -484,9 +586,84 @@ namespace SignalFish.Client.Tests.V3
             );
 
             Assert.That(translated.HasViolation, Is.True);
+            Assert.That(translated.HasEvent, Is.False);
+            Assert.That(translated.IsClose, Is.False);
+            Assert.That(gate.Quarantined, Is.False);
+
+            /*
+                Cursor continuity: the refused frame consumed nothing, so
+                the sender's next legitimate JSON stamp at seq 43 is
+                accepted — no phantom gap.
+            */
+            byte[] jsonFrame = Encoding.UTF8.GetBytes(
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "GameData")
+            );
+            FramePipeline.Translate(
+                new TransportFrame(jsonFrame, isText: true),
+                jsonFrame.Length,
+                gate,
+                out FrameTranslation relayed
+            );
+            Assert.That(relayed.HasViolation, Is.False, relayed.Violation.Diagnostic);
+            Assert.That(relayed.Event.Kind, Is.EqualTo(PollEventKind.GameData));
+        }
+
+        [Test]
+        public void ObserveMismatchedEncodingSurfacesWithoutAdvancingTheCursors()
+        {
+            /*
+                A decoded envelope that names a different encoding is
+                informational under Observe: the payload surfaces, the
+                cursors stay put, so the real stamp at the same seq still
+                lands.
+            */
+            DeliveryGate gate = NegotiatedGate(policy: DeliveryViolationPolicy.Observe);
+            byte[] mismatched = V3Frame(seq: 43, epoch: 1, encoding: "json");
+            FramePipeline.Translate(
+                new TransportFrame(mismatched, isText: false),
+                mismatched.Length,
+                gate,
+                out FrameTranslation translated
+            );
+
+            Assert.That(translated.HasViolation, Is.True);
             Assert.That(translated.HasEvent, Is.True);
             Assert.That(translated.Event.Kind, Is.EqualTo(PollEventKind.GameData));
-            Assert.That(gate.Quarantined, Is.False);
+
+            byte[] jsonFrame = Encoding.UTF8.GetBytes(
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "GameData")
+            );
+            FramePipeline.Translate(
+                new TransportFrame(jsonFrame, isText: true),
+                jsonFrame.Length,
+                gate,
+                out FrameTranslation relayed
+            );
+            Assert.That(relayed.HasViolation, Is.False, relayed.Violation.Diagnostic);
+            Assert.That(relayed.Event.Kind, Is.EqualTo(PollEventKind.GameData));
+        }
+
+        [Test]
+        public void DisconnectPolicyKeepsDecodeFailuresBounded()
+        {
+            /*
+                A malformed frame is a decode failure, never a policy
+                teardown — even under Disconnect: the frame carries no
+                decodable contract to enforce.
+            */
+            DeliveryGate gate = NegotiatedGate(policy: DeliveryViolationPolicy.Disconnect);
+            byte[] frame = { 0xde, 0x00, 0x81 };
+
+            FramePipeline.Translate(
+                new TransportFrame(frame, isText: false),
+                frame.Length,
+                gate,
+                out FrameTranslation translated
+            );
+
+            Assert.That(translated.HasViolation, Is.False);
+            Assert.That(translated.Event.Kind, Is.EqualTo(PollEventKind.DecodeFailed));
+            Assert.That(translated.IsClose, Is.False);
         }
 
         [Test]
@@ -581,9 +758,12 @@ namespace SignalFish.Client.Tests.V3
         /// A v3 gate that negotiated message_pack and baselined the
         /// golden roster (sender ...b at seq 42, epoch 1).
         /// </summary>
-        private static DeliveryGate NegotiatedGate(string? requestedFormat = "message_pack")
+        private static DeliveryGate NegotiatedGate(
+            string? requestedFormat = "message_pack",
+            DeliveryViolationPolicy policy = DeliveryViolationPolicy.Quarantine
+        )
         {
-            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            DeliveryGate gate = new DeliveryGate(policy);
             gate.NoteRequestedFormat(requestedFormat);
             Assert.That(gate.OnProtocolInfo(3, CanonicalFormats, out _), Is.True);
             GateVerdict baseline = gate.RebaselineSnapshot(Players(selfWithStamps: true));
@@ -760,6 +940,22 @@ namespace SignalFish.Client.Tests.V3
             Assert.That(bytes.Length, Is.LessThanOrEqualTo(0x1f), "the test writer pins fixstr");
             frame.Add((byte)(0xa0 | bytes.Length));
             frame.AddRange(bytes);
+        }
+
+        private static void WriteWideStr(List<byte> frame, string value)
+        {
+            byte[] bytes = Encoding.ASCII.GetBytes(value);
+            frame.Add(0xd9);
+            frame.Add((byte)bytes.Length);
+            frame.AddRange(bytes);
+        }
+
+        private static void WriteWideBin(List<byte> frame, byte[] value)
+        {
+            frame.Add(0xc5);
+            frame.Add((byte)(value.Length >> 8));
+            frame.Add((byte)value.Length);
+            frame.AddRange(value);
         }
 
         private static void WriteBin(List<byte> frame, byte[] value)

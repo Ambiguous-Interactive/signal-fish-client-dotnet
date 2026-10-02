@@ -50,6 +50,13 @@ namespace SignalFish.Client.V3
         internal GameDataFormatToken NegotiatedEncoding => _negotiatedFormat;
 
         /// <summary>Gets whether a non-JSON game-data encoding was negotiated.</summary>
+        /// <remarks>
+        /// Written once per connection by the receive loop (at
+        /// <c>ProtocolInfo</c>) and read by send paths on other threads:
+        /// the plain read is deliberate — the flag is tear-free, settles
+        /// once per connection, and a stale <see langword="false"/> only
+        /// fails a send fast with a retryable verdict.
+        /// </remarks>
         internal bool IsBinaryGameDataNegotiated =>
             _protocolInfoSeen && _negotiatedFormat != GameDataFormatToken.Json;
 
@@ -74,6 +81,13 @@ namespace SignalFish.Client.V3
         /// <c>json</c>, and unknown tokens all mean the JSON default).
         /// Ignored once negotiation settled.
         /// </summary>
+        /// <remarks>
+        /// Called from send threads while the receive loop owns the
+        /// negotiation state: the write happens-before the caller's
+        /// <c>Authenticate</c> is queued, and the read side only acts on
+        /// it before that frame's <c>ProtocolInfo</c> response can
+        /// arrive, so the pairing is ordered by the wire conversation.
+        /// </remarks>
         internal void NoteRequestedFormat(string? gameDataFormat)
         {
             if (_protocolInfoSeen)

@@ -348,11 +348,17 @@ namespace SignalFish.Client.Protocol
         /// <summary>Maps the token onto its canonical wire spelling.</summary>
         internal static string WireToken(GameDataFormatToken format)
         {
+            /*
+                The token set is closed; `default` (0) is a sentinel that
+                never reaches the wire, and it maps to the last arm only
+                to keep the switch total.
+            */
             return format switch
             {
                 GameDataFormatToken.Json => "json",
                 GameDataFormatToken.MessagePack => "message_pack",
                 GameDataFormatToken.Rkyv => "rkyv",
+                GameDataFormatToken.Protobuf => "protobuf",
                 _ => "protobuf",
             };
         }
@@ -429,6 +435,7 @@ namespace SignalFish.Client.Protocol
 
             Guid fromPlayer = default;
             GameDataFormatToken format = default;
+            (int Offset, int Length) sender = default;
             (int Offset, int Length) payload = default;
             ulong seq = 0;
             uint epoch = 0;
@@ -457,12 +464,16 @@ namespace SignalFish.Client.Protocol
                         );
                     }
 
-                    if (!scanner.ReadBin(16, out payload, out error, out errorOffset))
+                    /*
+                        The sender id rides its own bin; the map's key order
+                        is free, so it must never alias the payload slice.
+                    */
+                    if (!scanner.ReadBin(16, out sender, out error, out errorOffset))
                     {
                         return false;
                     }
 
-                    fromPlayer = FromNetworkUuid(bytes.Slice(payload.Offset, payload.Length));
+                    fromPlayer = FromNetworkUuid(bytes.Slice(sender.Offset, sender.Length));
                     senderSeen = true;
                 }
                 else if (key.SequenceEqual(FieldNames.EncodingToken))
@@ -578,6 +589,11 @@ namespace SignalFish.Client.Protocol
                 || (protocolV3 && (!seqSeen || !epochSeen))
             )
             {
+                /*
+                    Defense in depth: the fixed member count plus the
+                    duplicate/unknown refusals make this unreachable today;
+                    it keeps a corrupted seen-set from constructing a frame.
+                */
                 return Fail(DecodeError.MissingField, scanner.Offset, out error, out errorOffset);
             }
 
