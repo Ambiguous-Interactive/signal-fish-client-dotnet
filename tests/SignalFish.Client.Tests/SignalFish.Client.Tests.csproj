@@ -34,5 +34,12 @@
             CopyToOutputDirectory="PreserveNewest"
             LinkBase="Golden\"
         />
+        <!-- The msgpack-frame fuzz corpus (owned by the fuzz host project)
+             travels with the test output for the corpus-contract test. -->
+        <Content
+            Include="..\SignalFish.Client.FuzzTests\Corpus\**\*.bin"
+            CopyToOutputDirectory="PreserveNewest"
+            LinkBase="Corpus\"
+        />
     </ItemGroup>
 </Project>

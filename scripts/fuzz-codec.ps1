@@ -1,14 +1,17 @@
 <#
 .SYNOPSIS
-    Runs the codec fuzz lane (PLAN.md M1.5): envelope-reader totality and
-    writer roundtrip targets, coverage-guided via SharpFuzz + libfuzzer-dotnet.
+    Runs the codec fuzz lane (PLAN.md M1.5): envelope-reader totality,
+    writer roundtrip, and msgpack-frame (binary game-data decode) targets,
+    coverage-guided via SharpFuzz + libfuzzer-dotnet.
 
 .DESCRIPTION
     Publishes tests/SignalFish.Client.FuzzTests, instruments the library
     assemblies with SharpFuzz, and drives each selected target with the
     libfuzzer-dotnet driver. The reader target is seeded with the golden
-    wire fixtures (tests/Golden/*.jsonl). Any escaping exception or failed
-    invariant crashes the driver, which fails the script and leaves the
+    wire fixtures (tests/Golden/*.jsonl); the msgpack-frame target is
+    seeded with the committed corpus (tests/SignalFish.Client.FuzzTests/
+    Corpus/msgpack-frame). Any escaping exception or failed invariant
+    crashes the driver, which fails the script and leaves the
     crashing input in .fuzz/crashes.
 
     The corpus and crash artifacts persist in .fuzz/ (gitignored) so local
@@ -30,18 +33,18 @@
     pwsh -NoProfile -File scripts/fuzz-codec.ps1 -SecondsPerTarget 30
 
 .EXAMPLE
-    pwsh -NoProfile -File scripts/fuzz-codec.ps1 -Target reader -SecondsPerTarget 900
+    pwsh -NoProfile -File scripts/fuzz-codec.ps1 -Target reader -SecondsPerTarget 600
 #>
 [CmdletBinding()]
 param(
-    # Which fuzz target to run: the envelope reader, the writer, or both.
-    [ValidateSet('reader', 'writer', 'both')]
-    [string]$Target = 'both',
+    # Which fuzz target to run: one lane, or all of them.
+    [ValidateSet('reader', 'writer', 'msgpack-frame', 'all')]
+    [string]$Target = 'all',
 
-    # Wall-clock fuzzing budget per target, in seconds. Capped so both
+    # Wall-clock fuzzing budget per target, in seconds. Capped so all
     # targets stay inside the fuzz workflow's job timeout.
-    [ValidateRange(1, 1200)]
-    [int]$SecondsPerTarget = 900,
+    [ValidateRange(1, 600)]
+    [int]$SecondsPerTarget = 600,
 
     # Pre-provisioned libfuzzer-dotnet driver. When empty, the pinned
     # release binary is downloaded into .fuzz/.
@@ -181,8 +184,9 @@ chmod +x $DriverPath
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 
 # Seed the reader corpus with the golden wire fixtures; the writer corpus
-# cold-starts (its inputs are driver-derived message recipes, not JSON).
-foreach ($name in @('reader', 'writer'))
+# cold-starts (its inputs are driver-derived message recipes, not JSON);
+# the msgpack-frame corpus starts from the committed, unit-pinned seeds.
+foreach ($name in @('reader', 'writer', 'msgpack-frame'))
 {
     New-Item -ItemType Directory -Force -Path (Join-Path $corpusRoot $name) | Out-Null
 }
@@ -200,9 +204,19 @@ Get-ChildItem (Join-Path $RepoRoot 'tests/Golden') -Filter '*.jsonl' | ForEach-O
 
 Write-Host "Seeded reader corpus with $index golden frames"
 
+$msgpackSeeds = Join-Path $RepoRoot 'tests/SignalFish.Client.FuzzTests/Corpus/msgpack-frame'
+$msgpackCount = 0
+Get-ChildItem $msgpackSeeds -Filter '*.bin' | ForEach-Object {
+    $msgpackCount++
+    Copy-Item $_.FullName (Join-Path $corpusRoot "msgpack-frame/$($_.Name)")
+}
+
+Write-Host "Seeded msgpack-frame corpus with $msgpackCount committed frames"
+
 # ---- Fuzz ------------------------------------------------------------------
 
-$selected = if ($Target -eq 'both') { @('reader', 'writer') } else { , $Target }
+$allTargets = @('reader', 'writer', 'msgpack-frame')
+$selected = if ($Target -eq 'all') { $allTargets } else { , $Target }
 foreach ($name in $selected)
 {
     Write-Host "Fuzzing $name target for ${SecondsPerTarget}s"
