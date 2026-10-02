@@ -19,17 +19,6 @@ namespace SignalFish.Client.Tests.V3
     [TestFixture]
     public sealed class DeliveryGateTests
     {
-        /// <summary>The v3 join roster extended with the golden GameData's sender.</summary>
-        private const string V3JoinWithBothSenders =
-            "{\"type\": \"RoomJoined\", \"data\": {\"room_id\": \"11111111-1111-1111-1111-111111111111\", "
-            + "\"room_code\": \"ABC123\", \"player_id\": \"00000000-0000-0000-0000-00000000000a\", "
-            + "\"game_name\": \"test_game\", \"max_players\": 4, \"supports_authority\": true, "
-            + "\"current_players\": ["
-            + "{\"id\": \"00000000-0000-0000-0000-00000000000a\", \"name\": \"Alice\", \"is_authority\": true, \"is_ready\": false, \"epoch\": 1, \"seq\": 0}, "
-            + "{\"id\": \"00000000-0000-0000-0000-00000000000b\", \"name\": \"Bob\", \"is_authority\": false, \"is_ready\": false, \"epoch\": 1, \"seq\": 42}"
-            + "], \"is_authority\": true, \"lobby_state\": \"waiting\", \"ready_players\": [], "
-            + "\"relay_type\": \"matchbox\", \"current_spectators\": []}}";
-
         [Test]
         public void V2RoomJoinedWithAnUnstampedRosterIsAccepted()
         {
@@ -205,7 +194,7 @@ namespace SignalFish.Client.Tests.V3
             byte[] negotiation = Encoding.UTF8.GetBytes(
                 GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo")
             );
-            byte[] join = Encoding.UTF8.GetBytes(V3JoinWithBothSenders);
+            byte[] join = Encoding.UTF8.GetBytes(GoldenFixtures.V3JoinWithBothSenders);
             byte[][] frames = new byte[400][];
             for (int i = 0; i < frames.Length; i++)
             {
@@ -296,7 +285,7 @@ namespace SignalFish.Client.Tests.V3
             byte[] negotiation = Encoding.UTF8.GetBytes(
                 GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo")
             );
-            byte[] join = Encoding.UTF8.GetBytes(V3JoinWithBothSenders);
+            byte[] join = Encoding.UTF8.GetBytes(GoldenFixtures.V3JoinWithBothSenders);
             byte[] frame = Encoding.UTF8.GetBytes(
                 GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "GameData")
             );

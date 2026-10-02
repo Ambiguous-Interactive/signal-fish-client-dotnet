@@ -22,52 +22,6 @@ namespace SignalFish.Client.Tests.Polling
     {
         private const string RoomCode = "ABC123";
 
-        /// <summary>
-        /// The golden v3 join roster extended with the golden v3 GameData's
-        /// sender (...b), whose <c>seq</c> is exactly one less than the
-        /// GameData stamp (43) — the coherent baseline the adjacency
-        /// refusal demands.
-        /// </summary>
-        private const string V3JoinWithBothSenders =
-            "{\"type\": \"RoomJoined\", \"data\": {\"room_id\": "
-            + "\"11111111-1111-1111-1111-111111111111\", "
-            + "\"room_code\": \"ABC123\", \"player_id\": "
-            + "\"00000000-0000-0000-0000-00000000000a\", "
-            + "\"game_name\": \"test_game\", \"max_players\": 4, "
-            + "\"supports_authority\": true, \"current_players\": ["
-            + "{\"id\": \"00000000-0000-0000-0000-00000000000a\", "
-            + "\"name\": \"Alice\", \"is_authority\": true, "
-            + "\"is_ready\": false, \"epoch\": 1, \"seq\": 0}, "
-            + "{\"id\": \"00000000-0000-0000-0000-00000000000b\", "
-            + "\"name\": \"Bob\", \"is_authority\": false, "
-            + "\"is_ready\": false, \"epoch\": 1, \"seq\": 42}"
-            + "], \"is_authority\": true, \"lobby_state\": \"waiting\", "
-            + "\"ready_players\": [], \"relay_type\": \"matchbox\", "
-            + "\"current_spectators\": []}}";
-
-        /// <summary>
-        /// The golden v3 join roster extended with the golden DeliveryReport's
-        /// gap sender (...b), whose <c>seq</c> is one less than the
-        /// reported gap range (42..=42) — a report at or before the
-        /// sender's baseline cursor refuses.
-        /// </summary>
-        private const string V3JoinWithGapSender =
-            "{\"type\": \"RoomJoined\", \"data\": {\"room_id\": "
-            + "\"11111111-1111-1111-1111-111111111111\", "
-            + "\"room_code\": \"ABC123\", \"player_id\": "
-            + "\"00000000-0000-0000-0000-00000000000a\", "
-            + "\"game_name\": \"test_game\", \"max_players\": 4, "
-            + "\"supports_authority\": true, \"current_players\": ["
-            + "{\"id\": \"00000000-0000-0000-0000-00000000000a\", "
-            + "\"name\": \"Alice\", \"is_authority\": true, "
-            + "\"is_ready\": false, \"epoch\": 1, \"seq\": 0}, "
-            + "{\"id\": \"00000000-0000-0000-0000-00000000000b\", "
-            + "\"name\": \"Bob\", \"is_authority\": false, "
-            + "\"is_ready\": false, \"epoch\": 1, \"seq\": 41}"
-            + "], \"is_authority\": true, \"lobby_state\": \"waiting\", "
-            + "\"ready_players\": [], \"relay_type\": \"matchbox\", "
-            + "\"current_spectators\": []}}";
-
         private static readonly string[] ProtocolCapabilities =
         {
             "reconnection",
@@ -407,7 +361,7 @@ namespace SignalFish.Client.Tests.Polling
                 stamp 43) with the coherent two-sender join.
             */
             NegotiateV3(client, transport);
-            EnqueueWire(transport, V3JoinWithBothSenders);
+            EnqueueWire(transport, GoldenFixtures.V3JoinWithBothSenders);
             Assert.That(client.Poll(), Is.EqualTo(1));
             DrainAll(client);
 
@@ -536,7 +490,7 @@ namespace SignalFish.Client.Tests.Polling
                 coherent join.
             */
             NegotiateV3(client, transport);
-            EnqueueWire(transport, V3JoinWithGapSender);
+            EnqueueWire(transport, GoldenFixtures.V3JoinWithGapSender);
             Assert.That(client.Poll(), Is.EqualTo(1));
             DrainAll(client);
 
