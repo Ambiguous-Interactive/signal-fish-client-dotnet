@@ -113,7 +113,13 @@ of scope for 0.1.0; if added later it must pass the zero-dependency and
 1. Capture the raw frame bytes first; diagnose from bytes, not assumptions.
 2. Check casing: PascalCase `type`, snake_case fields.
 3. Check bounds: truncated frames and over-deep nesting surface as a
-   bounded decode error, not a crash.
+   bounded decode error, not a crash. For length-prefixed (binary)
+   formats the declared length is attacker bytes: compare it against
+   the remaining bytes in wide (`long`) arithmetic before any slice —
+   a bounded-int sum like `_offset + length` wraps negative for a
+   declared `0x7FFFFFFF`, passes the check, and walks the cursor out
+   of the buffer (real case: the M6.4 MessagePack scanner faulted the
+   receive loop on a 9-byte frame).
 4. One frame can pass a loose decoder and fail a stricter one. Layered
    decode (a mapper validating with one type, a consumer re-decoding
    with the full typed decoder) means "the fact decoded" does not imply

@@ -26,6 +26,13 @@ namespace SignalFish.Client.Transport
         ValueTask<int> SendAsync(ReadOnlyMemory<byte> frame, CancellationToken ct = default);
 
         /// <summary>
+        /// Sends one frame verbatim as a WebSocket binary message (the v3
+        /// binary game-data lane). Same contract as
+        /// <see cref="SendAsync"/>.
+        /// </summary>
+        ValueTask<int> SendBinaryAsync(ReadOnlyMemory<byte> frame, CancellationToken ct = default);
+
+        /// <summary>
         /// Receives the next frame. Single reader: concurrent calls are a
         /// misuse and throw. Returns the terminal close frame exactly once
         /// (including for abrupt local aborts and network failures, which

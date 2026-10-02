@@ -176,6 +176,33 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   note 4, and three [address-pr-feedback](./skills/address-pr-feedback/SKILL.md)
   sweep rows. Open: none.
 
+## 2026-10-02 - session 031: M6.4 binary game data + stale-main convergence
+
+- Trigger: session start found local main 5 commits ahead / 1 behind
+  origin/main mid-merge with four both-added conflicts — session 030's
+  work had landed as squash #67 while local main kept the pre-review
+  iteration; the branch then gained adversarial-review findings on its
+  own fresh code.
+- Evidence: tree equality checks (`git diff` against the squash and the
+  PR branch tip) proved local main held zero unique content; the merge
+  was abandoned and main reset to origin/main — no resolution commit
+  needed. On the new work, the adversarial reviewer confirmed a
+  silent-corruption blocker with a scratch probe: both `from_player`
+  and `payload` bound to one slice local, so any MessagePack key order
+  but the server's delivered the UUID bytes as the payload.
+- Findings: (1) when a squash merge lands, reset local main
+  immediately — a stale local main duplicates the squash content and
+  turns the next sync into both-added conflict archaeology; verify
+  with tree-diff, not commit log. (2) In a keyed map decoder, every
+  field binds to its own storage: shared locals turn key order into
+  data corruption, and a test suite that only builds one key order
+  cannot see it — permutation tests are the regression pin.
+- Applied: main converged to origin/main (session opened clean); the
+  decoder uses a dedicated sender slice pinned by
+  `AnyKeyOrderDecodesTheSameFrame`; admission-refused Observe frames
+  stop at the refusal (cursor continuity pinned). Open: a coverage-
+  guided fuzz target for the MessagePack scanner (filed).
+
 Entries pruned 2026-09-23 (sessions 011-014, 017b, 022-023, 025b-026):
 knowledge graduated into skills/rules; open items resolved or tracked as
 issues; originals in git history.

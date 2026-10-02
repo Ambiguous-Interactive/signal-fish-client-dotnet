@@ -8,6 +8,17 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Binary game data flows both ways on a negotiated v3 connection (M6.4):
+  pass `game_data_format: "message_pack"` on your `Authenticate` (the
+  async client's `SignalFishClientOptions.GameDataFormat` carries it
+  across automatic reconnects) and the client receives the server's
+  MessagePack relay frames as ordinary `GameData` events — sender,
+  opaque payload, and the same accountability stamps as JSON — while
+  `SendBinaryGameData(payload)` relays one raw payload as a binary
+  frame (always reliable; no class metadata). Binary frames outside a
+  negotiated non-JSON encoding surface as violations, malformed ones as
+  bounded `DecodeFailed` events, and the receive hot path stays
+  allocation-free.
 - Delivery accountability is now enforced on received relay traffic
   (M6.3): on a negotiated-v3 connection, the client validates every
   `GameData` stamp, `DeliveryReport` gap range, `RelayStats` interval, and

@@ -39,6 +39,23 @@ namespace SignalFish.Client.Async
     /// </summary>
     public sealed class SignalFishClient : IAsyncDisposable
     {
+        /// <summary>
+        /// One queued command frame plus its wire lane: JSON envelopes ride
+        /// text, raw binary game data rides the binary lane.
+        /// </summary>
+        private readonly struct QueuedFrame
+        {
+            internal byte[] Payload { get; }
+
+            internal bool Binary { get; }
+
+            internal QueuedFrame(byte[] payload, bool binary)
+            {
+                Payload = payload;
+                Binary = binary;
+            }
+        }
+
         /// <summary>Gets the derived connection phase.</summary>
         public ConnectionPhase Phase
         {
@@ -127,7 +144,7 @@ namespace SignalFish.Client.Async
         {
             get
             {
-                IBoundedQueue<byte[]> commands = _commands;
+                IBoundedQueue<QueuedFrame> commands = _commands;
                 return commands.Capacity - commands.Count;
             }
         }
@@ -141,7 +158,7 @@ namespace SignalFish.Client.Async
         private SignalFishStateMachine _machine = new SignalFishStateMachine();
         private readonly DeliveryGate _deliveryGate;
         private readonly IBoundedQueue<PollEvent> _events;
-        private IBoundedQueue<byte[]> _commands;
+        private IBoundedQueue<QueuedFrame> _commands;
         private readonly FrameBufferWriter _sendBuffer = new FrameBufferWriter();
         private readonly FrameBufferWriter _pingBuffer = new FrameBufferWriter();
         private readonly SemaphoreSlim _wake = new SemaphoreSlim(0);
@@ -176,7 +193,7 @@ namespace SignalFish.Client.Async
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _options = options ?? new SignalFishClientOptions();
             _events = new BoundedQueue<PollEvent>(_options.EventCapacity);
-            _commands = new BoundedQueue<byte[]>(_options.CommandCapacity);
+            _commands = new BoundedQueue<QueuedFrame>(_options.CommandCapacity);
             _deliveryGate = new DeliveryGate(_options.ViolationPolicy);
         }
 
@@ -252,6 +269,12 @@ namespace SignalFish.Client.Async
         /// </summary>
         public CommandSend SendAuthenticate(in AuthenticateMessage message)
         {
+            /*
+                The requested encoding rides the wire: the gate resolves it
+                against ProtocolInfo's advertisement (the reconnect replay
+                below notes its own handshake).
+            */
+            _deliveryGate.NoteRequestedFormat(message.GameDataFormat);
             return QueueCommand(
                 ClientCommand.Authenticate,
                 static (FrameBufferWriter writer, AuthenticateMessage payload) =>
@@ -386,6 +409,43 @@ namespace SignalFish.Client.Async
         }
 
         /// <summary>
+        /// Relays one raw binary game-data payload to the other players
+        /// (player role, negotiated v3, non-JSON game-data encoding). The
+        /// payload rides the wire verbatim as one binary frame — binary
+        /// game data is always reliable and carries no class metadata.
+        /// Fails fast with <see cref="AdmissionError.SendBufferFull"/> when
+        /// the command queue is full.
+        /// </summary>
+        public CommandSend SendBinaryGameData(ReadOnlyMemory<byte> payload)
+        {
+            lock (_gate)
+            {
+                ThrowIfDisposed();
+                AdmissionError refusal = AdmissionRefusal(
+                    ClientCommand.SendBinaryGameData,
+                    delivery: GameDataClass.Reliable
+                );
+                if (refusal == default(AdmissionError) && !_deliveryGate.IsBinaryGameDataNegotiated)
+                {
+                    refusal = AdmissionError.BinaryFormatNotNegotiated;
+                }
+
+                if (refusal != default(AdmissionError))
+                {
+                    return CommandSend.Refused(refusal);
+                }
+
+                if (!_commands.TryEnqueue(new QueuedFrame(payload.ToArray(), binary: true)))
+                {
+                    return CommandSend.Refused(AdmissionError.SendBufferFull);
+                }
+            }
+
+            SignalWake();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
         /// The backpressure-aware counterpart to <see cref="SendGameData"/>:
         /// when the command queue is full, waits for a slot instead of
         /// failing fast, pacing the caller to actual transport throughput —
@@ -426,7 +486,7 @@ namespace SignalFish.Client.Async
                 _sendBuffer.Reset();
                 EnvelopeWriter.WriteGameData(_sendBuffer, message);
                 frame = _sendBuffer.WrittenSpan.ToArray();
-                queued = _commands.TryEnqueue(frame);
+                queued = _commands.TryEnqueue(new QueuedFrame(frame, binary: false));
             }
 
             if (queued)
@@ -435,7 +495,11 @@ namespace SignalFish.Client.Async
                 return CommandSend.Admitted;
             }
 
-            if (!await _commands.EnqueueAsync(frame, ct).ConfigureAwait(false))
+            if (
+                !await _commands
+                    .EnqueueAsync(new QueuedFrame(frame, binary: false), ct)
+                    .ConfigureAwait(false)
+            )
             {
                 return CommandSend.Refused(AdmissionError.NotConnected);
             }
@@ -615,7 +679,11 @@ namespace SignalFish.Client.Async
                 return false;
             }
 
-            if (!_commands.TryEnqueue(_sendBuffer.WrittenSpan.ToArray()))
+            if (
+                !_commands.TryEnqueue(
+                    new QueuedFrame(_sendBuffer.WrittenSpan.ToArray(), binary: false)
+                )
+            )
             {
                 return false;
             }
@@ -668,7 +736,11 @@ namespace SignalFish.Client.Async
 
                 _sendBuffer.Reset();
                 write(_sendBuffer, state);
-                if (!_commands.TryEnqueue(_sendBuffer.WrittenSpan.ToArray()))
+                if (
+                    !_commands.TryEnqueue(
+                        new QueuedFrame(_sendBuffer.WrittenSpan.ToArray(), binary: false)
+                    )
+                )
                 {
                     return CommandSend.Refused(AdmissionError.SendBufferFull);
                 }
@@ -722,6 +794,7 @@ namespace SignalFish.Client.Async
                 appId: _options.AppId,
                 sdkVersion: _options.SdkVersion,
                 platform: _options.Platform,
+                gameDataFormat: _options.GameDataFormat,
                 protocolVersion: _options.ProtocolVersion,
                 supportedTransports: _options.SupportedTransports,
                 supportedTopologies: _options.SupportedTopologies,
@@ -1143,7 +1216,7 @@ namespace SignalFish.Client.Async
                     */
                     _disconnectedDelivered = false;
                     _severClose = default;
-                    _commands = new BoundedQueue<byte[]>(_options.CommandCapacity);
+                    _commands = new BoundedQueue<QueuedFrame>(_options.CommandCapacity);
 
                     /*
                         The fresh connection re-runs the handshake
@@ -1152,8 +1225,12 @@ namespace SignalFish.Client.Async
                         configured credentials (M5.3).
                     */
                     _pingBuffer.Reset();
-                    EnvelopeWriter.WriteAuthenticate(_pingBuffer, BuildHandshakeMessage());
-                    _commands.TryEnqueue(_pingBuffer.WrittenSpan.ToArray());
+                    AuthenticateMessage handshake = BuildHandshakeMessage();
+                    _deliveryGate.NoteRequestedFormat(handshake.GameDataFormat);
+                    EnvelopeWriter.WriteAuthenticate(_pingBuffer, handshake);
+                    _ = _commands.TryEnqueue(
+                        new QueuedFrame(_pingBuffer.WrittenSpan.ToArray(), binary: false)
+                    );
                 }
             }
 
@@ -1189,9 +1266,9 @@ namespace SignalFish.Client.Async
         private async Task DrainCommandsAsync()
         {
             int budget = _options.CommandsPerWake;
-            while (budget-- > 0 && _commands.TryDequeue(out byte[]? frame))
+            while (budget-- > 0 && _commands.TryDequeue(out QueuedFrame frame))
             {
-                await SendFrameAsync(frame).ConfigureAwait(false);
+                await SendFrameAsync(frame.Payload, frame.Binary).ConfigureAwait(false);
                 if (_terminal || _severed)
                 {
                     return;
@@ -1214,7 +1291,8 @@ namespace SignalFish.Client.Async
                 _lastPingMs = now;
                 _pingBuffer.Reset();
                 EnvelopeWriter.WritePing(_pingBuffer);
-                await SendFrameAsync(_pingBuffer.WrittenSpan.ToArray()).ConfigureAwait(false);
+                await SendFrameAsync(_pingBuffer.WrittenSpan.ToArray(), binary: false)
+                    .ConfigureAwait(false);
             }
         }
 
@@ -1301,11 +1379,13 @@ namespace SignalFish.Client.Async
             }
         }
 
-        private async Task SendFrameAsync(byte[] frame)
+        private async Task SendFrameAsync(byte[] frame, bool binary)
         {
             try
             {
-                ValueTask<int> send = _transport.SendAsync(frame);
+                ValueTask<int> send = binary
+                    ? _transport.SendBinaryAsync(frame)
+                    : _transport.SendAsync(frame);
                 if (!send.IsCompletedSuccessfully)
                 {
                     await send.ConfigureAwait(false);

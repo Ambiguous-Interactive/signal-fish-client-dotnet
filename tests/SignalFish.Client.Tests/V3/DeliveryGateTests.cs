@@ -19,6 +19,9 @@ namespace SignalFish.Client.Tests.V3
     [TestFixture]
     public sealed class DeliveryGateTests
     {
+        /// <summary>The canonical v3 server advertisement (the golden ProtocolInfo).</summary>
+        private static readonly string[] CanonicalFormats = { "json", "message_pack" };
+
         [Test]
         public void V2RoomJoinedWithAnUnstampedRosterIsAccepted()
         {
@@ -60,13 +63,13 @@ namespace SignalFish.Client.Tests.V3
                 fresh interval refuses and the room quarantines.
             */
             DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
-            gate.OnProtocolInfo(3);
+            gate.OnProtocolInfo(3, CanonicalFormats, out _);
             _ = gate.RebaselineSnapshot(Players(selfWithStamps: true));
             GateVerdict first = gate.RecordRelayStats(RelayStats(5_000));
             Assert.That(first.Suppress, Is.False, first.Diagnostic);
 
             gate.ObserveTerminal();
-            gate.OnProtocolInfo(3);
+            gate.OnProtocolInfo(3, CanonicalFormats, out _);
             _ = gate.RebaselineSnapshot(Players(selfWithStamps: true));
 
             GateVerdict fresh = gate.RecordRelayStats(RelayStats(10_000));
@@ -144,7 +147,7 @@ namespace SignalFish.Client.Tests.V3
             DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
             RelayOneStamp(gate, seq: 1);
 
-            gate.OnProtocolInfo(3);
+            gate.OnProtocolInfo(3, CanonicalFormats, out _);
             GateVerdict verdict = gate.RecordGameData(StampedGame(seq: 2, epoch: 1), out _);
             Assert.That(verdict.Suppress, Is.False, verdict.Diagnostic);
         }
@@ -153,7 +156,7 @@ namespace SignalFish.Client.Tests.V3
         public void ProtocolInfoSwapsTheEngineAndAcceptsTheStampedSnapshot()
         {
             DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
-            gate.OnProtocolInfo(3);
+            gate.OnProtocolInfo(3, CanonicalFormats, out _);
 
             GateVerdict verdict = gate.RebaselineSnapshot(Players(selfWithStamps: true));
             Assert.That(verdict.Suppress, Is.False, verdict.Diagnostic);
@@ -207,7 +210,7 @@ namespace SignalFish.Client.Tests.V3
                 latches quarantined.
             */
             DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
-            gate.OnProtocolInfo(3);
+            gate.OnProtocolInfo(3, CanonicalFormats, out _);
             _ = gate.RebaselineSnapshot(Players(selfWithStamps: true));
 
             GateVerdict verdict = gate.RecordGameData(StampedGame(seq: 5, epoch: 1), out _);
@@ -440,10 +443,7 @@ namespace SignalFish.Client.Tests.V3
             Assert.That(translated.Event.Kind, Is.EqualTo(PollEventKind.GameData));
         }
 
-        /// <summary>
-        /// Negotiates v3, baselines the roster, and relays one accepted
-        /// stamp — the healthy session state the refusal tests perturb.
-        /// </summary>
+        /// <summary>Builds a healthy relay-stats interval.</summary>
         private static RelayStatsMessage RelayStats(ulong intervalMs)
         {
             return new RelayStatsMessage(
@@ -454,9 +454,13 @@ namespace SignalFish.Client.Tests.V3
             );
         }
 
+        /// <summary>
+        /// Negotiates v3, baselines the roster, and relays one accepted
+        /// stamp — the healthy session state the refusal tests perturb.
+        /// </summary>
         private static void RelayOneStamp(DeliveryGate gate, ulong seq)
         {
-            gate.OnProtocolInfo(3);
+            gate.OnProtocolInfo(3, CanonicalFormats, out _);
             GateVerdict baseline = gate.RebaselineSnapshot(Players(selfWithStamps: true));
             Assert.That(baseline.Suppress, Is.False, baseline.Diagnostic);
             GateVerdict relayed = gate.RecordGameData(StampedGame(seq: seq, epoch: 1), out _);

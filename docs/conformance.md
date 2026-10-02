@@ -71,5 +71,12 @@ Checked items are covered by `tests/SignalFish.Client.E2E`
       illegal class/key pairings behind the server's
       `INVALID_DELIVERY_CLASS`/`INVALID_INPUT` refusals unrepresentable
       (local admission refuses classified sends without a negotiated v3).
-- [ ] Reconnect (live), v3 dynamics (mesh, binary game data), v3 gap
-      lifecycle — land with their milestones (M6.3+, M6.6).
+- [x] v3 binary game data (M6.4): the MessagePack relay envelope decodes
+      strictly (RFC-4122 sender bytes, opaque payload, paired non-zero
+      stamps), format negotiation admits binary only against a negotiated
+      non-JSON encoding, and binary frames gate through the same
+      delivery-accountability engine — binary is reliable, sharing the
+      sender's seq stream. The live two-way round trip lands with the
+      M6.6 scripted scenarios.
+- [ ] Reconnect (live), v3 dynamics (mesh), v3 gap
+      lifecycle — land with their milestones (M6.5+, M6.6).

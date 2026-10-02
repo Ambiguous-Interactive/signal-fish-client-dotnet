@@ -82,15 +82,26 @@ namespace SignalFish.Client.Polling
                 return;
             }
 
-            if (!frame.IsText || frame.Payload.Length > maxFrameBytes)
+            if (frame.Payload.Length > maxFrameBytes)
             {
                 /*
-                    The v2 floor is JSON text; an oversized or binary frame
-                    violates the negotiated contract (binary game data
-                    arrives with v3).
+                    The v2 floor is JSON text under a per-frame byte bound;
+                    an oversized frame violates the negotiated contract
+                    before any decode.
                 */
                 translated.HasEvent = true;
                 translated.Event = PollEvent.FromViolation(default(MessageKind), frame.Payload);
+                return;
+            }
+
+            if (!frame.IsText)
+            {
+                /*
+                    Binary game data rides v3's negotiated non-JSON
+                    encoding; without it a binary frame violates the
+                    negotiated contract.
+                */
+                TranslateBinaryGameData(frame, gate, ref translated);
                 return;
             }
 
@@ -116,6 +127,103 @@ namespace SignalFish.Client.Polling
                     // Decode never yields other classifications.
                     break;
             }
+        }
+
+        /// <summary>
+        /// Translates one physical binary frame. Admission runs first
+        /// (negotiation settled, non-JSON encoding negotiated); then the
+        /// strict MessagePack decode (failure → bounded
+        /// <see cref="PollEventKind.DecodeFailed"/>, never a policy
+        /// teardown by itself); then the representation check (the
+        /// envelope's embedded encoding must equal the negotiated token);
+        /// finally the game-data gate — stamps, cursors, quarantine —
+        /// exactly like a JSON <c>GameData</c>.
+        /// </summary>
+        private static void TranslateBinaryGameData(
+            in TransportFrame frame,
+            DeliveryGate gate,
+            ref FrameTranslation translated
+        )
+        {
+            if (!gate.TryAdmitBinaryFrame(out GateVerdict admission, out _))
+            {
+                /*
+                    The refusal applies per policy; under Observe the
+                    violation surfaces but the frame still stops here — an
+                    out-of-contract frame is never decoded into game data,
+                    and its bytes can never move the cursors. The session
+                    keeps flowing either way.
+                */
+                ApplyVerdict(default(MessageKind), frame.Payload, admission, ref translated);
+                return;
+            }
+
+            if (
+                !BinaryGameDataFrame.TryDecode(
+                    frame.Payload,
+                    gate.IsProtocolV3,
+                    out BinaryGameDataFrame decoded,
+                    out DecodeError error,
+                    out int errorOffset
+                )
+            )
+            {
+                translated.HasEvent = true;
+                translated.Event = PollEvent.FromDecodeFailed(error, errorOffset, frame.Payload);
+                return;
+            }
+
+            /*
+                Binary carries no class metadata: reliable by definition,
+                gated through the same engine (paired stamps on v3, the
+                bare shape on v2).
+            */
+            bool protocolV3 = gate.IsProtocolV3;
+            IncomingGameData gameData = new IncomingGameData(
+                decoded.FromPlayer,
+                decoded.Payload,
+                GameDataClass.Reliable,
+                classPresent: false,
+                key: 0,
+                keyPresent: false,
+                protocolV3 ? decoded.Seq : null,
+                protocolV3 ? decoded.Epoch : null
+            );
+
+            if (decoded.Format != gate.NegotiatedEncoding)
+            {
+                /*
+                    The envelope names a different encoding than the
+                    negotiation settled: the refusal applies, and under
+                    Observe the payload still surfaces — informational,
+                    never advancing the cursors (Rust parity).
+                */
+                GateVerdict representation = gate.RefuseRepresentation(decoded.Format);
+                if (
+                    ApplyVerdict(
+                        default(MessageKind),
+                        frame.Payload,
+                        representation,
+                        ref translated
+                    )
+                )
+                {
+                    return;
+                }
+
+                translated.HasEvent = true;
+                translated.Event = PollEvent.FromGameData(gameData, frame.Payload);
+                return;
+            }
+
+            GateVerdict verdict = gate.RecordGameData(gameData, out _);
+            if (ApplyVerdict(default(MessageKind), frame.Payload, verdict, ref translated))
+            {
+                return;
+            }
+
+            translated.HasEvent = true;
+            translated.Event = PollEvent.FromGameData(gameData, frame.Payload);
         }
 
         private static void TranslateMessage(
@@ -144,10 +252,29 @@ namespace SignalFish.Client.Polling
                     the gate as authoritative input: a failed re-decode is
                     the routed-fact wire violation.
                 */
-                if (!FeedSessionFact(gate, fact, envelope, out GateVerdict factVerdict))
+                if (
+                    !FeedSessionFact(
+                        gate,
+                        fact,
+                        envelope,
+                        out GateVerdict factVerdict,
+                        out string? factRefusal
+                    )
+                )
                 {
+                    /*
+                        Deliberately outside the violation policy: a frame
+                        that cannot be trusted as session input is rejected
+                        outright (the fact never applies), whatever the
+                        configured reaction — matching the routed-fact
+                        wire-violation precedent.
+                    */
                     translated.HasEvent = true;
-                    translated.Event = PollEvent.FromViolation(envelope.Message, envelope.Raw);
+                    translated.Event = PollEvent.FromViolation(
+                        envelope.Message,
+                        factRefusal,
+                        envelope.Raw
+                    );
                     return;
                 }
 
@@ -203,15 +330,30 @@ namespace SignalFish.Client.Polling
             DeliveryGate gate,
             in SessionEvent fact,
             in EnvelopeEvent envelope,
-            out GateVerdict verdict
+            out GateVerdict verdict,
+            out string? refusal
         )
         {
             verdict = default;
+            refusal = null;
             switch (fact.Kind)
             {
                 case SessionEventKind.ProtocolInfo:
-                    gate.OnProtocolInfo(fact.NegotiatedProtocolVersion);
-                    return true;
+                    if (
+                        !ProtocolInfoMessage.TryDecode(
+                            envelope.Data,
+                            out ProtocolInfoMessage protocolInfo
+                        )
+                    )
+                    {
+                        return false;
+                    }
+
+                    return gate.OnProtocolInfo(
+                        protocolInfo.ProtocolVersion,
+                        protocolInfo.GameDataFormats,
+                        out refusal
+                    );
                 case SessionEventKind.RoomJoined:
                     if (!RoomJoinedMessage.TryDecode(envelope.Data, out RoomJoinedMessage joined))
                     {
@@ -279,13 +421,30 @@ namespace SignalFish.Client.Polling
             ref FrameTranslation translated
         )
         {
+            return ApplyVerdict(envelope.Message, envelope.Raw, verdict, ref translated);
+        }
+
+        /// <summary>
+        /// Applies a gate verdict to the translation: surfaces the
+        /// violation (when one was raised), converts a policy teardown
+        /// into the close, and reports whether the frame is suppressed.
+        /// The envelope-free form serves binary frames (no envelope:
+        /// default message kind, the frame bytes as the raw payload).
+        /// </summary>
+        private static bool ApplyVerdict(
+            MessageKind messageKind,
+            ReadOnlyMemory<byte> raw,
+            in GateVerdict verdict,
+            ref FrameTranslation translated
+        )
+        {
             if (verdict.Diagnostic != null)
             {
                 translated.HasViolation = true;
                 translated.Violation = PollEvent.FromViolation(
-                    envelope.Message,
+                    messageKind,
                     verdict.Diagnostic,
-                    envelope.Raw
+                    raw
                 );
             }
 

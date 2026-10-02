@@ -44,9 +44,31 @@ namespace SignalFish.Client.Tests.Transport
             }
         }
 
+        /// <summary>Gets the binary frames sent so far, in order.</summary>
+        public IReadOnlyList<byte[]> SentBinary
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    List<byte[]> copy = new List<byte[]>();
+                    for (int i = 0; i < _sent.Count; i++)
+                    {
+                        if (!_sentKinds[i])
+                        {
+                            copy.Add(_sent[i]);
+                        }
+                    }
+
+                    return copy;
+                }
+            }
+        }
+
         private readonly object _gate = new object();
         private readonly Queue<TransportFrame> _incoming = new Queue<TransportFrame>();
         private readonly List<byte[]> _sent = new List<byte[]>();
+        private readonly List<bool> _sentKinds = new List<bool>();
         private TaskCompletionSource<TransportFrame>? _pendingReceive;
         private TaskCompletionSource<bool>? _sendGate;
         private int _state = StateNew;
@@ -201,34 +223,18 @@ namespace SignalFish.Client.Tests.Transport
         }
 
         /// <inheritdoc />
-        public async ValueTask<int> SendAsync(
+        public ValueTask<int> SendAsync(ReadOnlyMemory<byte> frame, CancellationToken ct = default)
+        {
+            return SendFrameAsync(frame, isText: true, ct);
+        }
+
+        /// <inheritdoc />
+        public ValueTask<int> SendBinaryAsync(
             ReadOnlyMemory<byte> frame,
             CancellationToken ct = default
         )
         {
-            int state = Volatile.Read(ref _state);
-            ObjectDisposedException.ThrowIf(state == StateDisposed, typeof(FakeTransport));
-
-            if (state != StateConnected)
-            {
-                throw new TransportClosedException(
-                    new TransportClose(Volatile.Read(ref _closeCode))
-                );
-            }
-
-            TaskCompletionSource<bool>? sendGate;
-            lock (_gate)
-            {
-                _sent.Add(frame.ToArray());
-                sendGate = _sendGate;
-            }
-
-            if (sendGate is not null)
-            {
-                await sendGate.Task;
-            }
-
-            return frame.Length;
+            return SendFrameAsync(frame, isText: false, ct);
         }
 
         /// <inheritdoc />
@@ -282,6 +288,38 @@ namespace SignalFish.Client.Tests.Transport
             Abort();
             Interlocked.Exchange(ref _state, StateDisposed);
             return default;
+        }
+
+        private async ValueTask<int> SendFrameAsync(
+            ReadOnlyMemory<byte> frame,
+            bool isText,
+            CancellationToken ct
+        )
+        {
+            int state = Volatile.Read(ref _state);
+            ObjectDisposedException.ThrowIf(state == StateDisposed, typeof(FakeTransport));
+
+            if (state != StateConnected)
+            {
+                throw new TransportClosedException(
+                    new TransportClose(Volatile.Read(ref _closeCode))
+                );
+            }
+
+            TaskCompletionSource<bool>? sendGate;
+            lock (_gate)
+            {
+                _sent.Add(frame.ToArray());
+                _sentKinds.Add(isText);
+                sendGate = _sendGate;
+            }
+
+            if (sendGate is not null)
+            {
+                await sendGate.Task;
+            }
+
+            return frame.Length;
         }
 
         private TransportFrame TakeCloseFrame()

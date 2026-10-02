@@ -9,6 +9,7 @@ public interface ITransport : IAsyncDisposable
 {
     Task ConnectAsync(Uri uri, CancellationToken ct = default);
     ValueTask<int> SendAsync(ReadOnlyMemory<byte> frame, CancellationToken ct = default);
+    ValueTask<int> SendBinaryAsync(ReadOnlyMemory<byte> frame, CancellationToken ct = default);
     ValueTask<TransportFrame> ReceiveAsync(CancellationToken ct = default);
 }
 ```
@@ -16,7 +17,9 @@ public interface ITransport : IAsyncDisposable
 Contract highlights:
 
 - `ConnectAsync` never retries; retry policy belongs to the reconnect layer.
-- Sends are capped (default 64 KiB, the server inbound limit) and
+- `SendAsync` writes text frames (the JSON envelope lane);
+  `SendBinaryAsync` writes binary frames (the v3 binary game-data lane).
+  Both are capped (default 64 KiB, the server inbound limit) and
   serialized; receives are single-reader.
 - The close frame is surfaced exactly once, with the wire close code mapped
   to a `TransportCloseKind` (4000-4007, 1009). After that, receives throw

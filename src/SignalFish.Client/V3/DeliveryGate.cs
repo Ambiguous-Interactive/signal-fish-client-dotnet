@@ -40,11 +40,34 @@ namespace SignalFish.Client.V3
         /// </summary>
         internal bool Quarantined => _quarantined;
 
+        /// <summary>Gets the negotiated protocol major floor (v3 enables stamp accounting).</summary>
+        internal bool IsProtocolV3 => _protocolV3;
+
+        /// <summary>
+        /// Gets the effective game-data encoding after the
+        /// <c>ProtocolInfo</c> resolution (JSON until then).
+        /// </summary>
+        internal GameDataFormatToken NegotiatedEncoding => _negotiatedFormat;
+
+        /// <summary>Gets whether a non-JSON game-data encoding was negotiated.</summary>
+        /// <remarks>
+        /// Written once per connection by the receive loop (at
+        /// <c>ProtocolInfo</c>) and read by send paths on other threads:
+        /// the plain read is deliberate — the flag is tear-free, settles
+        /// once per connection, and a stale <see langword="false"/> only
+        /// fails a send fast with a retryable verdict.
+        /// </remarks>
+        internal bool IsBinaryGameDataNegotiated =>
+            _protocolInfoSeen && _negotiatedFormat != GameDataFormatToken.Json;
+
         private readonly DeliveryViolationPolicy _policy;
         private DeliveryAccountability _engine = new DeliveryAccountability(false);
         private bool _protocolInfoSeen;
         private bool _protocolV3;
         private bool _quarantined;
+        private string? _requestedFormatToken;
+        private GameDataFormatToken _requestedFormat;
+        private GameDataFormatToken _negotiatedFormat = GameDataFormatToken.Json;
 
         /// <summary>Initializes the gate with the configured policy (default quarantine).</summary>
         internal DeliveryGate(DeliveryViolationPolicy policy)
@@ -53,23 +76,130 @@ namespace SignalFish.Client.V3
         }
 
         /// <summary>
-        /// Swaps the engine for the negotiated version — once per
-        /// connection: a same-version <c>ProtocolInfo</c> re-echo is
-        /// absorbed (the cursors and gap ledger survive), a genuinely
-        /// different echo re-swaps so the engine matches the negotiated
-        /// floor.
+        /// Records the game-data encoding the outgoing <c>Authenticate</c>
+        /// requested (the wire is the one source of truth; absence,
+        /// <c>json</c>, and unknown tokens all mean the JSON default).
+        /// Ignored once negotiation settled.
         /// </summary>
-        internal void OnProtocolInfo(uint? negotiatedProtocolVersion)
+        /// <remarks>
+        /// Called from send threads while the receive loop owns the
+        /// negotiation state: the write happens-before the caller's
+        /// <c>Authenticate</c> is queued, and the read side only acts on
+        /// it before that frame's <c>ProtocolInfo</c> response can
+        /// arrive, so the pairing is ordered by the wire conversation.
+        /// </remarks>
+        internal void NoteRequestedFormat(string? gameDataFormat)
         {
-            bool negotiatedV3 = (negotiatedProtocolVersion ?? 0) >= 3;
-            if (_protocolInfoSeen && negotiatedV3 == _protocolV3)
+            if (_protocolInfoSeen)
             {
                 return;
             }
 
+            _requestedFormatToken = null;
+            _requestedFormat = GameDataFormatToken.Json;
+            if (
+                !string.IsNullOrEmpty(gameDataFormat)
+                && gameDataFormat != "json"
+                && BinaryGameDataFrame.TryReadToken(
+                    System.Text.Encoding.ASCII.GetBytes(gameDataFormat),
+                    out GameDataFormatToken requested
+                )
+            )
+            {
+                _requestedFormatToken = gameDataFormat;
+                _requestedFormat = requested;
+            }
+        }
+
+        /// <summary>
+        /// Swaps the engine for the negotiated version — once per
+        /// connection: a same-version <c>ProtocolInfo</c> re-echo is
+        /// absorbed (the cursors and gap ledger survive), a genuinely
+        /// different echo re-swaps so the engine matches the negotiated
+        /// floor. The advertised <c>game_data_formats</c> must match the
+        /// canonical negotiation order (<c>[json]</c> or
+        /// <c>[json, message_pack]</c>; an absent or empty list — a
+        /// legacy server — is tolerated with JSON effective), and settle
+        /// the effective encoding: the requested token when the server
+        /// advertises it, JSON otherwise. False means the frame is
+        /// rejected before negotiation applies (<paramref
+        /// name="refusal"/> is the diagnostic).
+        /// </summary>
+        internal bool OnProtocolInfo(
+            uint? negotiatedProtocolVersion,
+            IReadOnlyList<string>? gameDataFormats,
+            out string? refusal
+        )
+        {
+            refusal = null;
+            if (_protocolInfoSeen)
+            {
+                bool negotiatedV3 = (negotiatedProtocolVersion ?? 0) >= 3;
+                if (negotiatedV3 == _protocolV3)
+                {
+                    return true;
+                }
+            }
+
+            if (!ResolveFormatNegotiation(gameDataFormats, out refusal))
+            {
+                return false;
+            }
+
             _protocolInfoSeen = true;
-            _protocolV3 = negotiatedV3;
+            _protocolV3 = (negotiatedProtocolVersion ?? 0) >= 3;
             _engine = new DeliveryAccountability(_protocolV3);
+            return true;
+        }
+
+        /// <summary>
+        /// Admits a physical binary frame: only after negotiation settled
+        /// and only against a negotiated non-JSON encoding. False means
+        /// the policy's verdict applies (<paramref name="verdict"/>) and
+        /// the frame never reaches the binary decoder.
+        /// </summary>
+        internal bool TryAdmitBinaryFrame(out GateVerdict verdict, out string? diagnostic)
+        {
+            if (!_protocolInfoSeen)
+            {
+                diagnostic =
+                    "lifecycle violation: binary game data arrived before"
+                    + " game-data format negotiation completed";
+            }
+            else if (!IsBinaryGameDataNegotiated)
+            {
+                diagnostic =
+                    "delivery accountability violation: physical binary frame"
+                    + " representation did not match negotiated "
+                    + BinaryGameDataFrame.WireToken(_negotiatedFormat)
+                    + " encoding";
+            }
+            else
+            {
+                diagnostic = null;
+                verdict = default;
+                return true;
+            }
+
+            verdict = Refuse(diagnostic, baseline: false);
+            return false;
+        }
+
+        /// <summary>
+        /// Feeds the representation check the binary decoder cannot see:
+        /// the envelope's embedded encoding must equal the negotiated
+        /// token.
+        /// </summary>
+        internal GateVerdict RefuseRepresentation(GameDataFormatToken encoding)
+        {
+            string diagnostic =
+                "delivery accountability violation: game-data frame"
+                + " representation did not match negotiated "
+                + BinaryGameDataFrame.WireToken(_negotiatedFormat)
+                + " encoding (frame names "
+                + BinaryGameDataFrame.WireToken(encoding)
+                + ")";
+            return Refuse(diagnostic, baseline: false);
         }
 
         /// <summary>Clears the room-scoped cursors and the quarantine latch (room exit).</summary>
@@ -91,6 +221,8 @@ namespace SignalFish.Client.V3
             _engine.ObserveTerminal();
             _quarantined = false;
             _protocolInfoSeen = false;
+            _negotiatedFormat = GameDataFormatToken.Json;
+            _requestedFormatToken = null;
         }
 
         /// <summary>Feeds a room snapshot (join) as the authoritative sender baseline.</summary>
@@ -242,6 +374,74 @@ namespace SignalFish.Client.V3
                 _engine.ObserveUnsupportedFormatError(out string? diagnostic),
                 diagnostic
             );
+        }
+
+        private static bool ContainsToken(IReadOnlyList<string> formats, string token)
+        {
+            for (int i = 0; i < formats.Count; i++)
+            {
+                if (formats[i] == token)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Validates the advertised format list and settles the effective
+        /// encoding from the requested token. A non-empty list must match
+        /// the canonical negotiation order; the request survives only
+        /// when the server advertises it.
+        /// </summary>
+        private bool ResolveFormatNegotiation(
+            IReadOnlyList<string>? gameDataFormats,
+            out string? refusal
+        )
+        {
+            /*
+                Resolve into a local and assign only on success: a rejected
+                advertisement (a version-changing re-echo the canonical
+                check refuses) must leave the already-settled encoding
+                alone — state mutates after validation, never before.
+            */
+            GameDataFormatToken resolved = GameDataFormatToken.Json;
+            if (gameDataFormats is null || gameDataFormats.Count == 0)
+            {
+                _negotiatedFormat = resolved;
+                refusal = null;
+                return true;
+            }
+
+            bool canonical =
+                gameDataFormats.Count == 1 && gameDataFormats[0] == "json"
+                || (
+                    gameDataFormats.Count == 2
+                    && gameDataFormats[0] == "json"
+                    && gameDataFormats[1] == "message_pack"
+                );
+            if (!canonical)
+            {
+                refusal =
+                    "lifecycle violation: ProtocolInfo game_data_formats ["
+                    + string.Join(", ", gameDataFormats)
+                    + "] does not match the canonical Server 0.8 negotiation order"
+                    + " [json, message_pack?]";
+                return false;
+            }
+
+            if (
+                _requestedFormatToken is not null
+                && ContainsToken(gameDataFormats, _requestedFormatToken)
+            )
+            {
+                resolved = _requestedFormat;
+            }
+
+            _negotiatedFormat = resolved;
+            refusal = null;
+            return true;
         }
 
         /// <summary>A refusal through the configured policy.</summary>

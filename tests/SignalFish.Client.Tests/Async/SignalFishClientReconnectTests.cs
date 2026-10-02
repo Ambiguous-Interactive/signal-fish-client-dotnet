@@ -734,6 +734,44 @@ namespace SignalFish.Client.Tests.Async
             await client.DisposeAsync();
         }
 
+        [Test]
+        public async Task ReconnectHandshakeCarriesTheRequestedGameDateFormat()
+        {
+            /*
+                A binary-lane session that dies must re-request the encoding
+                on the fresh connection: the gate resolves the negotiated
+                format from ProtocolInfo against this request, so a round
+                that drops it would silently fall back to JSON.
+            */
+            TransportFactory factory = new TransportFactory();
+            FakeTransport first = factory.Create();
+            SignalFishClient client = BuildPolicyClient(
+                first,
+                new ReconnectPolicy(
+                    factory.Create,
+                    initialBackoffMilliseconds: 0,
+                    maxBackoffMilliseconds: 0
+                ),
+                gameDataFormat: "message_pack"
+            );
+            await ConnectJoinRoomAsync(client, first);
+
+            first.FailPendingReceive(4003);
+            await NextEventAsync(client); // Disconnected
+            await NextEventAsync(client); // Reconnecting (0 backoff)
+
+            await AdvanceUntilAsync(client, () => factory.Called >= 2, "round 2 opens");
+            FakeTransport second = factory.Last!;
+            await NextEventAsync(client); // TransportReady
+
+            await WaitForAsync(
+                () => second.SentText.Count >= 1,
+                "the fresh round re-authenticates"
+            );
+            Assert.That(second.SentText[0], Does.Contain("\"game_data_format\": \"message_pack\""));
+            await client.DisposeAsync();
+        }
+
         private SignalFishClient BuildPolicyClient(
             FakeTransport initial,
             ReconnectPolicy policy,
@@ -746,7 +784,8 @@ namespace SignalFish.Client.Tests.Async
             uint? protocolVersion = null,
             IReadOnlyList<string>? supportedTransports = null,
             IReadOnlyList<string>? supportedTopologies = null,
-            IReadOnlyList<string>? requestedCapabilities = null
+            IReadOnlyList<string>? requestedCapabilities = null,
+            string? gameDataFormat = null
         )
         {
             _clock = new VirtualClock();
@@ -765,7 +804,8 @@ namespace SignalFish.Client.Tests.Async
                     protocolVersion: protocolVersion,
                     supportedTransports: supportedTransports,
                     supportedTopologies: supportedTopologies,
-                    requestedCapabilities: requestedCapabilities
+                    requestedCapabilities: requestedCapabilities,
+                    gameDataFormat: gameDataFormat
                 )
             );
         }
