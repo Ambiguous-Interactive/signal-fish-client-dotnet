@@ -42,6 +42,7 @@ namespace SignalFish.Client.V3
 
         private readonly DeliveryViolationPolicy _policy;
         private DeliveryAccountability _engine = new DeliveryAccountability(false);
+        private bool _protocolInfoSeen;
         private bool _protocolV3;
         private bool _quarantined;
 
@@ -52,12 +53,22 @@ namespace SignalFish.Client.V3
         }
 
         /// <summary>
-        /// Rebuilds the engine for the negotiated version. Runs exactly
-        /// once per connection, when <c>ProtocolInfo</c> arrives.
+        /// Swaps the engine for the negotiated version — once per
+        /// connection: a same-version <c>ProtocolInfo</c> re-echo is
+        /// absorbed (the cursors and gap ledger survive), a genuinely
+        /// different echo re-swaps so the engine matches the negotiated
+        /// floor.
         /// </summary>
         internal void OnProtocolInfo(uint? negotiatedProtocolVersion)
         {
-            _protocolV3 = (negotiatedProtocolVersion ?? 0) >= 3;
+            bool negotiatedV3 = (negotiatedProtocolVersion ?? 0) >= 3;
+            if (_protocolInfoSeen && negotiatedV3 == _protocolV3)
+            {
+                return;
+            }
+
+            _protocolInfoSeen = true;
+            _protocolV3 = negotiatedV3;
             _engine = new DeliveryAccountability(_protocolV3);
         }
 
@@ -78,7 +89,7 @@ namespace SignalFish.Client.V3
         /// <summary>Feeds a room snapshot (join) as the authoritative sender baseline.</summary>
         internal GateVerdict RebaselineSnapshot(IReadOnlyList<PlayerInfo> players)
         {
-            List<SenderBaseline>? mapped = MapRoster(players, out string? failure);
+            List<SenderBaseline>? mapped = MapRoster(players, "snapshot", out string? failure);
             if (failure != null)
             {
                 return Refuse(failure, baseline: true);
@@ -100,7 +111,11 @@ namespace SignalFish.Client.V3
             IReadOnlyList<SenderWatermark>? watermarks
         )
         {
-            List<SenderBaseline>? mapped = MapRoster(players, out string? failure);
+            List<SenderBaseline>? mapped = MapRoster(
+                players,
+                "reconnect snapshot",
+                out string? failure
+            );
             if (failure != null)
             {
                 return Refuse(failure, baseline: true);
@@ -332,13 +347,14 @@ namespace SignalFish.Client.V3
         /// </summary>
         private List<SenderBaseline>? MapRoster(
             IReadOnlyList<PlayerInfo> players,
+            string source,
             out string? failure
         )
         {
             List<SenderBaseline> mapped = new List<SenderBaseline>(players.Count);
             for (int i = 0; i < players.Count; i++)
             {
-                failure = MapBaseline(players[i], "snapshot", out SenderBaseline baseline);
+                failure = MapBaseline(players[i], source, out SenderBaseline baseline);
                 if (failure != null)
                 {
                     return null;

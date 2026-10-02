@@ -1491,7 +1491,6 @@ namespace SignalFish.Client.Async
             _terminal = true;
             _teardownClose = close;
             _deliveryGate.ObserveTerminal();
-            _deliveryGate.ObserveTerminal();
             _machine.Apply(SessionEvent.From(SessionEventKind.Disconnected));
             _events.Complete();
             _commands.Complete();

@@ -67,5 +67,17 @@ namespace SignalFish.Client.Tests.Polling
                 );
             Assert.That(construct, Throws.TypeOf<ArgumentOutOfRangeException>());
         }
+
+        [Test]
+        public void CapacitiesBelowTheReservationFloorAreRejected([Values(1, 2)] int eventCapacity)
+        {
+            /*
+                Two slots are reserved (the terminal Disconnected event and
+                the two-event frame a delivery violation produces); below
+                the floor, Poll() could never consume a frame at all.
+            */
+            Action construct = () => _ = new PollingClientOptions(eventCapacity: eventCapacity);
+            Assert.That(construct, Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
     }
 }

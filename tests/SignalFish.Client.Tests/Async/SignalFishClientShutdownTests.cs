@@ -27,21 +27,6 @@ namespace SignalFish.Client.Tests.Async
     [TestFixture]
     public class SignalFishClientShutdownTests
     {
-        /// <summary>
-        /// The golden v2 join shape: a roster without delivery stamps (the
-        /// v2 wire omits them), which the gate maps to no senders.
-        /// </summary>
-        private const string V2Join =
-            "{\"type\": \"RoomJoined\", \"data\": {\"room_id\": "
-            + "\"11111111-1111-1111-1111-111111111111\", "
-            + "\"room_code\": \"ABC123\", \"player_id\": "
-            + "\"00000000-0000-0000-0000-00000000000a\", "
-            + "\"game_name\": \"my-game\", \"max_players\": 8, "
-            + "\"supports_authority\": true, \"current_players\": [{\"id\": \"00000000-0000-0000-0000-00000000000a\", \"name\": \"Alice\", \"is_authority\": true, \"is_ready\": false, \"connected_at\": \"2026-09-20T12:00:00Z\"}], "
-            + "\"is_authority\": true, \"lobby_state\": \"waiting\", "
-            + "\"ready_players\": [], \"relay_type\": \"matchbox\", "
-            + "\"current_spectators\": []}}";
-
         private static readonly Guid GoldenPlayerId = new Guid(
             "00000000-0000-0000-0000-00000000000a"
         );
@@ -379,10 +364,14 @@ namespace SignalFish.Client.Tests.Async
                 + "\"}}";
         }
 
-        /// <summary>The gate-acceptable v2 join baseline with a reconnection token injected.</summary>
+        /// <summary>The golden player baseline with a reconnection token injected.</summary>
         private static string JoinedFrameWithToken(string token)
         {
-            return V2Join.Replace(
+            string golden = GoldenFixtures.ReadFirstLineOfType(
+                "v2-server-messages.jsonl",
+                "RoomJoined"
+            );
+            return golden.Replace(
                 "{\"type\": \"RoomJoined\", \"data\": {",
                 "{\"type\": \"RoomJoined\", \"data\": {\"reconnection_token\": \"" + token + "\", ",
                 StringComparison.Ordinal

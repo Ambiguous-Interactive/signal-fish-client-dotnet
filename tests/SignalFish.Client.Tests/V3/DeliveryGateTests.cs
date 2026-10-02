@@ -61,6 +61,23 @@ namespace SignalFish.Client.Tests.V3
         }
 
         [Test]
+        public void ProtocolInfoReEchoKeepsTheCursors()
+        {
+            /*
+                The state machine treats a ProtocolInfo re-echo as a
+                legitimate replacement; the gate must not reset the
+                sender cursors on it (a re-swapped engine would blind the
+                room until a baseline that never comes).
+            */
+            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            RelayOneStamp(gate, seq: 1);
+
+            gate.OnProtocolInfo(3);
+            GateVerdict verdict = gate.RecordGameData(StampedGame(seq: 2, epoch: 1), out _);
+            Assert.That(verdict.Suppress, Is.False, verdict.Diagnostic);
+        }
+
+        [Test]
         public void ProtocolInfoSwapsTheEngineAndAcceptsTheStampedSnapshot()
         {
             DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);

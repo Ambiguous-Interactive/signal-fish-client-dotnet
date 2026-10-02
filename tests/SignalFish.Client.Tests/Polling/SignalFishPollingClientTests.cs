@@ -23,21 +23,6 @@ namespace SignalFish.Client.Tests.Polling
         private const string RoomCode = "ABC123";
 
         /// <summary>
-        /// The golden v2 join shape: a roster without delivery stamps (the
-        /// v2 wire omits them), which the gate maps to no senders.
-        /// </summary>
-        private const string V2Join =
-            "{\"type\": \"RoomJoined\", \"data\": {\"room_id\": "
-            + "\"11111111-1111-1111-1111-111111111111\", "
-            + "\"room_code\": \"ABC123\", \"player_id\": "
-            + "\"00000000-0000-0000-0000-00000000000a\", "
-            + "\"game_name\": \"my-game\", \"max_players\": 8, "
-            + "\"supports_authority\": true, \"current_players\": [{\"id\": \"00000000-0000-0000-0000-00000000000a\", \"name\": \"Alice\", \"is_authority\": true, \"is_ready\": false, \"connected_at\": \"2026-09-20T12:00:00Z\"}], "
-            + "\"is_authority\": true, \"lobby_state\": \"waiting\", "
-            + "\"ready_players\": [], \"relay_type\": \"matchbox\", "
-            + "\"current_spectators\": []}}";
-
-        /// <summary>
         /// The golden v3 join roster extended with the golden v3 GameData's
         /// sender (...b), whose <c>seq</c> is exactly one less than the
         /// GameData stamp (43) — the coherent baseline the adjacency
@@ -252,8 +237,12 @@ namespace SignalFish.Client.Tests.Polling
                 BuildTimed();
             await ConnectAndAuthenticate(client, transport);
 
-            string joinedWire = V2Join.Insert(
-                V2Join.Length - 2,
+            string joinedLine = GoldenFixtures.ReadFirstLineOfType(
+                "v2-server-messages.jsonl",
+                "RoomJoined"
+            );
+            string joinedWire = joinedLine.Insert(
+                joinedLine.Length - 2,
                 ",\"reconnection_token\":\"tok-e2e-1\""
             );
             EnqueueWire(transport, joinedWire);
@@ -797,7 +786,7 @@ namespace SignalFish.Client.Tests.Polling
                 BuildTimed();
             await ConnectAndSettle(client);
             EnqueueGolden(transport, "Authenticated");
-            EnqueueWire(transport, V2Join);
+            EnqueueGolden(transport, "RoomJoined");
             Assert.That(client.Poll(), Is.EqualTo(2));
             DrainAll(client);
             Assert.That(client.Snapshot.IsAuthority, Is.True);

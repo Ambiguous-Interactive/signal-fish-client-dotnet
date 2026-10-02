@@ -34,7 +34,12 @@ namespace SignalFish.Client.Polling
         /// <summary>Gets the maximum inbound frame size in bytes; larger frames are protocol violations.</summary>
         public int MaxFrameBytes { get; }
 
-        /// <summary>Gets the event-ring capacity; a full ring pauses frame consumption until drained.</summary>
+        /// <summary>
+        /// Gets the event-ring capacity (minimum 3: one slot is reserved
+        /// for the terminal Disconnected event, one for the two-event
+        /// frame a delivery violation produces); a full ring pauses frame
+        /// consumption until drained.
+        /// </summary>
         public int EventCapacity { get; }
 
         /// <summary>Gets the heartbeat cadence in milliseconds (elapsed since the last ping sent).</summary>
@@ -80,11 +85,11 @@ namespace SignalFish.Client.Polling
                 );
             }
 
-            if (eventCapacity < 1)
+            if (eventCapacity < 3)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(eventCapacity),
-                    "The event-ring capacity must be positive."
+                    "The event-ring capacity must leave room for the reserved terminal slot plus the two-event-frame margin."
                 );
             }
 
