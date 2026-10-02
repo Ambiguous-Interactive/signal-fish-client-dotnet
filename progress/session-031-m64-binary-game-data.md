@@ -83,3 +83,27 @@ binary GameData — to a green PR.
   scripted scenarios (conformance row updated).
 - A coverage-guided fuzz target for the MessagePack scanner (the JSON
   codec's fuzz lane is the template) — filed as an issue.
+
+## PR feedback round (Bugbot on 777f339)
+
+Two findings, both verified before fixing (per
+[address-pr-feedback](../.llm/skills/address-pr-feedback/SKILL.md)),
+each red-green and swept:
+
+- **Confirmed (high)**: a `bin32` declaring `0x7FFFFFFF` wrapped the
+  scanner's bounded-int remaining check negative and faulted the
+  receive loop (`IndexOutOfRangeException`) instead of surfacing as
+  `DecodeFailed`. Reproduced with a 9-byte frame; the remaining-bytes
+  comparison is now wide arithmetic. The negative spelling was already
+  guarded. Sweep: every other offset sum is a fixed small width or a
+  validated length; the JSON scanner has no length prefixes.
+- **Confirmed (low)**: `ResolveFormatNegotiation` reset the settled
+  encoding before the canonical-list check, so a refused
+  version-changing re-echo clobbered a negotiated `message_pack` lane.
+  Resolution now assigns only after validation succeeds. Sweep: no
+  other gate mutator writes before validating.
+- Both classes folded into the agent sweep table
+  (address-pr-feedback) and the decode debugging notes
+  (json-serialization); the finding→fix map is on the PR. Bugbot's
+  re-review of the fix commit is clean; all 12 CI checks green (725
+  tests, net8.0 + net10.0).
