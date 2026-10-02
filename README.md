@@ -11,6 +11,13 @@ events.
 - **Scope**: signaling and relay only — your game owns simulation, rollback,
   and peer networking.
 
+Built by [Ambiguous Interactive](https://github.com/Ambiguous-Interactive).
+
+> **AI disclosure:** This project was developed with substantial assistance
+> from AI coding agents (Codex, Gemini, GLM, and others). Humans created the
+> protocol concepts and core design and retained oversight of architecture
+> and code review.
+
 ## Status
 
 Early scaffold. The protocol layer (v2 relay floor + optional v3
@@ -38,12 +45,8 @@ is the single source of truth, with thin pointer files for each agent
 front-end (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursor/rules/`,
 `.github/copilot-instructions.md`, `llms.txt`) and standards-compliant
 [Agent Skills](https://agentskills.io) under `.llm/skills/`. A generated index,
-pre-commit hooks, and CI keep everything validated.
-
-## AI disclosure
-
-Development of this repository is substantially assisted by AI coding agents,
-reviewed and directed by human maintainers.
+pre-commit hooks, and CI keep everything validated. See the
+[AI disclosure](#ai-disclosure) above.
 
 ## License
 
