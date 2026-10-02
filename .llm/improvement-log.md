@@ -147,28 +147,34 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   the shared `MaxVerbatimPayloadDepth` contract; integration follow-up
   issue filed. Open: none.
 
-## 2026-10-02 - session 030: M6.3 integration (delivery gate wiring)
+## 2026-10-02 - session 030b: Bugbot review round on PR #67
 
-- Trigger: M6.3 integration (#61) + #66 resolution; one deliverable PR.
-- Evidence: the fixture sweep surfaced 38-47 reds for "one reason" that
-  were really TWO reasons — a product bug (v2 rosters mapped to zeroed
-  baselines; every v2 join refused) hiding behind fixture incoherence
-  (v2 joins fed into v3-negotiated sessions). The adversarial review
-  then caught a silently-broken capacity floor (eventCapacity 1-2 made
-  Poll() consume nothing) and a ProtocolInfo re-echo that wiped sender
-  cursors.
-- Findings: (1) when a test sweep fails for "one reason", fix the
-  product first, then re-derive the fixture changes — the first-pass
-  fixture edits (empty rosters) were pure churn once the gate was
-  fixed. (2) A policy layer over a reshaped engine API must reproduce
-  the absent-vs-present refusals the API cannot see (v2 must SKIP, not
-  feed zeros). (3) NUnit `Assert.That` inside an allocation-gate loop
-  allocates ~2 B/assert even on pass — count failures, assert outside.
-  (4) Enumerating a ref-struct enumerator is illegal in async test
-  bodies under C# 12 even in `Release`-only projects — CI builds
-  configurations local fast-check never touches.
-- Applied: gate + policy + pipeline wiring landed (PR #67); #66 closed;
-  integration remainder narrowed to the M6.6 live gap leg. Open: none.
+- Trigger: Cursor Bugbot flagged 2 High findings on commit 0a36a6e;
+  addressed per [address-pr-feedback](./skills/address-pr-feedback/SKILL.md).
+- Evidence: both findings reproduced red before fixing (a stale-engine
+  RelayStats interval refusal; a NullReferenceException from a default
+  struct) and green after. The red-green run also caught the fix's own
+  first draft: a nullable-struct signal turned every routed fact
+  (`Authenticated`) into a violation — caught by the suite, re-cut to
+  the Try/out idiom.
+- Findings: (1) a "swap once" guard keyed only on the negotiated
+  version is not once-per-connection — the latch must reset at the
+  terminal boundary, or a reconnect inherits dead monotonic state and
+  quarantines on arrival. (2) A mapper can validate a frame with a
+  looser decoder than the consumer's typed re-decode (join decoder
+  ignores `sender_watermarks`; reconnect decoder validates them), so an
+  ignored `TryDecode` feeding a default struct is authoritative-input
+  poison — `default` bypasses the ctor's null-coalescing. (3) `return
+  default;` in a `T?`-returning method means *fail*, not "empty but
+  valid".
+- Applied: `DeliveryGate.ObserveTerminal` resets the negotiation latch;
+  the pipeline guards all snapshot re-decodes (routed-fact violation on
+  failure); `MapRoster` is null-safe. Two regression tests pinned red
+  (verified against the unfixed tree). Classes folded into
+  [reconnection](./skills/reconnection/SKILL.md) hard rule 6,
+  [json-serialization](./skills/json-serialization/SKILL.md) debugging
+  note 4, and three [address-pr-feedback](./skills/address-pr-feedback/SKILL.md)
+  sweep rows. Open: none.
 
 Entries pruned 2026-09-23 (sessions 011-014, 017b, 022-023, 025b-026):
 knowledge graduated into skills/rules; open items resolved or tracked as

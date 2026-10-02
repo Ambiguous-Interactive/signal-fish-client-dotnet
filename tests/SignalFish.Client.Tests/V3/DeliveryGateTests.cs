@@ -50,6 +50,89 @@ namespace SignalFish.Client.Tests.V3
         }
 
         [Test]
+        public void ObserveTerminalReconnectsSwapTheEngine()
+        {
+            /*
+                Delivery counters are per physical connection: the fresh
+                connection's first RelayStats interval must be accepted
+                even though the previous connection pinned a different
+                one. With the engine reused across the reconnect, the
+                fresh interval refuses and the room quarantines.
+            */
+            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            gate.OnProtocolInfo(3);
+            _ = gate.RebaselineSnapshot(Players(selfWithStamps: true));
+            GateVerdict first = gate.RecordRelayStats(RelayStats(5_000));
+            Assert.That(first.Suppress, Is.False, first.Diagnostic);
+
+            gate.ObserveTerminal();
+            gate.OnProtocolInfo(3);
+            _ = gate.RebaselineSnapshot(Players(selfWithStamps: true));
+
+            GateVerdict fresh = gate.RecordRelayStats(RelayStats(10_000));
+            Assert.That(fresh.Suppress, Is.False, fresh.Diagnostic);
+        }
+
+        [Test]
+        public void PipelineReconnectedWithMalformedWatermarksIsAViolationNotACrash()
+        {
+            /*
+                The mapper decodes a Reconnected frame with the join
+                decoder, which ignores sender_watermarks — so a malformed
+                watermark list maps fine and then fails the gate feed's
+                typed decode. The translation must surface the routed-fact
+                violation (no fact applied), never feed the default struct
+                into the gate.
+            */
+            byte[] negotiation = Encoding.UTF8.GetBytes(
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo")
+            );
+            byte[] join = Encoding.UTF8.GetBytes(GoldenFixtures.V3JoinWithBothSenders);
+            byte[] reconnect = Encoding.UTF8.GetBytes(
+                "{\"type\": \"Reconnected\", \"data\": {\"room_id\": "
+                    + "\"11111111-1111-1111-1111-111111111111\", "
+                    + "\"room_code\": \"ABC123\", \"player_id\": "
+                    + "\"00000000-0000-0000-0000-00000000000b\", "
+                    + "\"game_name\": \"test_game\", \"max_players\": 4, "
+                    + "\"supports_authority\": true, \"current_players\": ["
+                    + "{\"id\": \"00000000-0000-0000-0000-00000000000a\", \"name\": \"Alice\", "
+                    + "\"is_authority\": true, \"is_ready\": true, \"epoch\": 1, \"seq\": 42}, "
+                    + "{\"id\": \"00000000-0000-0000-0000-00000000000b\", \"name\": \"Bob\", "
+                    + "\"is_authority\": false, \"is_ready\": true, \"epoch\": 2, \"seq\": 0}"
+                    + "], \"is_authority\": false, \"lobby_state\": \"running\", "
+                    + "\"ready_players\": [], \"relay_type\": \"matchbox\", "
+                    + "\"current_spectators\": [], \"sender_watermarks\": ["
+                    + "{\"player_id\": \"00000000-0000-0000-0000-00000000000a\", "
+                    + "\"epoch\": true, \"seq\": 42}]}}"
+            );
+
+            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            FramePipeline.Translate(
+                new TransportFrame(negotiation, isText: true),
+                negotiation.Length,
+                gate,
+                out _
+            );
+            FramePipeline.Translate(
+                new TransportFrame(join, isText: true),
+                join.Length,
+                gate,
+                out FrameTranslation joined
+            );
+            Assert.That(joined.HasViolation, Is.False, joined.Violation.Diagnostic);
+
+            FramePipeline.Translate(
+                new TransportFrame(reconnect, isText: true),
+                reconnect.Length,
+                gate,
+                out FrameTranslation translated
+            );
+            Assert.That(translated.HasFact, Is.False, "a failed typed decode applies nothing");
+            Assert.That(translated.HasEvent, Is.True);
+            Assert.That(translated.Event.Kind, Is.EqualTo(PollEventKind.ProtocolViolation));
+        }
+
+        [Test]
         public void ProtocolInfoReEchoKeepsTheCursors()
         {
             /*
@@ -361,6 +444,16 @@ namespace SignalFish.Client.Tests.V3
         /// Negotiates v3, baselines the roster, and relays one accepted
         /// stamp — the healthy session state the refusal tests perturb.
         /// </summary>
+        private static RelayStatsMessage RelayStats(ulong intervalMs)
+        {
+            return new RelayStatsMessage(
+                intervalMs,
+                sentToYou: 3,
+                droppedForYou: 0,
+                backpressureEvents: 0
+            );
+        }
+
         private static void RelayOneStamp(DeliveryGate gate, ulong seq)
         {
             gate.OnProtocolInfo(3);

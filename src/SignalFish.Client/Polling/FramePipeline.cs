@@ -134,7 +134,24 @@ namespace SignalFish.Client.Polling
                     return;
                 }
 
-                if (ApplyVerdict(envelope, FeedSessionFact(gate, fact, envelope), ref translated))
+                /*
+                    The mapper validates membership-bearing payloads with
+                    its own decoder; the gate feed re-decodes snapshot
+                    bearers with the full typed decoder, which can fail
+                    where the mapper's pass cannot (a Reconnected frame
+                    with malformed sender_watermarks maps fine but fails
+                    the typed decode). A default struct must never reach
+                    the gate as authoritative input: a failed re-decode is
+                    the routed-fact wire violation.
+                */
+                if (!FeedSessionFact(gate, fact, envelope, out GateVerdict factVerdict))
+                {
+                    translated.HasEvent = true;
+                    translated.Event = PollEvent.FromViolation(envelope.Message, envelope.Raw);
+                    return;
+                }
+
+                if (ApplyVerdict(envelope, factVerdict, ref translated))
                 {
                     return;
                 }
@@ -177,50 +194,77 @@ namespace SignalFish.Client.Polling
         /// layer. <c>ProtocolInfo</c> settles the negotiated version (the
         /// per-connection engine swap); join/reconnect snapshots are the
         /// authoritative rebaselines; room exits reset the cursors; the
-        /// unsupported-format error arms its causality check.
+        /// unsupported-format error arms its causality check. False means
+        /// the frame's payload failed the typed re-decode — the caller
+        /// surfaces the routed-fact wire violation instead (<paramref
+        /// name="verdict"/> is then a default, proceed verdict).
         /// </summary>
-        private static GateVerdict FeedSessionFact(
+        private static bool FeedSessionFact(
             DeliveryGate gate,
             in SessionEvent fact,
-            in EnvelopeEvent envelope
+            in EnvelopeEvent envelope,
+            out GateVerdict verdict
         )
         {
+            verdict = default;
             switch (fact.Kind)
             {
                 case SessionEventKind.ProtocolInfo:
                     gate.OnProtocolInfo(fact.NegotiatedProtocolVersion);
-                    return default;
+                    return true;
                 case SessionEventKind.RoomJoined:
-                    RoomJoinedMessage.TryDecode(envelope.Data, out RoomJoinedMessage joined);
-                    return gate.RebaselineSnapshot(joined.Snapshot.CurrentPlayers);
+                    if (!RoomJoinedMessage.TryDecode(envelope.Data, out RoomJoinedMessage joined))
+                    {
+                        return false;
+                    }
+
+                    verdict = gate.RebaselineSnapshot(joined.Snapshot.CurrentPlayers);
+                    return true;
                 case SessionEventKind.SpectatorJoined:
-                    SpectatorJoinedMessage.TryDecode(
-                        envelope.Data,
-                        out SpectatorJoinedMessage spectatorJoined
-                    );
-                    return gate.RebaselineSnapshot(spectatorJoined.Snapshot.CurrentPlayers);
+                    if (
+                        !SpectatorJoinedMessage.TryDecode(
+                            envelope.Data,
+                            out SpectatorJoinedMessage spectatorJoined
+                        )
+                    )
+                    {
+                        return false;
+                    }
+
+                    verdict = gate.RebaselineSnapshot(spectatorJoined.Snapshot.CurrentPlayers);
+                    return true;
                 case SessionEventKind.Reconnected:
-                    ReconnectedMessage.TryDecode(envelope.Data, out ReconnectedMessage reconnect);
-                    return gate.RebaselineReconnected(
+                    if (
+                        !ReconnectedMessage.TryDecode(
+                            envelope.Data,
+                            out ReconnectedMessage reconnect
+                        )
+                    )
+                    {
+                        return false;
+                    }
+
+                    verdict = gate.RebaselineReconnected(
                         reconnect.Snapshot.CurrentPlayers,
                         reconnect.SenderWatermarks
                     );
+                    return true;
                 case SessionEventKind.RoomLeft:
                 case SessionEventKind.SpectatorLeft:
                     gate.ResetRoom();
-                    return default;
+                    return true;
                 case SessionEventKind.ServerError:
                     if (
                         FailureMessage.TryDecode(envelope.Data, out FailureMessage failure)
                         && failure.ErrorCode == UnsupportedGameDataFormatToken
                     )
                     {
-                        return gate.ObserveUnsupportedFormatError();
+                        verdict = gate.ObserveUnsupportedFormatError();
                     }
 
-                    return default;
+                    return true;
                 default:
-                    return default;
+                    return true;
             }
         }
 

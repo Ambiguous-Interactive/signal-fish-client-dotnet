@@ -79,11 +79,18 @@ namespace SignalFish.Client.V3
             _quarantined = false;
         }
 
-        /// <summary>Observes the terminal socket outcome and ends the session's latch.</summary>
+        /// <summary>
+        /// Observes the terminal socket outcome, ends the session's latch,
+        /// and closes the connection: the next connection re-negotiates,
+        /// so its first <c>ProtocolInfo</c> re-swaps the engine (counters
+        /// and cursors are per physical connection — a reused engine
+        /// fails the fresh connection's monotonicity checks).
+        /// </summary>
         internal void ObserveTerminal()
         {
             _engine.ObserveTerminal();
             _quarantined = false;
+            _protocolInfoSeen = false;
         }
 
         /// <summary>Feeds a room snapshot (join) as the authoritative sender baseline.</summary>
@@ -344,17 +351,20 @@ namespace SignalFish.Client.V3
         /// are mandatory (the paired refusal the reshaped engine API
         /// cannot see); on v2 the wire must omit them and the roster maps
         /// to no senders — the engine's v2 floor is the empty roster.
+        /// A <see langword="null"/> roster maps to no senders (a default
+        /// struct's snapshot, never a crash).
         /// </summary>
         private List<SenderBaseline>? MapRoster(
-            IReadOnlyList<PlayerInfo> players,
+            IReadOnlyList<PlayerInfo>? players,
             string source,
             out string? failure
         )
         {
-            List<SenderBaseline> mapped = new List<SenderBaseline>(players.Count);
-            for (int i = 0; i < players.Count; i++)
+            List<SenderBaseline> mapped = new List<SenderBaseline>(players?.Count ?? 0);
+            int count = players?.Count ?? 0;
+            for (int i = 0; i < count; i++)
             {
-                failure = MapBaseline(players[i], source, out SenderBaseline baseline);
+                failure = MapBaseline(players![i], source, out SenderBaseline baseline);
                 if (failure != null)
                 {
                     return null;
