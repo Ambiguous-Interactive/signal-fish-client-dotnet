@@ -1,6 +1,6 @@
 # Performance baselines
 
-Recorded baselines for the codec hot paths (PLAN.md M1.6). Benchmarks live in
+Recorded baselines for the codec hot paths (session 008). Benchmarks live in
 `tests/SignalFish.Client.PerfTests`; run locally:
 
 ```sh

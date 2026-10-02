@@ -69,6 +69,23 @@ protocol and IL2CPP.
   `||` when the failure-path value is observable — branch explicitly
   instead.
 
+## Decoding UUID text
+
+Hand-rolled UUID text decode (`TryReadGuid`) has three trap classes when
+pinning parity against `Guid.Parse`:
+
+- **Field big-endianity**: the first three groups are MSB-first in text but
+  serialize little-endian into the binary `Guid` — do not copy bytes
+  verbatim.
+- **Group boundaries**: 8-4-4-4-12 with hyphens at offsets 8/13/18/23 — the
+  group after the third hyphen starts at 19, not 18.
+- **Error-sentinel aliasing**: a `-1` failure sentinel can alias an
+  all-FFFF field — validate each hex pair individually, never OR combined
+  signed ints.
+
+Required-field enforcement needs per-field seen flags — `default(Guid)` is
+a valid value; absence is not.
+
 ## Forward compatibility (mandatory)
 
 - Unknown `type` → `UnknownMessage` event, never an exception.
