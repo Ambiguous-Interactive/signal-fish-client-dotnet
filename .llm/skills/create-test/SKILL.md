@@ -78,8 +78,11 @@ server; the client adapts. Resync only from the pinned server commit.
 
 - **SharpFuzz** entries (`tests/SignalFish.Client.FuzzTests/`) target the
   codec invariants: the reader is total (arbitrary bytes yield a bounded
-  error event, never an unbounded throw) and the writer never emits
-  invalid UTF-8.
+  error event, never an unbounded throw), the writer never emits
+  invalid UTF-8, and the msgpack-frame target drives the v3 binary
+  game-data decoder over both protocol shapes (totality, bounded failure
+  offsets, at most one mode accepts a frame, consistent fields on
+  success).
 - **FsCheck** properties cover roundtrip stability (decode(encode(x)) == x
   for representative structs) and malformed-input totality.
 - **Generators must sample enums by meaning, not by raw ordinal.** Mapping
@@ -96,7 +99,10 @@ server; the client adapts. Resync only from the pinned server commit.
 - **Repro seeds and crash artifacts stay under `.fuzz/`** (gitignored;
   `crash-*.bin` is ignored repo-wide) — never write them to the repo root,
   where a `git add .` commits them (a 5-byte crash seed was). If a seed is
-  worth keeping permanently, graduate it into a golden fixture instead.
+  worth keeping permanently, graduate it into a golden fixture or, for
+  binary frames, into `tests/SignalFish.Client.FuzzTests/Corpus/
+  msgpack-frame/` — committed, name-labeled, and pinned by
+  `CommittedMsgPackCorpusDecodesPerNameContract`.
 - When a fuzz/property run finds a real bug, graduate it into a golden
   fixture + regression test before fixing.
 - Long fuzz runs belong to scheduled CI, not the unit test suite — keep
