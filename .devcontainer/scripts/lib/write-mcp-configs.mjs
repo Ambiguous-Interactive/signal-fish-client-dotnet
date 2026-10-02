@@ -185,7 +185,11 @@ function withMcpLock(callback) {
   // Shell-managed syncs (post-start, ai-backends) hold the same lock via
   // paths.sh before invoking this script; the env marker avoids deadlock.
   // Direct invocations serialize with them through an identical mkdir lock:
-  // <state>/mcp-config.lock.d + owner token + 10 minute staleness takeover.
+  // <state>/mcp-config.lock.d + owner token + dead-owner/age takeover. The
+  // owner token leads with the writer PID in both implementations
+  // (paths.sh: PID-RANDOM-TIME, here: PID:UUID), so a crashed writer's lock
+  // is stolen within one wait instead of the 10 minute age bound; tokens
+  // without a parseable PID fall back to the age bound.
   if (env.DEVCONTAINER_CONFIG_LOCK_HELD === "1") return callback();
   const home = os.homedir();
   const lockRoot = path.join(home, ".cache", "signal-fish-devcontainer");
@@ -204,6 +208,10 @@ function withMcpLock(callback) {
       if (error?.code !== "EEXIST") throw error;
       const lockStat = fs.lstatSync(lockDir);
       if (lockStat.isSymbolicLink()) throw new Error(`refusing symlinked MCP lock ${lockDir}`);
+      if (lockOwnerIsDead(lockDir)) {
+        fs.rmSync(lockDir, { recursive: true, force: true });
+        continue;
+      }
       const age = Date.now() - lockStat.mtimeMs;
       if (age > 10 * 60 * 1000) {
         fs.rmSync(lockDir, { recursive: true, force: true });
@@ -226,6 +234,27 @@ function withMcpLock(callback) {
     } catch (error) {
       if (error?.code !== "ENOENT") log(`could not release MCP lock: ${error}`);
     }
+  }
+}
+
+// True when the lock's owner token names a PID that is no longer running.
+// process.kill(pid, 0) throws ESRCH for a dead PID; EPERM means a live
+// process owned by another user, which must be treated as alive. A missing
+// or unparseable token returns false so the age bound stays in charge.
+function lockOwnerIsDead(lockDir) {
+  let owner;
+  try {
+    owner = fs.readFileSync(path.join(lockDir, "owner"), "utf8").trim();
+  } catch {
+    return false;
+  }
+  const pid = Number.parseInt(owner.split(/[-:]/, 1)[0], 10);
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return error?.code === "ESRCH";
   }
 }
 

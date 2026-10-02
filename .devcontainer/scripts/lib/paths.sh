@@ -66,20 +66,31 @@ devcontainer_opencode_config_dir() {
 }
 
 devcontainer_opencode_config_file() {
-  local value="${OPENCODE_CONFIG:-}"
+  # Resolution order must stay in lockstep with opencodeConfigTarget() in
+  # write-mcp-configs.mjs: OPENCODE_CONFIG_DIR wins (OpenCode loads it after
+  # OPENCODE_CONFIG), then OPENCODE_CONFIG, then the XDG/default global
+  # directory. The fingerprint (post-start.sh) hashes this resolver's answer,
+  # so a divergent order would check the wrong file.
+  local dir value
+  value="${OPENCODE_CONFIG_DIR:-}"
   if [ -n "$value" ]; then
-    devcontainer_absolute_path "$value"
-    return
-  fi
-  value="$(devcontainer_opencode_config_dir)"
-  if [ -f "$value/opencode.jsonc" ]; then
-    printf '%s\n' "$value/opencode.jsonc"
-  elif [ -f "$value/opencode.json" ]; then
-    printf '%s\n' "$value/opencode.json"
-  elif [ -f "$value/config.json" ]; then
-    printf '%s\n' "$value/config.json"
+    dir="$(devcontainer_opencode_config_dir)"
   else
-    printf '%s/opencode.json\n' "$value"
+    value="${OPENCODE_CONFIG:-}"
+    if [ -n "$value" ]; then
+      devcontainer_absolute_path "$value"
+      return
+    fi
+    dir="$(devcontainer_opencode_config_dir)"
+  fi
+  if [ -f "$dir/opencode.jsonc" ]; then
+    printf '%s\n' "$dir/opencode.jsonc"
+  elif [ -f "$dir/opencode.json" ]; then
+    printf '%s\n' "$dir/opencode.json"
+  elif [ -f "$dir/config.json" ]; then
+    printf '%s\n' "$dir/config.json"
+  else
+    printf '%s/opencode.json\n' "$dir"
   fi
 }
 
@@ -94,10 +105,11 @@ devcontainer_config_lock_dir() {
 # One lock guards every managed config writer (JSON harness configs, Codex
 # TOML, AI-backend provider blocks) so a failed transaction can never roll a
 # concurrent writer back. The Node writer implements the identical protocol in
-# write-mcp-configs.mjs: mkdir lock directory + owner token + 10 minute
-# staleness takeover. Callers pass the token back to release.
+# write-mcp-configs.mjs: mkdir lock directory + owner token led by the writer
+# PID + dead-owner takeover, with a 10 minute age fallback for tokens without
+# a parseable PID. Callers pass the token back to release.
 devcontainer_acquire_config_lock() {
-  local lock_root lock_dir token attempts=0
+  local lock_root lock_dir token owner pid attempts=0
   lock_root="$(devcontainer_state_dir)"
   lock_dir="$(devcontainer_config_lock_dir)"
   mkdir -p "$lock_root" || {
@@ -118,8 +130,19 @@ devcontainer_acquire_config_lock() {
       _devcontainer_path_error "refusing symlinked config lock: $lock_dir"
       return 1
     fi
-    # Take over a stale lock from a killed writer; a live writer finishes in
-    # seconds, so a 10 minute old directory is abandoned.
+    # Take over a stale lock from a killed writer. The owner token leads with
+    # the writer's PID (bash: PID-RANDOM-TIME, Node: PID:UUID), so a dead
+    # owner is stolen immediately; a live writer finishes in seconds. Tokens
+    # without a parseable PID fall back to the 10 minute age bound.
+    owner="$(cat "$lock_dir/owner" 2>/dev/null || true)"
+    pid="${owner%%[-:]*}"
+    case "$pid" in
+      '' | *[!0-9]*) pid="" ;;
+    esac
+    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+      rm -rf "$lock_dir" 2>/dev/null || true
+      continue
+    fi
     if [ -z "$(find "$lock_dir" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
       sleep 0.2
       continue

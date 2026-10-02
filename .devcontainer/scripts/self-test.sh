@@ -364,6 +364,12 @@ check "validation: control-character value is rejected" \
   bash -c 'unset GITHUB_PERSONAL_ACCESS_TOKEN GH_TOKEN GITHUB_PAT GITHUB_TOKEN GITHUB_MCP_PAT; export GITHUB_PERSONAL_ACCESS_TOKEN=$(printf "bad\rpat"); DEVCONTAINER_ENV_SKIP_FILES=1 source .devcontainer/scripts/lib/env.sh && [ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]'
 check "validation: bogus Z_AI_MODE falls back to ZAI" \
   bash -c 'unset Z_AI_MODE; export Z_AI_MODE=NOPE; DEVCONTAINER_ENV_SKIP_FILES=1 source .devcontainer/scripts/lib/env.sh && [[ $Z_AI_MODE == ZAI ]]'
+check "validation: malformed GitHub credential does not clear the Z.AI family" \
+  bash -c 'unset GITHUB_PERSONAL_ACCESS_TOKEN GITHUB_PAT GH_TOKEN GITHUB_TOKEN GITHUB_MCP_PAT Z_AI_API_KEY ZAI_API_KEY ZHIPU_API_KEY; export GITHUB_PAT=$(printf "bad\rpat") Z_AI_API_KEY=zai-key; DEVCONTAINER_ENV_SKIP_FILES=1 source .devcontainer/scripts/lib/env.sh && [[ $Z_AI_API_KEY == zai-key && -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]]'
+check "validation: malformed Z.AI credential does not clear the GitHub family" \
+  bash -c 'unset GITHUB_PERSONAL_ACCESS_TOKEN GITHUB_PAT GH_TOKEN GITHUB_TOKEN GITHUB_MCP_PAT Z_AI_API_KEY ZAI_API_KEY ZHIPU_API_KEY; export ZAI_API_KEY=$(printf "bad\rzai") GITHUB_PAT=pat-key; DEVCONTAINER_ENV_SKIP_FILES=1 source .devcontainer/scripts/lib/env.sh && [[ $GITHUB_PERSONAL_ACCESS_TOKEN == pat-key && -z "${Z_AI_API_KEY:-}" ]]'
+check "validation: competing GitHub aliases leave the Z.AI family intact" \
+  bash -c 'unset GITHUB_PERSONAL_ACCESS_TOKEN GITHUB_PAT GH_TOKEN GITHUB_TOKEN GITHUB_MCP_PAT Z_AI_API_KEY ZAI_API_KEY ZHIPU_API_KEY; export GITHUB_PAT=a GITHUB_TOKEN=b Z_AI_API_KEY=zai-key; DEVCONTAINER_ENV_SKIP_FILES=1 source .devcontainer/scripts/lib/env.sh && [[ $Z_AI_API_KEY == zai-key && -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]]'
 env_allowlist_file="$(mktemp)"
 printf 'NPM_CONFIG_PREFIX=/etc\nBASH_ENV=/tmp/evil\nLD_PRELOAD=/tmp/evil.so\nSAFE_NOT_ALLOWED=bad\nOPENAI_API_KEY=allowed\nCODEX_ZAI_MODEL=glm-test\n' > "$env_allowlist_file"
 check "env loader ignores dangerous and unknown file keys" bash -c '
@@ -408,6 +414,38 @@ printf 'OPENAI_API_KEY=x\n' > "$env_source_home/.env.local"
 check "source semantics: mode persists when a later file omits it" \
   bash -c "cd '$env_source_home' && unset Z_AI_MODE Z_AI_API_KEY ZAI_API_KEY ZHIPU_API_KEY && source .devcontainer/scripts/lib/env.sh && [[ \$Z_AI_MODE == ZHIPU ]]"
 rm -rf "$env_source_home"
+
+echo "== shared path + lock resolvers (lockstep with the Node writer) =="
+check "opencode path: OPENCODE_CONFIG_DIR outranks OPENCODE_CONFIG" \
+  bash -c '
+    home="$(mktemp -d)"
+    export HOME="$home" OPENCODE_CONFIG_DIR="$home/custom" OPENCODE_CONFIG="$home/other/opencode.json"
+    source "$1"
+    resolved="$(devcontainer_opencode_config_file)"
+    [[ "$resolved" == "$home/custom/opencode.json" ]]
+  ' _ "$script_dir/lib/paths.sh"
+check "opencode path: OPENCODE_CONFIG still resolves when no custom dir is set" \
+  bash -c '
+    home="$(mktemp -d)"
+    export HOME="$home" OPENCODE_CONFIG="$home/other/opencode.jsonc"
+    unset OPENCODE_CONFIG_DIR
+    source "$1"
+    [[ "$(devcontainer_opencode_config_file)" == "$home/other/opencode.jsonc" ]]
+  ' _ "$script_dir/lib/paths.sh"
+check "config lock: dead-owner lock is taken over immediately" \
+  bash -c '
+    set -eu
+    home="$(mktemp -d)"
+    export HOME="$home"
+    source "$1"
+    lock_dir="$home/.cache/signal-fish-devcontainer/mcp-config.lock.d"
+    mkdir -p "$lock_dir"
+    ( sleep 0 ) & dead_pid=$!
+    wait "$dead_pid" || true
+    printf "%s-1-1\n" "$dead_pid" > "$lock_dir/owner"
+    token="$(devcontainer_acquire_config_lock)" || exit 1
+    devcontainer_release_config_lock "$token"
+  ' _ "$script_dir/lib/paths.sh"
 
 echo "== MCP config sync (with injected throwaway credentials) =="
 ENV_FILE_BACKUP="$repo_root/.env.selftest-backup"

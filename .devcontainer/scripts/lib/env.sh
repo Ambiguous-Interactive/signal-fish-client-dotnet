@@ -126,9 +126,17 @@ _devcontainer_env_parse() {
   done < "$file"
 }
 
-_devcontainer_env_clear_credential_families() {
+_devcontainer_env_clear_github_family() {
   unset GITHUB_PERSONAL_ACCESS_TOKEN GITHUB_PAT GH_TOKEN GITHUB_TOKEN GITHUB_MCP_PAT
+}
+
+_devcontainer_env_clear_zai_family() {
   unset Z_AI_API_KEY ZAI_API_KEY ZHIPU_API_KEY
+}
+
+_devcontainer_env_clear_credential_families() {
+  _devcontainer_env_clear_github_family
+  _devcontainer_env_clear_zai_family
 }
 
 _devcontainer_env_reset_source_state() {
@@ -152,7 +160,9 @@ _devcontainer_env_resolve_github_family() {
   done
   if [ "$invalid" -ne 0 ]; then
     printf 'env.sh: WARNING: GitHub credential contains control characters; credential cleared\n' >&2
-    _devcontainer_env_clear_credential_families
+    # Family-scoped: a malformed GitHub credential must never discard an
+    # independent family (Z.AI) resolved from the same source.
+    _devcontainer_env_clear_github_family
     return 2
   fi
 
@@ -171,7 +181,7 @@ _devcontainer_env_resolve_github_family() {
       [ -n "$value" ] || continue
       if [ -n "$resolved" ] && [ "$value" != "$resolved" ]; then
         printf 'env.sh: WARNING: competing GitHub aliases disagree; credential cleared\n' >&2
-        _devcontainer_env_clear_credential_families
+        _devcontainer_env_clear_github_family
         return 2
       fi
       resolved="$value"
@@ -193,7 +203,9 @@ _devcontainer_env_resolve_zai_family() {
   done
   if [ "$invalid" -ne 0 ]; then
     printf 'env.sh: WARNING: Z.AI credential contains control characters; credential cleared\n' >&2
-    _devcontainer_env_clear_credential_families
+    # Family-scoped: a malformed Z.AI credential must never discard an
+    # independent family (GitHub) resolved from the same source.
+    _devcontainer_env_clear_zai_family
     return 2
   fi
 
@@ -212,7 +224,7 @@ _devcontainer_env_resolve_zai_family() {
       [ -n "$value" ] || continue
       if [ -n "$resolved" ] && [ "$value" != "$resolved" ]; then
         printf 'env.sh: WARNING: competing Z.AI aliases disagree; credential cleared\n' >&2
-        _devcontainer_env_clear_credential_families
+        _devcontainer_env_clear_zai_family
         return 2
       fi
       resolved="$value"

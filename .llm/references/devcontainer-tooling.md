@@ -158,11 +158,33 @@ just the tool the volume was added for.
   fail-closed rejected. Test fixtures must copy `env.sh`/`paths.sh` into
   `<tmp>/.devcontainer/scripts/lib/` because `_devcontainer_repo_root` walks
   three levels.
+- Lockstep rule (2026-10-02): every resolution rule implemented twice —
+  `paths.sh` (shell: fingerprint, readiness, locks) and
+  `write-mcp-configs.mjs` (Node: the writer) — must produce the same answer,
+  or the post-start fingerprint hashes a file the writer did not touch
+  (real bug: `devcontainer_opencode_config_file` put `OPENCODE_CONFIG` above
+  `OPENCODE_CONFIG_DIR` while the writer had the reverse; found by Bugbot).
+  Pin both sides with self-test cases on the same fixture.
+- Config lock protocol (2026-10-02): mkdir lock dir + owner token
+  (`PID-...` in bash, `PID:UUID` in Node) + takeover when the owner PID is
+  dead (bash `kill -0`, Node `process.kill(pid, 0)`, EPERM = alive) with a
+  10 minute age fallback for unparseable tokens. Both bounds must line up:
+  a takeover bound longer than one waiter's timeout leaves a crashed
+  writer's lock failing every lifecycle command for the whole staleness
+  window (the 60 s waiter vs 10 min takeover bug, found by Bugbot).
 - Codex: `CODEX_HOME` (default `~/.codex`) must be honored consistently by
   the MCP TOML writer, the AI-backend provider/catalog writer, and readiness
   probes; a split (writer at `~/.codex`, launcher at `$CODEX_HOME`) leaves the
   managed MCP block invisible to the CLI. `codex mcp list` accepts
   `CODEX_HOME` and is the parse gate for generated TOML.
+- Credential families in `env.sh` (2026-10-02): GitHub and Z.AI names are
+  independent families. A malformed or self-contradictory member clears only
+  its own family (`_devcontainer_env_clear_github_family` /
+  `_devcontainer_env_clear_zai_family`); the combined
+  `_devcontainer_env_clear_credential_families` belongs only to full resets
+  (per-source reset, final selection). Clearing both from a family-specific
+  resolver silently dropped a valid sibling-family key from the same source
+  (found by Bugbot).
 - Node's `os.homedir()` ignores `HOME` on win32 (see the section above); the
   self-test therefore exports both `HOME` and `USERPROFILE` before any
   home-sensitive check.

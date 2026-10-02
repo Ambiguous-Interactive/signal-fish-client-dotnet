@@ -92,6 +92,8 @@ codebase for siblings:
 | Repro artifact lands in the repo tree | Tracked files matching fuzz/crash/seed patterns; artifacts belong in gitignored persistence dirs (`.fuzz/`), never the repo root |
 | Workflow `run:` command is wrong (fails or silently no-ops) | Every `run:` line in tag-only/schedule-only workflows — those jobs never self-verify in CI, so PR review is their only execution check; run each new command locally on the CI-pinned toolchain and confirm its effect |
 | Struct `GetHashCode` throws on a `default` instance | Every `Equals`/`GetHashCode` on structs with nullable members — `default(T)` is legal; hash via `System.HashCode` or `?.GetHashCode() ?? 0` |
+| Twin resolvers drift (shell + Node both implement one rule) | Every pair of implementations of the same resolution/protocol — precedence, candidate lists, and refusals must stay in lockstep, pinned by a parity test on both sides (real case: `paths.sh` vs `write-mcp-configs.mjs` OpenCode path order) |
+| Lock takeover bound exceeds one waiter timeout | Every lock: takeover/staleness bound must be ≤ one waiter's wait, or a crashed holder wedges every waiter for the whole window; prefer owner-liveness takeover (PID in the token) over pure age |
 
 Fix every sibling in the same change. One-off fixes guarantee the reviewer
 finds the sibling next round.
