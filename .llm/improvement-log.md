@@ -147,6 +147,30 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   the shared `MaxVerbatimPayloadDepth` contract; integration follow-up
   issue filed. Open: none.
 
+## 2026-10-02 - session 030: M6.3 integration (delivery gate wiring)
+
+- Trigger: M6.3 integration (#61) + #66 resolution; one deliverable PR.
+- Evidence: the fixture sweep surfaced 38-47 reds for "one reason" that
+  were really TWO reasons — a product bug (v2 rosters mapped to zeroed
+  baselines; every v2 join refused) hiding behind fixture incoherence
+  (v2 joins fed into v3-negotiated sessions). The adversarial review
+  then caught a silently-broken capacity floor (eventCapacity 1-2 made
+  Poll() consume nothing) and a ProtocolInfo re-echo that wiped sender
+  cursors.
+- Findings: (1) when a test sweep fails for "one reason", fix the
+  product first, then re-derive the fixture changes — the first-pass
+  fixture edits (empty rosters) were pure churn once the gate was
+  fixed. (2) A policy layer over a reshaped engine API must reproduce
+  the absent-vs-present refusals the API cannot see (v2 must SKIP, not
+  feed zeros). (3) NUnit `Assert.That` inside an allocation-gate loop
+  allocates ~2 B/assert even on pass — count failures, assert outside.
+  (4) Enumerating a ref-struct enumerator is illegal in async test
+  bodies under C# 12 even in `Release`-only projects — CI builds
+  configurations local fast-check never touches.
+- Applied: gate + policy + pipeline wiring landed (PR #67); #66 closed;
+  integration remainder narrowed to the M6.6 live gap leg. Open: none.
+
+
 Entries pruned 2026-09-23 (sessions 011-014, 017b, 022-023, 025b-026):
 knowledge graduated into skills/rules; open items resolved or tracked as
 issues; originals in git history.
