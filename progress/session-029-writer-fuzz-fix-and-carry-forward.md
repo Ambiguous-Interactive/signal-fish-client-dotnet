@@ -63,8 +63,8 @@ integration (#61) to an executable design.
   (aarch64 + x86_64 — the x86_64 Docker execution that session 028
   could not run locally).
 - Adversarial review of the fix approved after corrections: the
-  regression test's comment mis-derived the recipe's class/key (the
-  cursor casts to byte before the modulo: Reliable/245, not
+  regression test's comment had wrongly derived the recipe's class/key
+  (the cursor casts to byte before the modulo: Reliable/245, not
   Latest/501) — corrected; the seed-refusal literal is shared and
   carries the refusing exception as its inner exception.
 
