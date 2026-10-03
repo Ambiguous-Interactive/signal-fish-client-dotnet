@@ -78,5 +78,16 @@ Checked items are covered by `tests/SignalFish.Client.E2E`
       delivery-accountability engine — binary is reliable, sharing the
       sender's seq stream. The live two-way round trip lands with the
       M6.6 scripted scenarios.
-- [ ] Reconnect (live), v3 dynamics (mesh), v3 gap
-      lifecycle — land with their milestones (M6.5+, M6.6).
+- [x] v3 mesh signaling client surface (M6.5): `SessionPlan`/`NewPeer`/
+      `PeerTransportStatus`/`Signal` decode against the golden wire and
+      surface as typed events; the plan doubles as the signal-admission
+      session fact (latest-wins, generation + peer + webrtc-transport
+      send fences, `SendSignal` never touches the wire when refused);
+      `SendTransportStatus`/`SendProvideConnectionInfo` admit per the
+      server's v3/v2 gating; `MeshSession` folds the event stream into a
+      plan-obedient peer view (Rust `mesh.rs` parity). Verified at the
+      unit/integration layer only — the live-server scenarios
+      (`v3-mesh-webrtc`, `v3-host-topology`, `v3-host-failover`) land
+      with M6.6.
+- [ ] Reconnect (live), v3 dynamics (live mesh runs), v3 gap
+      lifecycle — land with their milestones (M6.6).

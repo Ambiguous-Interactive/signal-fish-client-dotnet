@@ -8,6 +8,21 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- v3 mesh signaling (M6.5): on a negotiated-v3 connection the client now
+  speaks the WebRTC mesh surface. `SessionPlan`, `NewPeer`,
+  `PeerTransportStatus`, and `Signal` frames surface as typed events, and
+  the new `MeshSession` tracker folds them into an always-consistent view
+  (topology, transport, peers with their server-assigned `initiate` glare
+  role and liveness, elected host, ICE servers) — obeying the server's
+  plan and never recomputing it. `SendSignal(to, generation, signal)`
+  relays a verbatim WebRTC signal to a plan peer (refused with typed
+  errors while no plan is live, when the generation is superseded, or
+  when the target is not a plan peer), `SendTransportStatus` reports your
+  data-path state (peers see it as `PeerTransportStatus`), and
+  `SendProvideConnectionInfo` publishes engine connection info on the
+  v2-compatible floor. Room snapshots now expose the ICE pre-gather list.
+  The relay floor is untouched: mesh is additive, and a v2 client
+  observes byte-identical behavior.
 - Binary game data flows both ways on a negotiated v3 connection (M6.4):
   pass `game_data_format: "message_pack"` on your `Authenticate` (the
   async client's `SignalFishClientOptions.GameDataFormat` carries it
