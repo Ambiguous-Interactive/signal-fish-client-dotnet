@@ -1162,6 +1162,11 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "signal"))
                 {
+                    if (signalSeen)
+                    {
+                        return false;
+                    }
+
                     (int Offset, int Length) slice = valueRaw.GetOffsetAndLength(data.Length);
                     signal = data.Slice(slice.Offset, slice.Length);
                     signalSeen = true;

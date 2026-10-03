@@ -170,6 +170,16 @@ namespace SignalFish.Client.V3
                 case PollEventKind.PlayerLeft:
                     return ApplyPlayerLeft(pollEvent.LeftPlayerId);
                 case PollEventKind.RoomJoined:
+                    /*
+                        ICE pre-gather only: the Rust tracker also keeps the
+                        prior plan across a baseline (a re-join into a live
+                        session re-plans every member immediately, so the
+                        view holds the last authoritative plan for that
+                        gap). Admission diverges on purpose: the state
+                        machine clears the plan fail-closed, so SendSignal
+                        refuses until the fresh plan lands even while the
+                        view still reports the old one.
+                    */
                     return ApplyPreGather(pollEvent.Snapshot.IceServers);
                 case PollEventKind.Reconnected:
                     return ApplyReconnected(pollEvent.Snapshot.IceServers);

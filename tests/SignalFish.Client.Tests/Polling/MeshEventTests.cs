@@ -315,6 +315,16 @@ namespace SignalFish.Client.Tests.Polling
         {
             yield return new TestCaseData(NonRelayFallbackPlanWire, MessageKind.SessionPlan);
             yield return new TestCaseData(
+                "{\"type\": \"Signal\", \"data\": {\"from\": \""
+                    + PeerId
+                    + "\", "
+                    + "\"generation\": \""
+                    + Generation
+                    + "\", \"signal\": {\"Offer\": \"a\"}, "
+                    + "\"signal\": {\"Offer\": \"b\"}}}",
+                MessageKind.Signal
+            );
+            yield return new TestCaseData(
                 "{\"type\": \"SessionPlan\", \"data\": {\"generation\": \""
                     + Generation
                     + "\", \"topology\": \"mesh\", \"transport\": \"webrtc\", "

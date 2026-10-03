@@ -479,6 +479,19 @@ namespace SignalFish.Client.Async
                     refusal = AdmissionError.StaleSessionGeneration;
                 }
 
+                /*
+                    A non-canonical generation can never be the live server
+                    generation; refuse it before the writer's backstop turns
+                    an admitted send into a throw.
+                */
+                if (
+                    refusal == default(AdmissionError)
+                    && !EnvelopeWriter.IsCanonicalUuid(message.Generation)
+                )
+                {
+                    refusal = AdmissionError.StaleSessionGeneration;
+                }
+
                 if (
                     refusal == default(AdmissionError)
                     && (

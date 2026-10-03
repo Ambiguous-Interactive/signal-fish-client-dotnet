@@ -408,6 +408,16 @@ namespace SignalFish.Client.Polling
                 return CommandSend.Refused(AdmissionError.StaleSessionGeneration);
             }
 
+            /*
+                A non-canonical generation can never be the live server
+                generation; refuse it before the writer's backstop turns an
+                admitted send into a throw.
+            */
+            if (!EnvelopeWriter.IsCanonicalUuid(message.Generation))
+            {
+                return CommandSend.Refused(AdmissionError.StaleSessionGeneration);
+            }
+
             if (
                 _machine.SessionTransport != SessionTransport.WebRtc
                 || !EnvelopeWriter.IsCanonicalUuid(message.To)

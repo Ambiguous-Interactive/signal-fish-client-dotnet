@@ -1039,6 +1039,14 @@ namespace SignalFish.Client.Tests.Core
                     AdmissionError.StaleSessionGeneration
                 ),
                 (
+                    "nonCanonicalGeneration",
+                    WithPlan(PlanGeneration, SessionTransport.WebRtc, SessionPeerId),
+                    PlanGeneration.ToUpperInvariant(),
+                    SessionPeerId.ToString(),
+                    false,
+                    AdmissionError.StaleSessionGeneration
+                ),
+                (
                     "peerAbsentFromPlan",
                     WithPlan(PlanGeneration, SessionTransport.WebRtc, SessionPeerId),
                     PlanGeneration,
@@ -1370,6 +1378,12 @@ namespace SignalFish.Client.Tests.Core
             }
 
             if (machine.SessionGeneration is not null && machine.SessionGeneration != generation)
+            {
+                error = AdmissionError.StaleSessionGeneration;
+                return false;
+            }
+
+            if (!EnvelopeWriter.IsCanonicalUuid(generation))
             {
                 error = AdmissionError.StaleSessionGeneration;
                 return false;

@@ -792,6 +792,18 @@ namespace SignalFish.Client.Tests
             Assert.That(RoomSnapshot.TryDecode(Bytes(data), out _), Is.False);
         }
 
+        [TestCaseSource(nameof(VerbatimSliceWiresWithRepeatedKeys))]
+        public void VerbatimSlicePayloadsRejectRepeatedKeys(Func<bool> tryDecode, string label)
+        {
+            /*
+                Every verbatim-slice field (signal, connection_info,
+                RoomOperation data/operation) follows the same decode
+                contract as typed fields: a repeated key is malformed, never
+                last-wins.
+            */
+            Assert.That(tryDecode, Is.False, label);
+        }
+
         // --- M5.1: password sealing and join-failure indistinguishability ---
         [Test]
         public void PasswordCarryingMessagesRedactTheSecretInToString()
@@ -840,6 +852,81 @@ namespace SignalFish.Client.Tests
                 because
             );
             Assert.That(failure.ErrorCode, Is.EqualTo("PASSWORD_REQUIRED"), because);
+        }
+
+        private static IEnumerable<TestCaseData> VerbatimSliceWiresWithRepeatedKeys()
+        {
+            yield return new TestCaseData(
+                (Func<bool>)(
+                    () =>
+                        SignalMessage.TryDecode(
+                            System.Text.Encoding.UTF8.GetBytes(
+                                @"{""to"":""00000000-0000-0000-0000-00000000000b"","
+                                    + @"""generation"":""00000000-0000-0000-0000-00000000000c"","
+                                    + @"""signal"":{""Offer"":""a""},""signal"":{""Offer"":""b""}}"
+                            ),
+                            out _
+                        )
+                ),
+                "Signal.signal"
+            );
+            yield return new TestCaseData(
+                (Func<bool>)(
+                    () =>
+                        IncomingSignalMessage.TryDecode(
+                            System.Text.Encoding.UTF8.GetBytes(
+                                @"{""from"":""00000000-0000-0000-0000-00000000000b"","
+                                    + @"""generation"":""00000000-0000-0000-0000-00000000000c"","
+                                    + @"""signal"":{""Answer"":""a""},""signal"":{""Answer"":""b""}}"
+                            ),
+                            out _
+                        )
+                ),
+                "IncomingSignalMessage.signal"
+            );
+
+            yield return new TestCaseData(
+                (Func<bool>)(
+                    () =>
+                        ProvideConnectionInfoMessage.TryDecode(
+                            System.Text.Encoding.UTF8.GetBytes(
+                                @"{""connection_info"":{""type"":""direct"",""host"":""h"",""port"":1},"
+                                    + @"""connection_info"":{""type"":""direct"","
+                                    + @"""host"":""h2"",""port"":2}}"
+                            ),
+                            out _
+                        )
+                ),
+                "ProvideConnectionInfo.connection_info"
+            );
+
+            yield return new TestCaseData(
+                (Func<bool>)(
+                    () =>
+                        RoomOperationMessage.TryDecode(
+                            System.Text.Encoding.UTF8.GetBytes(
+                                @"{""operation_id"":""00000000-0000-0000-0000-00000000000d"","
+                                    + @"""operation"":{""type"":""LeaveRoom""},"
+                                    + @"""operation"":{""type"":""LeaveRoom""}}"
+                            ),
+                            out _
+                        )
+                ),
+                "RoomOperation.operation"
+            );
+            yield return new TestCaseData(
+                (Func<bool>)(
+                    () =>
+                        RoomOperationCommand.TryDecode(
+                            System.Text.Encoding.UTF8.GetBytes(
+                                @"{""type"":""SetRoomAccess"",""data"":{""password"":""a""},"
+                                    + @"""data"":{""password"":""b""}}"
+                            ),
+                            out _
+                        )
+                ),
+                "RoomOperationCommand.data"
+            );
         }
 
         private static ReadOnlyMemory<byte> Bytes(string json) => Encoding.UTF8.GetBytes(json);

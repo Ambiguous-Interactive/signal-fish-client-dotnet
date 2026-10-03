@@ -521,6 +521,35 @@ namespace SignalFish.Client.Tests.Polling
         }
 
         [Test]
+        public async Task SendSignalWithNonCanonicalGenerationIsRefused()
+        {
+            /*
+                The generation fence and the encoder must agree on the
+                canonical UUID form: an admitted send never throws out of
+                the writer's backstop.
+            */
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await JoinV3Room(client, transport);
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "SessionPlan")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            SignalMessage upper = new SignalMessage(
+                "00000000-0000-0000-0000-00000000000b",
+                PlanGeneration.ToUpperInvariant(),
+                Encoding.UTF8.GetBytes("{\"Offer\": \"v=0\"}")
+            );
+            CommandSend refused = client.SendSignal(in upper);
+            Assert.That(refused.Accepted, Is.False);
+            Assert.That(refused.Refusal, Is.EqualTo(AdmissionError.StaleSessionGeneration));
+            Assert.That(CountSentType(transport.SentText, "Signal"), Is.EqualTo(0));
+        }
+
+        [Test]
         public async Task SendSignalAfterSessionPlanWritesGoldenWireBytes()
         {
             (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
