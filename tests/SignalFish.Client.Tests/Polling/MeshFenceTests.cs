@@ -469,6 +469,14 @@ namespace SignalFish.Client.Tests.Polling
             ).SetName("SameGenerationReplanDropOnDirect.Surfaces");
             yield return new TestCaseData(
                 meshPlan,
+                replan,
+                null,
+                OtherPeerId,
+                GenerationTwo,
+                true
+            ).SetName("GenerationChangeDoesNotCarryRetirement.Surfaces");
+            yield return new TestCaseData(
+                meshPlan,
                 null,
                 PlayerLeftWire(OtherPeerId),
                 OtherPeerId,

@@ -127,9 +127,11 @@ namespace SignalFish.Client.E2E
                 );
 
                 MeshSession aliceView = Track(aliceStart);
-                MeshSession bobView = Track(bobStart);
                 Assert.That(aliceView.IsP2p, Is.True);
                 Assert.That(aliceView.Peers.Single().PlayerId, Is.EqualTo(bobSeat.PlayerId));
+                MeshSession bobView = Track(bobStart);
+                Assert.That(bobView.Transport, Is.EqualTo(SessionTransport.WebRtc));
+                Assert.That(bobView.Generation, Is.EqualTo(aliceView.Generation));
 
                 /*
                     The offerer relays an offer, the answerer relays an
@@ -523,6 +525,9 @@ namespace SignalFish.Client.E2E
                 Assert.That(bobPlan.Generation, Is.EqualTo(carolPlan.Generation));
                 AssertPlanPeer(bobPlan, carolSeat.PlayerId, expectInitiate: false);
                 AssertPlanPeer(carolPlan, bobSeat.PlayerId, expectInitiate: true);
+                MeshSession carolView = Track(carolFollow);
+                Assert.That(carolView.Host, Is.EqualTo(bobSeat.PlayerId));
+                Assert.That(carolView.Peer(bobSeat.PlayerId)!.Value.Initiate, Is.True);
 
                 /*
                     The fresh star edge carries signals under the new
