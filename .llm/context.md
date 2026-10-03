@@ -20,7 +20,8 @@ directory — see [Skills Reference](#skills-reference).
 - **Root namespace**: `SignalFish.Client`.
 - **Protocol**: JSON over WebSocket, `{ "type": ..., "data": ... }` envelopes.
   The client handles signaling and relay only — the game owns simulation.
-- **Status**: early scaffold; the public surface is not frozen yet.
+- **Status**: feature-complete for the 0.1.0 milestone; the public surface
+  is not yet frozen by a tagged release.
 
 ## Project Structure
 
