@@ -11,6 +11,7 @@ reconnection, spectators, authority, and WebRTC signaling.
 
 - Server repository: <https://github.com/Ambiguous-Interactive/signal-fish-server>
 - Rust client (API parity source): <https://github.com/Ambiguous-Interactive/signal-fish-client-rust>
+- Unity package: the [Unity guide](unity.md)
 - Roadmap and open work: the repository's [issue tracker](https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/issues)
 - Releasing the SDK: the [operator runbook](releasing.md)
 

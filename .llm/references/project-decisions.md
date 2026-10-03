@@ -14,6 +14,7 @@ change in the session file and improvement log).
 | CI E2E | **Docker E2E in CI** against `ghcr.io/ambiguous-interactive/signal-fish-server` (license-free) |
 | NuGet distribution | **GitHub Packages** (+ `.nupkg` attached to GitHub Releases as no-auth fallback) |
 | Unity distribution | **UPM tarballs** on GitHub Releases (git-URL installable) |
+| Unity package form | **Source distribution**: `unity/Packages/com.ambiguous-interactive.signalfish/Runtime` mirrors `src/SignalFish.Client` (asmdef `SignalFish.Client`, no engine references; each mirrored file gets a `#nullable enable` prefix since Unity ignores the csproj); mirror kept exact by `scripts/sync-unity-package.ps1` (CI + pre-commit); `-Pack` writes the UPM `.tgz` (release wiring in M9.2). No `.meta` in VCS — Unity generates them on import. link.xml ships as a consumer snippet (packages' link.xml is ignored by Unity). **Guard:** the sources must not adopt `init` accessors or records without shipping the `IsExternalInit` polyfill inside `src/SignalFish.Client` (C# 9 floor) |
 | Unity in CI | **Never.** All Unity validation is local, MCP-driven (avoids blocking a licensed seat) |
 | Engine adapters | Wave 1: FishNet, Mirror, NGO + Unity Relay, generic BYOS sample. Wave 2: Fusion/PUN2, Steamworks (Facepunch + Steamworks.NET) |
 | Adapter validation depth | **Two-client loopback E2E** per adapter in local Unity via the MCP pipeline |

@@ -1,0 +1,21 @@
+{
+    "name": "com.ambiguous-interactive.signalfish",
+    "version": "0.1.0",
+    "displayName": "Signal Fish Client",
+    "description": "C# client SDK for the Signal Fish multiplayer signaling server: rooms, lobbies, readiness, relay, heartbeats, reconnection, spectators, authority, and v3 mesh signaling. Zero dependencies, Unity compatible (netstandard2.1).",
+    "unity": "2021.2",
+    "license": "MIT",
+    "documentationUrl": "https://ambiguous-interactive.github.io/signal-fish-client-dotnet/unity/",
+    "licensesUrl": "https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/blob/main/LICENSE",
+    "author": {
+        "name": "Ambiguous Interactive",
+        "url": "https://github.com/Ambiguous-Interactive"
+    },
+    "samples": [
+        {
+            "displayName": "Polling Driver",
+            "description": "A MonoBehaviour that connects, joins a room, and polls and dispatches client events in Update().",
+            "path": "Samples~/PollingDriver"
+        }
+    ]
+}

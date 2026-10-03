@@ -7,6 +7,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'scripts/**'
+      - 'unity/**'
       - '.config/**'
       - 'Directory.Build.props'
       - 'Directory.Build.targets'
@@ -19,6 +20,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'scripts/**'
+      - 'unity/**'
       - '.config/**'
       - 'Directory.Build.props'
       - 'Directory.Build.targets'
@@ -102,6 +104,14 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         shell: pwsh
         run: pwsh -NoProfile -File scripts/lint-conventions.ps1
+
+      # The Unity package ships the library sources (source distribution);
+      # the Runtime folder mirrors src/SignalFish.Client. A src/ edit
+      # without re-running the sync script fails here, naming the remedy.
+      - name: Verify Unity package mirror freshness
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/sync-unity-package.ps1 -Check
 
       # One restore covers both tool invocations below (CSharpier check and
       # the coverage report).

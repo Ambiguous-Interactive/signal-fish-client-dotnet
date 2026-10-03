@@ -8,6 +8,15 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Unity package (M7.1/M7.2): the library now ships as the UPM package
+  `com.ambiguous-interactive.signalfish` (source distribution, Unity
+  2021.2+, zero dependencies preserved). `Runtime/` mirrors the library
+  sources exactly (freshness enforced in CI and the pre-commit hook,
+  `scripts/sync-unity-package.ps1`), `link.xml` guards IL2CPP stripping,
+  and a `SignalFishPollingDriver` sample MonoBehaviour shows the
+  frame-driven loop: poll in `Update()`, drain events on the main
+  thread. Install from a UPM tarball (release lane wiring lands with
+  M9.2) or from disk; see the new Unity docs page.
 - Mesh session fences (M6.6): on a negotiated-v3 connection the client now
   hardens the mesh signaling surface the same way the Rust client does. A
   replayed `SessionPlan` whose generation was already superseded surfaces
