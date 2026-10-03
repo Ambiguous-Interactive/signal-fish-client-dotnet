@@ -50,6 +50,28 @@ pinned by `scripts/lint-webgl-plugin.ps1` in dotnet CI (it also compiles the
 plugin C# and syntax-checks the jslib) because no compiler in this repo sees
 both sides together.
 
+## Authoring Emscripten jslib plugins
+
+The compiler evaluates each library file in Node at compile time, then
+prints every value on a library object through `stringifyWithFunctions`
+(`src/jsifier.js`): functions survive via `.toString()` at any depth,
+primitives via `JSON.stringify`, and plain objects/arrays by recursion —
+so a host object like `TextEncoder` collapses to `{}`. Consequences:
+
+- **Never put a constructed object in a value position** (`new
+  TextEncoder()`, `new Date()`, ...): it reaches the player as `{}`
+  while CI stays green. Create platform objects lazily at runtime
+  (a `null` value plus a first-use guard is the pattern).
+- Functions survive verbatim; numbers, strings, booleans, `null`, and
+  plain object/array literals are JSON-safe.
+- Never throw across the interop boundary: return codes, so a browser
+  fault cannot unwind into IL2CPP.
+- Observe-and-normalize wire facts (close codes) once, at the plugin
+  boundary, so every consumer sees the same value.
+
+`scripts/lint-webgl-plugin.ps1` flags the `new`-in-value-position class;
+live in-browser behavior remains an M7.4 runbook item.
+
 ## IL2CPP / stripping
 
 - The hand-rolled codec uses **zero reflection**, so protocol types survive

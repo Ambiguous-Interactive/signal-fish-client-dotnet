@@ -88,6 +88,42 @@ try {
     $run = Invoke-Pwsh -ScriptPath $lint -Arguments @('-RepoRoot', $repo, '-NoBuild')
     Assert-Equal 1 $run.ExitCode 'a commented-out export is not an export'
 
+    # 5b. The compile-time value rule: a constructor call in a library-object
+    #     value position fails (the player would receive `{}`), while the
+    #     same call inside a function body or as a lazy-init assignment is
+    #     fine.
+    $eagerCodecJs = @(
+        $interopJs[0..3]
+        '    codec: new TextEncoder(),'
+        $interopJs[4..7]
+    )
+    Write-TestFile -Path $jslibPath -Content $eagerCodecJs
+    $run = Invoke-Pwsh -ScriptPath $lint -Arguments @('-RepoRoot', $repo, '-NoBuild')
+    Assert-Equal 1 $run.ExitCode 'a `new` in library-object value position fails'
+    Assert-True (($run.Output -join "`n") -match 'serializes non-function values through JSON') 'failure teaches the JSON rule'
+    $quotedKeyJs = @(
+        $interopJs[0..3]
+        "    'codec': new TextEncoder(),"
+        $interopJs[4..7]
+    )
+    Write-TestFile -Path $jslibPath -Content $quotedKeyJs
+    $run = Invoke-Pwsh -ScriptPath $lint -Arguments @('-RepoRoot', $repo, '-NoBuild')
+    Assert-Equal 1 $run.ExitCode 'a quoted-key `new` value fails the same rule'
+    $lazyCodecJs = @(
+        $interopJs[0..3]
+        '    codec: null,'
+        '    getCodec: function () {'
+        '        if (!TestLibrary.codec) {'
+        '            TestLibrary.codec = new TextEncoder();'
+        '        }'
+        '        return TestLibrary.codec;'
+        '    },'
+        $interopJs[4..7]
+    )
+    Write-TestFile -Path $jslibPath -Content $lazyCodecJs
+    $run = Invoke-Pwsh -ScriptPath $lint -Arguments @('-RepoRoot', $repo, '-NoBuild')
+    Assert-Equal 0 $run.ExitCode 'lazy runtime construction passes'
+
     # 6. When node is available, a syntactically broken jslib fails.
     if ($null -ne (Get-Command node -ErrorAction SilentlyContinue)) {
         $brokenJs = @(

@@ -115,6 +115,42 @@ fixed in this session:
   the positional options constructor (`ReconnectPolicy` is get-only;
   the object-initializer form did not compile).
 
+## Bugbot round (post-push)
+
+Cursor Bugbot reviewed the pushed branch (3 findings) and all three
+were verified against the Emscripten 2.0.19 sources before acting:
+
+- **High — text codecs die at compile** (confirmed real): the compiler
+  prints library-object values through `stringifyWithFunctions`
+  (`src/jsifier.js`: functions via `.toString()`, everything else via
+  `JSON.stringify`), so the eagerly constructed `new TextEncoder()` /
+  `new TextDecoder()` on the `$SignalFishWebSocket` object shipped to
+  players as `{}` — every text frame (the v2 JSON floor) would fail at
+  runtime behind a green CI. The codecs are now created lazily at
+  runtime (`null` value + first-use guard), which is correct under any
+  printer semantics. The class is mechanically pinned: the plugin lint
+  now flags `new` in library-object value positions (3 new self-test
+  assertions), and the authoring contract is documented in the
+  `unity-compatibility` skill. Honest RCA: the in-repo adversarial
+  review had asserted (without source) that values are AST-reprinted;
+  verification against the compiler source settled it.
+- **Medium — failed connect leaks the registry entry** (confirmed,
+  parity gap): the cancel path disposed its entry but the
+  closed-during-connect path threw with the entry still registered.
+  The path now reads the observed close code, releases the entry, and
+  throws — every ConnectAsync exit either owns the drop or hands a
+  connected transport to the caller.
+- **Low — receive path skipped the 1005 fallback** (confirmed): a
+  clean close with no status reached `TransportClose` as 1005 (mapped
+  `Unknown`) while every other path normalized to abnormal 1006.
+  Normalization now happens once at the observation point (`onclose`)
+  and once in C# (`NormalizeCloseCode`, shared by resolve and receive).
+
+Knowledge recorded in `.llm/improvement-log.md` (2026-10-03 entry):
+verify bot claims against the toolchain's own source; sweep every exit
+of a state machine for resource ownership; normalize wire facts at one
+boundary point.
+
 ## Scope decision
 
 Live in-browser validation stays M7.4 (needs a licensed Unity seat);

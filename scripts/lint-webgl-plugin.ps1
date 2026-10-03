@@ -14,6 +14,11 @@
          plugin folder's *.cs must exist as an exported function
          (`<name>: function`) in the folder's *.jslib, and vice versa -
          a *.jslib without a sibling interop *.cs is a dead plugin.
+         Library-object values must also be JSON-safe: Emscripten
+         prints values with functions surviving via .toString() and
+         everything else via JSON, so a `new X()` value reaches the
+         player as `{}`; those are flagged for lazy runtime
+         construction.
       2. Compile check (skipped with -NoBuild): the plugin *.cs plus the
          library sources compile as one netstandard2.1 assembly with
          UNITY_WEBGL defined, warnings as errors - the same shape Unity
@@ -123,6 +128,22 @@ foreach ($directory in $pluginDirectories) {
 
             if (-not $found) {
                 $violations.Add("$relative : DllImport entry '$name' has no exported function in $(($jslibFiles | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', ').")
+            }
+        }
+    }
+
+    # The compile-time value rule: Emscripten prints every non-function
+    # value on a library object through JSON, so an eagerly constructed
+    # object (new TextEncoder(), new Date(), ...) reaches the player as
+    # `{}` while CI stays green. Platform objects must be created lazily
+    # at runtime.
+    foreach ($jslib in $jslibFiles) {
+        $fileName = [System.IO.Path]::GetFileName($jslib)
+        $lineNumber = 0
+        foreach ($line in @(Get-Content -LiteralPath $jslib)) {
+            $lineNumber++
+            if ($line -match '^\s*[''\"]?[$\w]+[''\"]?\s*:\s*new\s+[A-Za-z_$]') {
+                $violations.Add("$relative : $fileName($lineNumber): a library-object value is constructed with 'new' - the compiler serializes non-function values through JSON, so the player would receive `{}`. Create the object lazily at runtime instead.")
             }
         }
     }

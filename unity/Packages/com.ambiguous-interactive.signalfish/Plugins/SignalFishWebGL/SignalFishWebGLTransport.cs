@@ -153,9 +153,17 @@ namespace SignalFish.Client.Transport
                     if (ready == SocketClosed || ready == SocketClosing)
                     {
                         Interlocked.CompareExchange(ref _state, StateClosed, StateConnecting);
-                        throw new TransportClosedException(
-                            new TransportClose(ResolveCloseCode(handle))
-                        );
+                        /*
+                            A failed connect owns the drop (parity with the
+                            .NET transport disposing the socket in its
+                            connect catch): read the observed code, then
+                            release the entry so a failed handshake never
+                            lingers until dispose.
+                        */
+                        int code = ResolveCloseCode(handle);
+                        Volatile.Write(ref _handle, 0);
+                        SignalFishWebSocketDispose(handle);
+                        throw new TransportClosedException(new TransportClose(code));
                     }
 
                     await Task.Delay(ReceivePollMilliseconds, ct).ConfigureAwait(false);
@@ -295,10 +303,11 @@ namespace SignalFish.Client.Transport
 
                 /*
                     PollClosed (or any unexpected code) is the terminal close:
-                    kind carries the observed wire code. A missing code means
-                    the browser never saw one (abnormal).
+                    kind carries the observed wire code, normalized through
+                    the same rule as every other close (a missing code or the
+                    browser's no-status sentinel mean abnormal).
                 */
-                return EndWithClose(kind == 0 ? AbnormalCloseCode : kind);
+                return EndWithClose(NormalizeCloseCode(kind));
             }
         }
 
@@ -368,9 +377,20 @@ namespace SignalFish.Client.Transport
         }
 
         /// <summary>
-        /// The observed wire close code, normalized: no entry (never connected
-        /// or already released) and the browser's "no status code" sentinel
-        /// both map to the abnormal close, matching the .NET transport.
+        /// The wire close code the transport surfaces, normalized at one
+        /// point: a missing code (0) and the browser's "no status code"
+        /// sentinel (1005) both mean the peer never sent one, and a browser
+        /// can only deliver that fact as the reserved 1005 — the abnormal
+        /// close is the honest surface for it.
+        /// </summary>
+        private static int NormalizeCloseCode(int code)
+        {
+            return code == 0 || code == NoStatusCode ? AbnormalCloseCode : code;
+        }
+
+        /// <summary>
+        /// The observed wire close code, normalized. No entry (never
+        /// connected or already released) observes nothing.
         /// </summary>
         private static int ResolveCloseCode(int handle)
         {
@@ -379,8 +399,7 @@ namespace SignalFish.Client.Transport
                 return AbnormalCloseCode;
             }
 
-            int code = SignalFishWebSocketCloseCode(handle);
-            return code == 0 || code == NoStatusCode ? AbnormalCloseCode : code;
+            return NormalizeCloseCode(SignalFishWebSocketCloseCode(handle));
         }
 
         /// <summary>

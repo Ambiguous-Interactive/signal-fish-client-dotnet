@@ -11,7 +11,8 @@
     - Handles are positive ints minted here; 0 means "could not create".
     - Status mirrors the WebSocket readyState: 0 connecting, 1 open,
       2 closing, 3 closed.
-    - CloseCode returns the observed close code, 0 before one arrives.
+    - CloseCode returns the observed close code, 0 before one arrives;
+      "no status" (1005) is normalized to abnormal 1006.
     - Send returns 0 on success, -1 when the socket is not open,
       -2 when the browser threw (the payload never reached the wire).
     - Poll drains one queued message per call:
@@ -25,11 +26,11 @@
                   and call again.
       Zero-length messages are dropped (a `send("")` peer frame carries
       no payload the caller could surface).
-    - Payload string bytes cross the boundary through the standard
-      TextEncoder/TextDecoder pair; only the open URL is decoded with
-      the runtime's UTF8ToString (always a defined pointer, unlike the
-      array-form helper whose signature shifted across compiler
-      versions).
+    - Payload string bytes cross the boundary through TextEncoder/
+      TextDecoder created lazily at runtime: the compiler prints every
+      non-function value on this object through JSON, which would turn
+      eagerly constructed codec instances into `{}` in the player.
+      Only the open URL is decoded with the runtime's UTF8ToString.
     - The plugin never throws across the interop boundary; failures are
       return codes so a browser fault can never unwind into IL2CPP.
 */
@@ -38,8 +39,26 @@ var SignalFishWebSocketLibrary = {
     $SignalFishWebSocket: {
         nextHandle: 1,
         sockets: {},
-        textEncoder: new TextEncoder(),
-        textDecoder: new TextDecoder(),
+        textEncoder: null,
+        textDecoder: null,
+
+        encodeText: function (value) {
+            var encoder = SignalFishWebSocket.textEncoder;
+            if (!encoder) {
+                encoder = new TextEncoder();
+                SignalFishWebSocket.textEncoder = encoder;
+            }
+            return encoder.encode(value);
+        },
+
+        decodeText: function (bytes) {
+            var decoder = SignalFishWebSocket.textDecoder;
+            if (!decoder) {
+                decoder = new TextDecoder();
+                SignalFishWebSocket.textDecoder = decoder;
+            }
+            return decoder.decode(bytes);
+        },
 
         open: function (url) {
             var sockets = SignalFishWebSocket.sockets;
@@ -59,7 +78,8 @@ var SignalFishWebSocketLibrary = {
                 };
                 socket.onclose = function (event) {
                     entry.status = 3;
-                    entry.closeCode = event.wasClean ? event.code : (event.code || 1006);
+                    var code = event.code || 1006;
+                    entry.closeCode = code === 1005 ? 1006 : code;
                 };
                 socket.onerror = function () {
                     if (entry.status === 0) {
@@ -70,7 +90,7 @@ var SignalFishWebSocketLibrary = {
                 socket.onmessage = function (event) {
                     var bytes =
                         typeof event.data === 'string'
-                            ? SignalFishWebSocket.textEncoder.encode(event.data)
+                            ? SignalFishWebSocket.encodeText(event.data)
                             : new Uint8Array(event.data);
                     entry.pending.push({ isBinary: typeof event.data !== 'string', bytes: bytes });
                 };
@@ -102,7 +122,7 @@ var SignalFishWebSocketLibrary = {
                     // Copy: the heap view must not outlive the call.
                     entry.socket.send(new Uint8Array(view));
                 } else {
-                    entry.socket.send(SignalFishWebSocket.textDecoder.decode(view));
+                    entry.socket.send(SignalFishWebSocket.decodeText(view));
                 }
             } catch (exception) {
                 return -2;
