@@ -4,7 +4,8 @@ namespace SignalFish.Client
 
     /// <summary>
     /// Protocol and SDK constants shared across the client.
-    /// Placeholder scaffold: the public API surface is under active development.
+    /// The public API surface targets the 0.1.0 milestone; it is not yet
+    /// frozen by a tagged release.
     /// </summary>
     public static class SignalFishClientInfo
     {
