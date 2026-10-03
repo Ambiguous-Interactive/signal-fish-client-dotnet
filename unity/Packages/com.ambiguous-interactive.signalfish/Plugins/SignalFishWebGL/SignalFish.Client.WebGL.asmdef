@@ -1,0 +1,14 @@
+{
+    "name": "SignalFish.Client.WebGL",
+    "rootNamespace": "SignalFish.Client",
+    "references": ["SignalFish.Client"],
+    "includePlatforms": ["WebGL"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
