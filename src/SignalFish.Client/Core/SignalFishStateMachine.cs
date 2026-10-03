@@ -14,6 +14,8 @@ namespace SignalFish.Client.Core
     /// </summary>
     public sealed class SignalFishStateMachine
     {
+        private const int RetiredGenerationFence = 8;
+
         /// <summary>Derived phase: membership &gt; authenticated &gt; transport-ready &gt; connecting.</summary>
         public ConnectionPhase Phase
         {
@@ -134,6 +136,10 @@ namespace SignalFish.Client.Core
         private string? _sessionGeneration;
         private SessionTransport _sessionTransport;
         private readonly List<Guid> _sessionPeers = new List<Guid>();
+        private readonly string?[] _retiredGenerations = new string[RetiredGenerationFence];
+        private int _retiredGenerationsHead;
+        private int _retiredGenerationsCount;
+        private readonly List<Guid> _retiredSignalPeers = new List<Guid>();
 
         /// <summary>Creates the machine in the connecting phase (constructed-live, Rust parity).</summary>
         public SignalFishStateMachine()
@@ -398,15 +404,7 @@ namespace SignalFish.Client.Core
                         break;
                     }
 
-                    _sessionPlanSeen = true;
-                    _sessionGeneration = sessionEvent.Plan.Generation;
-                    _sessionTransport = sessionEvent.Plan.Transport;
-                    _sessionPeers.Clear();
-                    for (int i = 0; i < sessionEvent.Plan.Peers.Count; i++)
-                    {
-                        _sessionPeers.Add(sessionEvent.Plan.Peers[i].PlayerId);
-                    }
-
+                    ApplySessionPlan(sessionEvent.Plan);
                     break;
                 case SessionEventKind.Disconnected:
                     ClearSession();
@@ -428,6 +426,87 @@ namespace SignalFish.Client.Core
         public bool IsSessionPeer(Guid playerId)
         {
             return _sessionPeers.Contains(playerId);
+        }
+
+        /// <summary>
+        /// Whether a plan with <paramref name="generation"/> was already
+        /// superseded: its generation is retired (differs from the current
+        /// one and sits inside the bounded fence of recently retired
+        /// generations). The frame pipeline rejects such a replay as a
+        /// protocol violation instead of letting it overwrite the current
+        /// plan — latest-wins by authority, not by arrival. Legacy plans
+        /// without a generation can never be fenced.
+        /// </summary>
+        internal bool IsSessionPlanSuperseded(string? generation)
+        {
+            return generation is not null
+                && !string.Equals(_sessionGeneration, generation, StringComparison.Ordinal)
+                && ContainsRetiredGeneration(generation);
+        }
+
+        /// <summary>
+        /// Whether an inbound <c>Signal</c> is a benign race to absorb
+        /// silently: no authoritative plan has arrived yet, the signal is
+        /// stamped with a stale (unknown or superseded) generation, or its
+        /// sender was retired by the live generation (departed, or dropped
+        /// by a same-generation re-plan) — the server protocol discards
+        /// such frames at the recipient. Inbound signals always carry a
+        /// generation (the decoder rejects the legacy generation-less
+        /// shape), so a signal can never match a legacy plan's absent
+        /// generation and the retirement fence never needs the
+        /// generation-less branch. Not a violation: a signal racing its
+        /// plan is normal relay ordering.
+        ///
+        /// Scope note (deliberate divergence from the Rust client): the
+        /// further lifecycle-validation arm — classifying a surviving
+        /// signal as a violation when the transport is not WebRTC, or the
+        /// sender is not a session peer — is not ported. Every surviving
+        /// signal surfaces as a typed event and the consumer filters by
+        /// its mesh view (the documented consumer-side contract); no other
+        /// .NET mesh kind carries the Rust lifecycle layer either, so a
+        /// partial port would classify inconsistently.
+        /// </summary>
+        internal bool ShouldSuppressInboundSignal(Guid from, string generation)
+        {
+            if (
+                !_sessionPlanSeen
+                || !string.Equals(_sessionGeneration, generation, StringComparison.Ordinal)
+            )
+            {
+                return true;
+            }
+
+            return _retiredSignalPeers.Contains(from) && !_sessionPeers.Contains(from);
+        }
+
+        /// <summary>
+        /// Records a compatibility <c>NewPeer</c> directive: the peer is
+        /// live again, so its pending signals surface (the authoritative
+        /// plan remains the rule; this only undoes a retirement).
+        /// </summary>
+        internal void OnNewPeer(Guid peerId)
+        {
+            if (!_sessionPeers.Contains(peerId))
+            {
+                _sessionPeers.Add(peerId);
+            }
+
+            _retiredSignalPeers.Remove(peerId);
+        }
+
+        /// <summary>
+        /// Records a departed member. On a WebRTC session the departed
+        /// peer's final in-flight signals may still arrive stamped with the
+        /// still-current generation; retiring the sender keeps those late
+        /// frames benign. Outside WebRTC there is no relayed-signal
+        /// fallback to race, so this is only a roster change.
+        /// </summary>
+        internal void OnPlayerLeft(Guid playerId)
+        {
+            if (_sessionTransport == SessionTransport.WebRtc && _sessionPeers.Remove(playerId))
+            {
+                _retiredSignalPeers.Add(playerId);
+            }
         }
 
         /// <summary>
@@ -598,6 +677,109 @@ namespace SignalFish.Client.Core
             _sessionGeneration = null;
             _sessionTransport = default(SessionTransport);
             _sessionPeers.Clear();
+            _retiredGenerationsHead = 0;
+            _retiredGenerationsCount = 0;
+            _retiredSignalPeers.Clear();
+        }
+
+        private void ApplySessionPlan(in SessionPlanMessage plan)
+        {
+            bool generationChanged = !string.Equals(
+                _sessionGeneration,
+                plan.Generation,
+                StringComparison.Ordinal
+            );
+            if (generationChanged)
+            {
+                /*
+                    The superseded generation is fenced against replayed
+                    plans re-asserting an already-superseded authoritative
+                    view; bounded to the most recent
+                    RetiredGenerationFence entries because the realistic
+                    replay window is adjacent on one ordered transport. Peer
+                    retirements were scoped to the superseded generation;
+                    its signals now die in the generation check alone.
+                */
+                if (_sessionGeneration is not null)
+                {
+                    _retiredGenerations[_retiredGenerationsHead] = _sessionGeneration;
+                    _retiredGenerationsHead =
+                        (_retiredGenerationsHead + 1) % RetiredGenerationFence;
+                    if (_retiredGenerationsCount < RetiredGenerationFence)
+                    {
+                        _retiredGenerationsCount++;
+                    }
+                }
+
+                _retiredSignalPeers.Clear();
+            }
+
+            if (
+                _sessionPlanSeen
+                && !generationChanged
+                && _sessionTransport == SessionTransport.WebRtc
+            )
+            {
+                /*
+                    Peers dropped by a same-generation replacement may still
+                    have signals in flight stamped with that still-live
+                    generation; retire them so those final frames stay
+                    benign races. A generation change must not carry
+                    retirement across: dropped peers never held authority
+                    under the new generation.
+                */
+                for (int i = 0; i < _sessionPeers.Count; i++)
+                {
+                    if (!PlanNamesPeer(plan, _sessionPeers[i]))
+                    {
+                        _retiredSignalPeers.Add(_sessionPeers[i]);
+                    }
+                }
+            }
+
+            // Every peer named by the new plan is live again.
+            for (int i = 0; i < plan.Peers.Count; i++)
+            {
+                _retiredSignalPeers.Remove(plan.Peers[i].PlayerId);
+            }
+
+            _sessionPlanSeen = true;
+            _sessionGeneration = plan.Generation;
+            _sessionTransport = plan.Transport;
+            _sessionPeers.Clear();
+            for (int i = 0; i < plan.Peers.Count; i++)
+            {
+                _sessionPeers.Add(plan.Peers[i].PlayerId);
+            }
+        }
+
+        private bool ContainsRetiredGeneration(string generation)
+        {
+            for (int i = 0; i < _retiredGenerationsCount; i++)
+            {
+                int index =
+                    (_retiredGenerationsHead - 1 - i + RetiredGenerationFence)
+                    % RetiredGenerationFence;
+                if (string.Equals(_retiredGenerations[index], generation, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool PlanNamesPeer(in SessionPlanMessage plan, Guid playerId)
+        {
+            for (int i = 0; i < plan.Peers.Count; i++)
+            {
+                if (plan.Peers[i].PlayerId == playerId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsDirected(ClientCommand command)

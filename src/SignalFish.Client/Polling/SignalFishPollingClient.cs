@@ -562,6 +562,7 @@ namespace SignalFish.Client.Polling
                 frame,
                 _options.MaxFrameBytes,
                 _deliveryGate,
+                _machine,
                 out FrameTranslation translated
             );
             if (translated.HasFact)

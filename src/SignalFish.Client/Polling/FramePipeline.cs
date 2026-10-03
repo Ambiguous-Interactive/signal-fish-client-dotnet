@@ -51,9 +51,10 @@ namespace SignalFish.Client.Polling
     /// The one inbound frame → event translation shared by both clients
     /// (async driver and polling loop), so decode routing, violation
     /// policy, and payload surfacing have exactly one implementation.
-    /// Pure in the frame → translation sense: state-machine application
-    /// and event delivery stay with the caller; the delivery gate is the
-    /// one per-session component fed here, and only its own state moves.
+    /// Pure in the frame → translation sense: session-event application
+    /// and event delivery stay with the caller; the delivery gate and the
+    /// state machine are the two per-session components fed here, and only
+    /// their own state moves.
     /// </summary>
     internal static class FramePipeline
     {
@@ -71,6 +72,7 @@ namespace SignalFish.Client.Polling
             in TransportFrame frame,
             int maxFrameBytes,
             DeliveryGate gate,
+            SignalFishStateMachine machine,
             out FrameTranslation translated
         )
         {
@@ -109,7 +111,7 @@ namespace SignalFish.Client.Polling
             switch (envelope.Kind)
             {
                 case EnvelopeEventKind.Message:
-                    TranslateMessage(envelope, gate, ref translated);
+                    TranslateMessage(envelope, gate, machine, ref translated);
                     break;
                 case EnvelopeEventKind.UnknownMessage:
                     translated.HasEvent = true;
@@ -229,6 +231,7 @@ namespace SignalFish.Client.Polling
         private static void TranslateMessage(
             in EnvelopeEvent envelope,
             DeliveryGate gate,
+            SignalFishStateMachine machine,
             ref FrameTranslation translated
         )
         {
@@ -239,6 +242,30 @@ namespace SignalFish.Client.Polling
                     // Never produced by a frame; defensive.
                     translated.IsClose = true;
                     translated.Close = new TransportClose(LivenessCloseCode);
+                    return;
+                }
+
+                /*
+                    A replayed plan whose generation was already superseded
+                    must never overwrite the current plan (latest-wins by
+                    authority, not by arrival). Deliberately outside the
+                    violation policy, like the routed-fact wire violation
+                    below: the plan is rejected as session input, the
+                    machine stays put, and the anomaly surfaces.
+                */
+                if (
+                    fact.Kind == SessionEventKind.SessionPlan
+                    && machine.IsSessionPlanSuperseded(fact.Plan.Generation)
+                )
+                {
+                    translated.HasEvent = true;
+                    translated.Event = PollEvent.FromViolation(
+                        envelope.Message,
+                        "SessionPlan generation "
+                            + fact.Plan.Generation
+                            + " was already superseded",
+                        envelope.Raw
+                    );
                     return;
                 }
 
@@ -303,7 +330,12 @@ namespace SignalFish.Client.Polling
                 return;
             }
 
-            PollEvent? payloadEvent = TryBuildPayloadEvent(envelope, gate, out GateVerdict verdict);
+            PollEvent? payloadEvent = TryBuildPayloadEvent(
+                envelope,
+                gate,
+                machine,
+                out GateVerdict verdict
+            );
             if (ApplyVerdict(envelope, verdict, ref translated))
             {
                 return;
@@ -578,11 +610,15 @@ namespace SignalFish.Client.Polling
         /// means the frame is absorbed (no v2 event surface). Gameplay and
         /// lifecycle payloads treat a decode failure as a wire violation
         /// (nothing session-critical was applied, so the anomaly must not
-        /// be masked by default payloads).
+        /// be masked by default payloads). The machine's mesh roster is fed
+        /// here (the departed/re-added peer bookkeeping behind the inbound
+        /// signal fence), and a <c>Signal</c> racing its plan is absorbed
+        /// as a benign relay-ordering race.
         /// </summary>
         private static PollEvent? TryBuildPayloadEvent(
             EnvelopeEvent envelope,
             DeliveryGate gate,
+            SignalFishStateMachine machine,
             out GateVerdict verdict
         )
         {
@@ -640,6 +676,13 @@ namespace SignalFish.Client.Polling
                         return null;
                     }
 
+                    /*
+                        The roster feed rides the accepted frame (Rust parity:
+                        a gate-refused departure updates no client state —
+                        under Observe the violation surfaces and the frame
+                        still proceeds).
+                    */
+                    machine.OnPlayerLeft(playerLeft.PlayerId);
                     return PollEvent.FromPlayerLeft(playerLeft.PlayerId, envelope.Raw);
                 case MessageKind.PlayerReconnected:
                     if (
@@ -791,6 +834,7 @@ namespace SignalFish.Client.Polling
                         return PollEvent.FromViolation(envelope.Message, envelope.Raw);
                     }
 
+                    machine.OnNewPeer(newPeer.PeerId);
                     return PollEvent.FromNewPeer(newPeer, envelope.Raw);
                 case MessageKind.PeerTransportStatus:
                     if (
@@ -813,6 +857,11 @@ namespace SignalFish.Client.Polling
                     )
                     {
                         return PollEvent.FromViolation(envelope.Message, envelope.Raw);
+                    }
+
+                    if (machine.ShouldSuppressInboundSignal(signal.From, signal.Generation))
+                    {
+                        return null;
                     }
 
                     return PollEvent.FromSignal(signal, envelope.Raw);

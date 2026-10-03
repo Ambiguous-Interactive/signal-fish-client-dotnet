@@ -76,8 +76,8 @@ Checked items are covered by `tests/SignalFish.Client.E2E`
       stamps), format negotiation admits binary only against a negotiated
       non-JSON encoding, and binary frames gate through the same
       delivery-accountability engine — binary is reliable, sharing the
-      sender's seq stream. The live two-way round trip lands with the
-      M6.6 scripted scenarios.
+      sender's seq stream. The live two-way round trip runs in the
+      conformance suite (M6.6).
 - [x] v3 mesh signaling client surface (M6.5): `SessionPlan`/`NewPeer`/
       `PeerTransportStatus`/`Signal` decode against the golden wire and
       surface as typed events; the plan doubles as the signal-admission
@@ -85,9 +85,11 @@ Checked items are covered by `tests/SignalFish.Client.E2E`
       send fences, `SendSignal` never touches the wire when refused);
       `SendTransportStatus`/`SendProvideConnectionInfo` admit per the
       server's v3/v2 gating; `MeshSession` folds the event stream into a
-      plan-obedient peer view (Rust `mesh.rs` parity). Verified at the
-      unit/integration layer only — the live-server scenarios
-      (`v3-mesh-webrtc`, `v3-host-topology`, `v3-host-failover`) land
-      with M6.6.
-- [ ] Reconnect (live), v3 dynamics (live mesh runs), v3 gap
-      lifecycle — land with their milestones (M6.6).
+      plan-obedient peer view (Rust `mesh.rs` parity). The live-server
+      scenarios (`v3-mesh-webrtc`, `v3-host-topology`, `v3-host-failover`,
+      plus the explicit relay-floor plan) run in the conformance suite
+      (M6.6), with the retired-generation plan fence and inbound
+      stale-signal suppression ported from the Rust client.
+- [ ] Reconnect (live): the live-server reconnection drill still lands
+      with a later round; the v2-floor procedure is covered by
+      golden-driven integration tests.

@@ -5,6 +5,7 @@ namespace SignalFish.Client.E2E
     using System.Text;
     using System.Text.Json.Nodes;
     using System.Threading.Tasks;
+    using SignalFish.Client.Async;
     using SignalFish.Client.Core;
     using SignalFish.Client.Polling;
     using SignalFish.Client.Protocol;
@@ -48,7 +49,7 @@ namespace SignalFish.Client.E2E
         }
     }
 
-    /// <summary>Shared driving helpers for the conformance scenarios.</summary>
+    /// <summary>The shared driving helpers for the conformance scenarios.</summary>
     internal static class E2EHarness
     {
         internal static readonly TimeSpan DefaultEventTimeout = TimeSpan.FromSeconds(10);
@@ -61,7 +62,7 @@ namespace SignalFish.Client.E2E
                 .ConfigureAwait(false);
         }
 
-        /// <summary>Connects to the given endpoint (v2 floor or v3 negotiation).</summary>
+        /// <summary>Connects the given endpoint (v2 floor or v3 negotiation).</summary>
         internal static async Task<SignalFishPollingClient> ConnectClientAsync(
             Uri endpoint,
             PollingClientOptions? options = null
@@ -385,6 +386,168 @@ namespace SignalFish.Client.E2E
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Connects to the v3 endpoint and completes the handshake with an
+        /// explicit capability advertisement: the negotiated version plus
+        /// the supported transports/topologies. Advertising the richest
+        /// rung is what unlocks SessionPlan emission at finalize; a
+        /// relay-only advertisement keeps the v2 floor.
+        /// </summary>
+        internal static async Task<SignalFishPollingClient> ConnectV3ClientAsync(
+            string[] transports,
+            string[] topologies
+        )
+        {
+            SignalFishPollingClient client = await ConnectClientAsync(E2EEnvironment.V3Endpoint())
+                .ConfigureAwait(false);
+            CommandSend send = client.SendAuthenticate(
+                new AuthenticateMessage(
+                    appId: "e2e-dotnet-app",
+                    protocolVersion: 3,
+                    supportedTransports: transports,
+                    supportedTopologies: topologies
+                )
+            );
+            if (!send.Accepted)
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+                throw new InvalidOperationException($"Authenticate refused: {send.Refusal}");
+            }
+
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.Authenticated)
+                .ConfigureAwait(false);
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.ProtocolInfo)
+                .ConfigureAwait(false);
+            return client;
+        }
+
+        /// <summary>
+        /// Connects an async client to the v3 endpoint with a non-JSON game
+        /// data format negotiated (the binary relay lane) and completes the
+        /// handshake.
+        /// </summary>
+        internal static async Task<SignalFishClient> ConnectAsyncClientAsync(string gameDataFormat)
+        {
+            SignalFishClient client = new SignalFishClient(
+                new WebSocketTransport(),
+                SystemClock.Instance,
+                new SignalFishClientOptions(gameDataFormat: gameDataFormat)
+            );
+            await client.ConnectAsync(E2EEnvironment.V3Endpoint()).ConfigureAwait(false);
+            CommandSend send = client.SendAuthenticate(
+                new AuthenticateMessage(
+                    appId: "e2e-dotnet-app",
+                    gameDataFormat: gameDataFormat,
+                    protocolVersion: 3
+                )
+            );
+            if (!send.Accepted)
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+                throw new InvalidOperationException($"Authenticate refused: {send.Refusal}");
+            }
+
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.Authenticated)
+                .ConfigureAwait(false);
+            await WaitForEventAsync(client, e => e.Kind == PollEventKind.ProtocolInfo)
+                .ConfigureAwait(false);
+            return client;
+        }
+
+        /// <summary>Async-client twin of the polling event wait.</summary>
+        internal static async Task<PollEvent> WaitForEventAsync(
+            SignalFishClient client,
+            Func<PollEvent, bool> match,
+            TimeSpan? timeout = null
+        )
+        {
+            TimeSpan budget = timeout ?? DefaultEventTimeout;
+            Stopwatch clock = Stopwatch.StartNew();
+            while (clock.Elapsed < budget)
+            {
+                PollEvent? matched = TakeMatching(client, match);
+                if (matched is not null)
+                {
+                    return matched.GetValueOrDefault();
+                }
+
+                await Task.Delay(10).ConfigureAwait(false);
+            }
+
+            throw new TimeoutException(
+                $"No matching event within {budget.TotalSeconds:F0}s " + $"(phase {client.Phase})."
+            );
+        }
+
+        /// <summary>
+        /// One non-async drain walk of the async client's queue (the
+        /// enumerator must not cross an await); breaking early keeps the
+        /// unconsumed tail queued.
+        /// </summary>
+        internal static PollEvent? TakeMatching(
+            SignalFishClient client,
+            Func<PollEvent, bool> match
+        )
+        {
+            while (client.TryDequeueEvent(out PollEvent pollEvent))
+            {
+                if (match(pollEvent))
+                {
+                    return pollEvent;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>Joins an async client and waits for the typed confirmation.</summary>
+        internal static async Task<RoomMembership> JoinRoomAsync(
+            SignalFishClient client,
+            string gameName,
+            string playerName,
+            string? roomCode = null
+        )
+        {
+            CommandSend send = client.SendJoinRoom(
+                new JoinRoomMessage(gameName, playerName, roomCode)
+            );
+            if (!send.Accepted)
+            {
+                throw new InvalidOperationException($"JoinRoom refused: {send.Refusal}");
+            }
+
+            PollEvent joined = await WaitForEventAsync(
+                    client,
+                    e =>
+                        e.Kind == PollEventKind.RoomJoined || e.Kind == PollEventKind.RoomJoinFailed
+                )
+                .ConfigureAwait(false);
+            if (joined.Kind != PollEventKind.RoomJoined)
+            {
+                throw new InvalidOperationException(
+                    $"JoinRoom failed: {joined.Failure.ErrorCode} ({joined.Failure.Reason})"
+                );
+            }
+
+            return joined.Membership;
+        }
+
+        /// <summary>
+        /// Waits for the client's per-recipient session plan (the mesh
+        /// signaling surface's authoritative directive).
+        /// </summary>
+        internal static async Task<SessionPlanMessage> WaitForPlanAsync(
+            SignalFishPollingClient client
+        )
+        {
+            PollEvent plan = await WaitForEventAsync(
+                    client,
+                    e => e.Kind == PollEventKind.SessionPlan
+                )
+                .ConfigureAwait(false);
+            return plan.SessionPlan;
         }
 
         /// <summary>Authenticates and waits for the handshake's two answers.</summary>

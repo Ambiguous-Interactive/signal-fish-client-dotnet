@@ -6,6 +6,7 @@ namespace SignalFish.Client.E2E
     using System.Text;
     using System.Threading.Tasks;
     using NUnit.Framework;
+    using SignalFish.Client.Async;
     using SignalFish.Client.Core;
     using SignalFish.Client.Polling;
     using SignalFish.Client.Protocol;
@@ -294,6 +295,66 @@ namespace SignalFish.Client.E2E
 
             await alice.DisposeAsync();
             await bob.DisposeAsync();
+        }
+
+        /// <summary>
+        /// M6.4 live lane: on a negotiated-v3 room with MessagePack
+        /// negotiated, binary game data round-trips both ways — sender,
+        /// opaque payload, and the paired accountability stamps arrive on
+        /// the peer's GameData event.
+        /// </summary>
+        [Test]
+        public async Task BinaryGameDataRoundTripsOnALiveV3Room()
+        {
+            SignalFishClient alice = await E2EHarness.ConnectAsyncClientAsync("message_pack");
+            SignalFishClient bob = await E2EHarness.ConnectAsyncClientAsync("message_pack");
+
+            try
+            {
+                string gameName = E2EHarness.GameName();
+                RoomMembership aliceSeat = await E2EHarness.JoinRoomAsync(alice, gameName, "alice");
+                RoomMembership bobSeat = await E2EHarness.JoinRoomAsync(
+                    bob,
+                    gameName,
+                    "bob",
+                    roomCode: aliceSeat.RoomCode
+                );
+
+                byte[] payload = { 0x01, 0x02, 0xfe };
+                Assert.That(alice.SendBinaryGameData(payload).Accepted, Is.True);
+                PollEvent received = await E2EHarness.WaitForEventAsync(
+                    bob,
+                    e => e.Kind == PollEventKind.GameData
+                );
+                Assert.That(received.GameData.FromPlayer, Is.EqualTo(aliceSeat.PlayerId));
+                Assert.That(received.GameData.Class, Is.EqualTo(GameDataClass.Reliable));
+                Assert.That(received.GameData.Seq, Is.Not.Null);
+                Assert.That(received.GameData.Epoch, Is.Not.Null);
+                Assert.That(received.GameData.Payload.ToArray(), Is.EqualTo(payload));
+
+                Assert.That(bob.SendBinaryGameData(payload).Accepted, Is.True);
+                PollEvent echoed = await E2EHarness.WaitForEventAsync(
+                    alice,
+                    e => e.Kind == PollEventKind.GameData
+                );
+                Assert.That(echoed.GameData.FromPlayer, Is.EqualTo(bobSeat.PlayerId));
+                Assert.That(echoed.GameData.Payload.ToArray(), Is.EqualTo(payload));
+
+                PollEvent? violation = E2EHarness.TakeMatching(
+                    bob,
+                    e => e.Kind == PollEventKind.ProtocolViolation
+                );
+                Assert.That(
+                    violation.HasValue,
+                    Is.False,
+                    "a conforming v3 binary relay must not raise violations"
+                );
+            }
+            finally
+            {
+                await alice.DisposeAsync();
+                await bob.DisposeAsync();
+            }
         }
 
         /// <summary>Item 2: two-player lobby, all-ready, start, GameStarting.</summary>

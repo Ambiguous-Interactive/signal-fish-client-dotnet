@@ -35,6 +35,10 @@ jobs:
           # Generous budgets: the suite creates a handful of throwaway rooms.
           SIGNAL_FISH__RATE_LIMIT__MAX_ROOM_CREATIONS: '100'
           SIGNAL_FISH__RATE_LIMIT__MAX_JOIN_ATTEMPTS: '100'
+          # The mesh ceiling admits the v3 upgrade rungs (mesh + host) for
+          # the mesh conformance scenarios; relay-only advertisements still
+          # floor exactly as before.
+          SIGNAL_FISH__SESSION__DEFAULT_TOPOLOGY: 'mesh'
           # Short liveness timers so the heartbeat and silent-client
           # scenarios finish in seconds instead of minutes. Server Ping
           # probes are off: a silent client must not survive on automatic
