@@ -32,6 +32,12 @@ Requirement: Unity 2021.2 or newer (Mono and IL2CPP).
 - `Samples~/PollingDriver` — a minimal `MonoBehaviour` that drives the
   polling client (see below).
 
+Engine adapters ship as **separate** packages under
+[unity/Adapters](https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/tree/main/unity/Adapters)
+so the SDK stays engine-free: the
+[FishNet transport](adapters/fishnet.md) puts a FishNet session on a Signal Fish
+room.
+
 The library has **zero NuGet dependencies**: JSON is a hand-rolled UTF-8
 codec and queuing is a channel-free bounded ring, so nothing needs to be
 carried into the player.

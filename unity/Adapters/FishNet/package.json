@@ -1,0 +1,24 @@
+{
+    "name": "com.ambiguous-interactive.signalfish.transport.fishnet",
+    "version": "0.1.0",
+    "displayName": "Signal Fish Transport for FishNet",
+    "description": "FishNet transport bridge over a Signal Fish room: the room authority plays the FishNet server, members play clients, and game traffic rides the v3 binary relay lane. Requires the FishNet package (git URL install) and com.ambiguous-interactive.signalfish.",
+    "unity": "2021.2",
+    "license": "MIT",
+    "documentationUrl": "https://ambiguous-interactive.github.io/signal-fish-client-dotnet/adapters/fishnet/",
+    "licensesUrl": "https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/blob/main/LICENSE",
+    "author": {
+        "name": "Ambiguous Interactive",
+        "url": "https://github.com/Ambiguous-Interactive"
+    },
+    "dependencies": {
+        "com.ambiguous-interactive.signalfish": "0.1.0"
+    },
+    "samples": [
+        {
+            "displayName": "Movement Sync",
+            "description": "A NetworkBehaviour that syncs a player capsule's position and rotation over the bridge, plus the host/client bootstrap scene steps.",
+            "path": "Samples~/MovementSync"
+        }
+    ]
+}
