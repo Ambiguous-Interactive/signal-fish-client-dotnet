@@ -36,7 +36,8 @@ try {
     )
     Write-TestFile -Path (Join-Path $packageRoot 'link.xml') -Content '<linker />'
     Write-TestFile -Path (Join-Path $packageRoot 'Samples~/PollingDriver/README.md') -Content '# sample'
-    Write-TestFile -Path (Join-Path $runtimeRoot 'SignalFish.Client.asmdef') -Content '{}'
+    Write-TestFile -Path (Join-Path $runtimeRoot 'SignalFish.Client.asmdef') -Content @('{"name": "Test.Runtime"}')
+    Write-TestFile -Path (Join-Path $packageRoot 'Plugins/WebGL/Test.Plugin.asmdef') -Content @('{"name": "Test.Plugin", "references": ["Test.Runtime"]}')
     Write-TestFile -Path (Join-Path $runtimeRoot 'Stale.cs') -Content 'stale'
     Write-TestFile -Path (Join-Path $runtimeRoot 'Old/Z.cs') -Content 'stale'
 
@@ -100,6 +101,17 @@ try {
     Assert-True ($listing -match 'Runtime/Core/A\.cs') 'tarball contains the fresh mirror'
     Assert-True ($listing -notmatch 'Sub/B\.cs') 'tarball never resurrects removed sources'
     Assert-True ($listing -match 'Samples~/PollingDriver/README\.md') 'tarball contains the samples'
+    Assert-True ($listing -match 'Runtime/SignalFish\.Client\.asmdef') 'tarball ships the hand-written Runtime asmdef'
+    Assert-True ($listing -match 'Plugins/WebGL/Test\.Plugin\.asmdef') 'tarball ships plugin asmdefs'
+
+    # 6. A dangling asmdef reference fails the pack: the tarball would not
+    #    compile as a package (Unity resolves asmdef references by name).
+    Write-TestFile -Path (Join-Path $packageRoot 'Plugins/WebGL/Test.Plugin.asmdef') -Content @('{"name": "Test.Plugin", "references": ["Missing.Assembly"]}')
+    $run = Invoke-Pwsh -ScriptPath $sync -Arguments @('-RepoRoot', $repo, '-Pack', '-OutDir', $dist)
+    Assert-Equal 1 $run.ExitCode 'pack fails on a dangling asmdef reference'
+    Write-TestFile -Path (Join-Path $packageRoot 'Plugins/WebGL/Test.Plugin.asmdef') -Content @('{"name": "Test.Plugin", "references": ["Test.Runtime"]}')
+    $run = Invoke-Pwsh -ScriptPath $sync -Arguments @('-RepoRoot', $repo, '-Pack', '-OutDir', $dist)
+    Assert-Equal 0 $run.ExitCode 'pack recovers once the reference resolves'
 }
 finally {
     Remove-TestRepo -Path $repo

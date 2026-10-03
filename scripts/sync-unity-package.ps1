@@ -169,15 +169,56 @@ function New-PackageTarball {
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
     try {
         # Stage the package skeleton (everything but the mirror), then lay a
-        # fresh mirror into it so the tarball can never contain stale
-        # sources.
+        # fresh mirror over a verbatim Runtime copy: the mirror overlay must
+        # never carry stale sources, but hand-written Runtime files (the
+        # asmdef) must reach the tarball — without them the shipped source
+        # distribution does not compile as a package.
         foreach ($entry in @(Get-ChildItem -LiteralPath $packageRoot -Force)) {
             if ($entry.Name -eq 'Runtime') {
                 continue
             }
             Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $stage $entry.Name) -Recurse -Force
         }
-        Copy-Mirror -TargetRuntimeRoot (Join-Path $stage 'Runtime')
+        $stageRuntime = Join-Path $stage 'Runtime'
+        New-Item -ItemType Directory -Path $stageRuntime -Force | Out-Null
+        if (Test-Path -LiteralPath $runtimeRoot) {
+            foreach ($entry in @(Get-ChildItem -LiteralPath $runtimeRoot -Force)) {
+                Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $stageRuntime $entry.Name) -Recurse -Force
+            }
+        }
+        Copy-Mirror -TargetRuntimeRoot $stageRuntime
+
+        # Pin the shipped asmdef graph: Unity resolves references by name,
+        # so every referenced asmdef must ship inside the package.
+        $asmdefs = @(Get-ChildItem -LiteralPath $stage -Recurse -File -Filter '*.asmdef')
+        $available = @{}
+        foreach ($definition in $asmdefs) {
+            $manifest = Get-Content -LiteralPath $definition.FullName -Raw | ConvertFrom-Json
+            $nameProperty = $manifest.PSObject.Properties['name']
+            if ($null -ne $nameProperty -and [string]$nameProperty.Value) {
+                $available[[string]$nameProperty.Value] = $true
+            }
+        }
+        foreach ($definition in $asmdefs) {
+            $manifest = Get-Content -LiteralPath $definition.FullName -Raw | ConvertFrom-Json
+            $nameProperty = $manifest.PSObject.Properties['name']
+            $displayName = if ($null -ne $nameProperty) { [string]$nameProperty.Value } else { '' }
+            $referencesProperty = $manifest.PSObject.Properties['references']
+            $referenceNames = @()
+            if ($null -ne $referencesProperty) {
+                $referenceNames = @($referencesProperty.Value)
+            }
+            foreach ($reference in $referenceNames) {
+                $referenceName = [string]$reference
+                if ($referenceName -eq '') {
+                    continue
+                }
+                if (-not $available.ContainsKey($referenceName)) {
+                    Write-Error "pack: shipped asmdef '$displayName' references '$referenceName', which does not ship in the package."
+                    exit 1
+                }
+            }
+        }
 
         if (-not (Test-Path -LiteralPath $Destination)) {
             New-Item -ItemType Directory -Path $Destination -Force | Out-Null
