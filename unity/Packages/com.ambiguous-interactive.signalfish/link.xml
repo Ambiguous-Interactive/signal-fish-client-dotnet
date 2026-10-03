@@ -1,0 +1,12 @@
+<linker>
+  <!--
+        Unity ignores link.xml inside packages — this file is a ready-made
+        snippet. Copy it into your project's Assets/ folder (or merge the
+        assembly rule into an existing link.xml) to keep the client
+        assembly intact under IL2CPP managed stripping. The library uses
+        zero reflection (hand-rolled codec, no serializers), so nothing
+        inside depends on preservation; the assembly-level rule only
+        guards the public surface against aggressive stripping.
+    -->
+  <assembly fullname="SignalFish.Client" preserve="all" />
+</linker>

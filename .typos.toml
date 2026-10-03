@@ -36,6 +36,9 @@ netstandard = "netstandard"
 IL2CPP = "IL2CPP"
 asmdef = "asmdef"
 jslib = "jslib"
+# Unity's class name MonoBehaviour splits into the token "Behaviour"
+# (the British spelling is load-bearing in the Unity API)
+Behaviour = "Behaviour"
 # `Pn` appears in grep flag combinations (`-Pn`, `-oPn`, `-qPn`)
 # in shell scripts and test data — not a misspelling of "On"
 Pn = "Pn"

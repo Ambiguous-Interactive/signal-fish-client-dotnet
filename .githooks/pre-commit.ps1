@@ -146,6 +146,46 @@ if ($linqTargets.Count -gt 0) {
     }
 }
 
+# The Unity package Runtime folder mirrors src/SignalFish.Client (source
+# distribution). When either side is staged — additions, edits, and
+# deletions alike — re-sync and re-stage the mirror so a stale mirror can
+# never be committed (mirrors the skills-index freshness pattern).
+$syncTargets = @(
+    & git diff --cached --name-only --diff-filter=ADCMR -- 'src/SignalFish.Client' 'unity/Packages/com.ambiguous-interactive.signalfish/Runtime'
+    | Where-Object { $_ -like 'src/SignalFish.Client/*.cs' -or $_ -like 'unity/Packages/com.ambiguous-interactive.signalfish/Runtime/*.cs' }
+)
+if ($syncTargets.Count -gt 0) {
+    # The sync reads the working tree: partial staging (git add -p) or an
+    # untracked src/ file would mirror content the commit never contains.
+    $unstaged = @(
+        & git diff --name-only -- 'src/SignalFish.Client'
+        & git ls-files --others --exclude-standard -- 'src/SignalFish.Client'
+    )
+    if ($unstaged.Count -gt 0) {
+        Write-Host 'pre-commit: unstaged or untracked src/SignalFish.Client files; the Unity mirror syncs' -ForegroundColor Red
+        Write-Host '  from the working tree, so stage everything first (git add src) or move them away.' -ForegroundColor Red
+        $failed = $true
+    }
+    else {
+        Write-Host 'pre-commit: refreshing the Unity package source mirror...'
+        $sync = Join-Path $repoRoot 'scripts/sync-unity-package.ps1'
+        $result = Invoke-LintStep -ScriptPath $sync -Params @{ RepoRoot = $repoRoot }
+        if ($result.ExitCode -ne 0) {
+            foreach ($line in $result.Output) { Write-Host "    | $line" }
+            Write-Host 'pre-commit: Unity package mirror sync failed. Run:' -ForegroundColor Red
+            Write-Host '  pwsh -NoProfile -File scripts/sync-unity-package.ps1' -ForegroundColor Red
+            $failed = $true
+        }
+        else {
+            $dirtyMirror = @(& git diff --name-only -- 'unity/Packages/com.ambiguous-interactive.signalfish/Runtime')
+            if ($dirtyMirror.Count -gt 0) {
+                & git add -- 'unity/Packages/com.ambiguous-interactive.signalfish/Runtime'
+                Write-Host 'pre-commit: re-staged the refreshed Unity package mirror'
+            }
+        }
+    }
+}
+
 $thisTargets = @($staged | Where-Object { $_ -match '\.cs$' })
 if ($thisTargets.Count -gt 0) {
     Write-Host 'pre-commit: enforcing the this.-qualification ban...'

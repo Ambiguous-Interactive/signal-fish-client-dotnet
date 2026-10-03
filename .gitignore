@@ -42,6 +42,14 @@ ScaffoldingReadMe.txt
 # Others
 ~$*
 *~
+# Unity's hidden-samples convention (Samples~) must be tracked: the tilde
+# suffix hides the folder from Unity's asset pipeline, not from git.
+!unity/Packages/**/Samples~
+!unity/Packages/**/Samples~/**
+# The negation above re-includes build junk that lives under Samples~;
+# ignore it again (bin/obj never belong in a sample).
+unity/Packages/**/Samples~/**/bin/
+unity/Packages/**/Samples~/**/obj/
 CodeCoverage/
 
 # MSBuild Binary and Structured Log
