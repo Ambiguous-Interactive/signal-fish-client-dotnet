@@ -48,4 +48,4 @@ and an 8 MiB receive bound (the browser cannot probe `client-config`).
 The plugin queues incoming frames on the JavaScript side and the
 transport polls them, because a browser page has no threads; that bounds
 receive throughput at the poll cadence, which is fine for signaling.
-See [Unity](unity.md) for usage and limits.
+See [WebGL](webgl.md) for usage and limits.
