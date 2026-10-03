@@ -8,6 +8,16 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Mesh session fences (M6.6): on a negotiated-v3 connection the client now
+  hardens the mesh signaling surface the same way the Rust client does. A
+  replayed `SessionPlan` whose generation was already superseded surfaces
+  as a protocol violation and never overwrites the current plan (bounded
+  to the eight most recent generations), and inbound `Signal` frames that
+  race the plan — no authoritative plan yet, a stale generation, or a
+  sender the live generation retired (departed, or dropped by a
+  same-generation re-plan) — are absorbed silently as benign relay
+  ordering instead of surfacing to the game. Everything else surfaces
+  exactly as before.
 - v3 mesh signaling (M6.5): on a negotiated-v3 connection the client now
   speaks the WebRTC mesh surface. `SessionPlan`, `NewPeer`,
   `PeerTransportStatus`, and `Signal` frames surface as typed events, and

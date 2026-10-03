@@ -262,6 +262,7 @@ namespace SignalFish.Client.Tests.Polling
                 new TransportFrame(payload, isText: true),
                 payload.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -293,16 +294,9 @@ namespace SignalFish.Client.Tests.Polling
         {
             string[] wires = { NewPeerWire, SignalWire, PeerTransportStatusWire };
 
-            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Observe);
             foreach (string wire in wires)
             {
-                byte[] payload = Encoding.UTF8.GetBytes(wire);
-                FramePipeline.Translate(
-                    new TransportFrame(payload, isText: true),
-                    payload.Length,
-                    gate,
-                    out FrameTranslation translated
-                );
+                FrameTranslation translated = TranslateWire(wire);
 
                 Assert.That(translated.HasFact, Is.False, wire);
                 Assert.That(translated.IsClose, Is.False, wire);
@@ -371,10 +365,35 @@ namespace SignalFish.Client.Tests.Polling
         {
             byte[] payload = Encoding.UTF8.GetBytes(wire);
             DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Observe);
+
+            /*
+                Seed the session the mesh payload kinds assume: a joined seat
+                with the mesh plan live, so a current-generation signal
+                surfaces instead of being absorbed as a pre-plan race.
+            */
+            SignalFishStateMachine machine = new SignalFishStateMachine();
+            machine.Apply(SessionEvent.Authenticated());
+            machine.Apply(
+                SessionEvent.Joined(
+                    SessionEventKind.RoomJoined,
+                    new RoomMembership(RoomRole.Player, HostId, HostId, "CODE01")
+                )
+            );
+            byte[] planPayload = Encoding.UTF8.GetBytes(MeshWebrtcPlanWire);
+            FramePipeline.Translate(
+                new TransportFrame(planPayload, isText: true),
+                planPayload.Length,
+                gate,
+                machine,
+                out FrameTranslation seeded
+            );
+            machine.Apply(seeded.Fact);
+
             FramePipeline.Translate(
                 new TransportFrame(payload, isText: true),
                 payload.Length,
                 gate,
+                machine,
                 out FrameTranslation translated
             );
             return translated;

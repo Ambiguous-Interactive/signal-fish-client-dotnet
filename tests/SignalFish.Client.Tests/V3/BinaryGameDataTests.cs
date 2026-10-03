@@ -440,6 +440,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame, isText: false),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -468,6 +469,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(jsonFrame, isText: true),
                 jsonFrame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation json
             );
             Assert.That(json.HasViolation, Is.False, json.Violation.Diagnostic);
@@ -477,6 +479,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(binary, isText: false),
                 binary.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation relayed
             );
             Assert.That(relayed.HasViolation, Is.False, relayed.Violation.Diagnostic);
@@ -486,6 +489,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(binary, isText: false),
                 binary.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation replay
             );
             Assert.That(replay.HasViolation, Is.True);
@@ -502,6 +506,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame, isText: false),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -520,6 +525,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame, isText: false),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -540,6 +546,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame, isText: false),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -561,6 +568,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame, isText: false),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -582,6 +590,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(gap, isText: false),
                 gap.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation refused
             );
             Assert.That(refused.HasViolation, Is.True);
@@ -596,6 +605,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(healthy, isText: false),
                 healthy.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation suppressed
             );
             Assert.That(suppressed.HasViolation, Is.False);
@@ -613,6 +623,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame, isText: false),
                 frame.Length - 1,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -636,6 +647,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame, isText: false),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -662,6 +674,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame, isText: false),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -682,6 +695,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(jsonFrame, isText: true),
                 jsonFrame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation relayed
             );
             Assert.That(relayed.HasViolation, Is.False, relayed.Violation.Diagnostic);
@@ -703,6 +717,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(mismatched, isText: false),
                 mismatched.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -717,6 +732,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(jsonFrame, isText: true),
                 jsonFrame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation relayed
             );
             Assert.That(relayed.HasViolation, Is.False, relayed.Violation.Diagnostic);
@@ -738,6 +754,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame, isText: false),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -771,6 +788,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(frame.ToArray(), isText: false),
                 frame.Count,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
 
@@ -879,6 +897,7 @@ namespace SignalFish.Client.Tests.V3
         public void BinaryRelayHotPathAllocatesNothing()
         {
             DeliveryGate gate = NegotiatedGate();
+            SignalFishStateMachine machine = new SignalFishStateMachine();
             byte[][] frames = new byte[400][];
             for (int i = 0; i < frames.Length; i++)
             {
@@ -897,6 +916,7 @@ namespace SignalFish.Client.Tests.V3
                         new TransportFrame(frame, isText: false),
                         frame.Length,
                         gate,
+                        machine,
                         out FrameTranslation translated
                     );
                     if (translated.HasEvent)

@@ -114,12 +114,14 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(negotiation, isText: true),
                 negotiation.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out _
             );
             FramePipeline.Translate(
                 new TransportFrame(join, isText: true),
                 join.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation joined
             );
             Assert.That(joined.HasViolation, Is.False, joined.Violation.Diagnostic);
@@ -128,6 +130,7 @@ namespace SignalFish.Client.Tests.V3
                 new TransportFrame(reconnect, isText: true),
                 reconnect.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
             Assert.That(translated.HasFact, Is.False, "a failed typed decode applies nothing");
@@ -295,16 +298,19 @@ namespace SignalFish.Client.Tests.V3
             }
 
             DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            SignalFishStateMachine machine = new SignalFishStateMachine();
             FramePipeline.Translate(
                 new TransportFrame(negotiation, isText: true),
                 negotiation.Length,
                 gate,
+                machine,
                 out _
             );
             FramePipeline.Translate(
                 new TransportFrame(join, isText: true),
                 join.Length,
                 gate,
+                machine,
                 out FrameTranslation primed
             );
             Assert.That(primed.HasViolation, Is.False, primed.Violation.Diagnostic);
@@ -321,6 +327,7 @@ namespace SignalFish.Client.Tests.V3
                         new TransportFrame(frame, isText: true),
                         frame.Length,
                         gate,
+                        machine,
                         out FrameTranslation translated
                     );
                     if (translated.HasViolation)
@@ -377,11 +384,18 @@ namespace SignalFish.Client.Tests.V3
             );
 
             DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
-            FramePipeline.Translate(MakeFrame(negotiation), negotiation.Length, gate, out _);
+            FramePipeline.Translate(
+                MakeFrame(negotiation),
+                negotiation.Length,
+                gate,
+                new SignalFishStateMachine(),
+                out _
+            );
             FramePipeline.Translate(
                 MakeFrame(join),
                 join.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation joined
             );
             Assert.That(joined.HasViolation, Is.False, joined.Violation.Diagnostic);
@@ -390,6 +404,7 @@ namespace SignalFish.Client.Tests.V3
                 MakeFrame(frame),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
             Assert.That(translated.HasViolation, Is.False, translated.Violation.Diagnostic);
@@ -488,12 +503,30 @@ namespace SignalFish.Client.Tests.V3
             FrameTranslation translated = default;
             if (baselineFirst)
             {
-                FramePipeline.Translate(MakeFrame(negotiation), negotiation.Length, gate, out _);
-                FramePipeline.Translate(MakeFrame(join), join.Length, gate, out translated);
+                FramePipeline.Translate(
+                    MakeFrame(negotiation),
+                    negotiation.Length,
+                    gate,
+                    new SignalFishStateMachine(),
+                    out _
+                );
+                FramePipeline.Translate(
+                    MakeFrame(join),
+                    join.Length,
+                    gate,
+                    new SignalFishStateMachine(),
+                    out translated
+                );
                 Assert.That(translated.HasViolation, Is.False, translated.Violation.Diagnostic);
             }
 
-            FramePipeline.Translate(MakeFrame(frame), frame.Length, gate, out translated);
+            FramePipeline.Translate(
+                MakeFrame(frame),
+                frame.Length,
+                gate,
+                new SignalFishStateMachine(),
+                out translated
+            );
             return translated;
         }
 
@@ -504,6 +537,7 @@ namespace SignalFish.Client.Tests.V3
                 MakeFrame(frame),
                 frame.Length,
                 gate,
+                new SignalFishStateMachine(),
                 out FrameTranslation translated
             );
             return translated;

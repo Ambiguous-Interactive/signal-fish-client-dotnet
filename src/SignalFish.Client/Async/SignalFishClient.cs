@@ -1415,12 +1415,39 @@ namespace SignalFish.Client.Async
         private async Task ProcessFrameAsync(TransportFrame frame)
         {
             _lastServerFrameMs = _clock.ElapsedMilliseconds;
-            FramePipeline.Translate(
-                frame,
-                _options.MaxFrameBytes,
-                _deliveryGate,
-                out FrameTranslation translated
-            );
+
+            /*
+                One critical section: the translation (whose mesh fences read
+                and feed the machine), the fact application, and the sever
+                check all observe the same machine under the same lock — a
+                frame can never straddle a reconnect's machine swap.
+            */
+            FrameTranslation translated = default;
+            lock (_gate)
+            {
+                if (!_severed && !_terminal)
+                {
+                    FramePipeline.Translate(
+                        frame,
+                        _options.MaxFrameBytes,
+                        _deliveryGate,
+                        _machine,
+                        out translated
+                    );
+                    if (translated.HasFact)
+                    {
+                        _machine.Apply(translated.Fact);
+                        if (_machine.IsAuthenticated)
+                        {
+                            /*
+                                The attempt budget resets whenever a
+                                connection reaches the authenticated phase.
+                            */
+                            _reconnectAttempts = 0;
+                        }
+                    }
+                }
+            }
 
             /*
                 Backpressure: a full event queue parks the loop here —
@@ -1460,25 +1487,6 @@ namespace SignalFish.Client.Async
 
                 Sever(translated.Close);
                 return;
-            }
-
-            if (translated.HasFact)
-            {
-                lock (_gate)
-                {
-                    if (!_severed && !_terminal)
-                    {
-                        _machine.Apply(translated.Fact);
-                        if (_machine.IsAuthenticated)
-                        {
-                            /*
-                                The attempt budget resets whenever a
-                                connection reaches the authenticated phase.
-                            */
-                            _reconnectAttempts = 0;
-                        }
-                    }
-                }
             }
 
             if (translated.HasEvent)
