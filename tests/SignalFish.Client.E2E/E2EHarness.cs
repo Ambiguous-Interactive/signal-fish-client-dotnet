@@ -437,7 +437,11 @@ namespace SignalFish.Client.E2E
             );
             await client.ConnectAsync(E2EEnvironment.V3Endpoint()).ConfigureAwait(false);
             CommandSend send = client.SendAuthenticate(
-                new AuthenticateMessage(appId: "e2e-dotnet-app", protocolVersion: 3)
+                new AuthenticateMessage(
+                    appId: "e2e-dotnet-app",
+                    gameDataFormat: gameDataFormat,
+                    protocolVersion: 3
+                )
             );
             if (!send.Accepted)
             {

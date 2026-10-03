@@ -111,15 +111,19 @@ namespace SignalFish.Client.E2E
                     "the room-wide publication shares one generation"
                 );
 
+                /*
+                    The per-recipient glare flag describes the recipient's
+                    own offer toward that peer (the lesser UUID offers).
+                */
                 AssertPlanPeer(
                     alicePlan,
                     bobSeat.PlayerId,
-                    expectInitiate: InitiatesFirst(bobSeat.PlayerId, aliceSeat.PlayerId)
+                    expectInitiate: InitiatesFirst(aliceSeat.PlayerId, bobSeat.PlayerId)
                 );
                 AssertPlanPeer(
                     bobPlan,
                     aliceSeat.PlayerId,
-                    expectInitiate: InitiatesFirst(aliceSeat.PlayerId, bobSeat.PlayerId)
+                    expectInitiate: InitiatesFirst(bobSeat.PlayerId, aliceSeat.PlayerId)
                 );
 
                 MeshSession aliceView = Track(aliceStart);
