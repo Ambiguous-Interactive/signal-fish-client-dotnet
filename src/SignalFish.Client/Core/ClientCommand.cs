@@ -53,5 +53,14 @@ namespace SignalFish.Client.Core
 
         /// <summary>Request to become (or relinquish) the room authority (player role).</summary>
         RequestAuthority = 11,
+
+        /// <summary>Relay an opaque WebRTC signal to one plan peer (player role, negotiated v3).</summary>
+        SendSignal = 13,
+
+        /// <summary>Report this connection's data-path transport state (player role, negotiated v3).</summary>
+        SendTransportStatus = 14,
+
+        /// <summary>Publish self-declared engine connection info to the room (player role).</summary>
+        ProvideConnectionInfo = 15,
     }
 }

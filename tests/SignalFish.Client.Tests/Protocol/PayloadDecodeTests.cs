@@ -17,6 +17,8 @@ namespace SignalFish.Client.Tests
     [TestFixture]
     public class PayloadDecodeTests
     {
+        private static readonly string[] StunOnlyUrls = { "stun:stun.l.google.com:19302" };
+
         private static readonly TestCaseData[] SealedRoomFailureWires =
         {
             new TestCaseData(
@@ -749,6 +751,44 @@ namespace SignalFish.Client.Tests
         {
             string data =
                 @"{""is_authority"":true,""lobby_state"":""lobby"",""is_authority"":false}";
+            Assert.That(RoomSnapshot.TryDecode(Bytes(data), out _), Is.False);
+        }
+
+        [Test]
+        public void RoomSnapshotIcePreGatherDecodesAndJoinsEquality()
+        {
+            string data =
+                @"{""current_players"":[],""current_spectators"":[],""ice_servers"":["
+                + @"{""urls"":[""stun:stun.l.google.com:19302""]},"
+                + @"{""urls"":[""turn:turn.example.com:3478""],""username"":""u"","
+                + @"""credential"":""c""}]}";
+            Assert.That(RoomSnapshot.TryDecode(Bytes(data), out RoomSnapshot withIce), Is.True);
+            Assert.That(withIce.IceServers, Has.Count.EqualTo(2));
+            Assert.That(withIce.IceServers[0].Urls, Is.EqualTo(StunOnlyUrls));
+            Assert.That(withIce.IceServers[1].Username, Is.EqualTo("u"));
+            Assert.That(withIce.IceServers[1].Credential, Is.EqualTo("c"));
+
+            /*
+                Fresh TURN credentials are exactly the change a consumer
+                wants to detect across a re-baseline, so the ICE list is
+                part of the snapshot's value semantics.
+            */
+            Assert.That(RoomSnapshot.TryDecode(Bytes(data), out RoomSnapshot again), Is.True);
+            Assert.That(again, Is.EqualTo(withIce));
+
+            string refreshed =
+                @"{""current_players"":[],""current_spectators"":[],""ice_servers"":["
+                + @"{""urls"":[""stun:other.example""]}]}";
+            Assert.That(RoomSnapshot.TryDecode(Bytes(refreshed), out RoomSnapshot other), Is.True);
+            Assert.That(other, Is.Not.EqualTo(withIce));
+        }
+
+        [Test]
+        public void RoomSnapshotIcePreGatherWithWrongTypedEntryRejectsDecode()
+        {
+            string data =
+                @"{""current_players"":[],""current_spectators"":[],"
+                + @"""ice_servers"":[{""urls"":""not-an-array""}]}";
             Assert.That(RoomSnapshot.TryDecode(Bytes(data), out _), Is.False);
         }
 

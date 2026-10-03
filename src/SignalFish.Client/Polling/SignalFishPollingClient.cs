@@ -377,6 +377,91 @@ namespace SignalFish.Client.Polling
         }
 
         /// <summary>
+        /// Relays an opaque WebRTC signal to one peer of the latest
+        /// <c>SessionPlan</c> (player role, negotiated v3); the server
+        /// forwards it verbatim and recipients discard stale generations, so
+        /// the send is stamped and checked against the plan's admission
+        /// state: refused with
+        /// <see cref="AdmissionError.SessionPlanUnavailable"/> while no plan
+        /// has been observed, the selected transport is not webrtc, or the
+        /// target is not a plan peer, and with
+        /// <see cref="AdmissionError.StaleSessionGeneration"/> when the
+        /// signal's generation is not the latest plan's.
+        /// </summary>
+        public CommandSend SendSignal(in SignalMessage message)
+        {
+            if (!AdmitForSend(ClientCommand.SendSignal, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            if (!_machine.SessionPlanSeen)
+            {
+                return CommandSend.Refused(AdmissionError.SessionPlanUnavailable);
+            }
+
+            if (
+                _machine.SessionGeneration is not null
+                && _machine.SessionGeneration != message.Generation
+            )
+            {
+                return CommandSend.Refused(AdmissionError.StaleSessionGeneration);
+            }
+
+            if (
+                _machine.SessionTransport != SessionTransport.WebRtc
+                || !EnvelopeWriter.IsCanonicalUuid(message.To)
+                || !_machine.IsSessionPeer(new Guid(message.To))
+            )
+            {
+                return CommandSend.Refused(AdmissionError.SessionPlanUnavailable);
+            }
+
+            _sendBuffer.Reset();
+            EnvelopeWriter.WriteSignal(_sendBuffer, message);
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
+        /// Reports this connection's data-path transport state (player
+        /// role, negotiated v3); the server fans the report out to the
+        /// peer set as informational <c>PeerTransportStatus</c> traffic.
+        /// </summary>
+        public CommandSend SendTransportStatus(in TransportStatusMessage message)
+        {
+            if (!AdmitForSend(ClientCommand.SendTransportStatus, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            _sendBuffer.Reset();
+            EnvelopeWriter.WriteTransportStatus(_sendBuffer, message);
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
+        /// Publishes self-declared engine connection info to the room
+        /// (player role); the server repeats it to peers as the raw
+        /// material a <c>host</c> + <c>direct</c> plan is projected from.
+        /// v2-compatible: admission never demands a negotiated-v3
+        /// connection.
+        /// </summary>
+        public CommandSend SendProvideConnectionInfo(in ProvideConnectionInfoMessage message)
+        {
+            if (!AdmitForSend(ClientCommand.ProvideConnectionInfo, out AdmissionError refusal))
+            {
+                return CommandSend.Refused(refusal);
+            }
+
+            _sendBuffer.Reset();
+            EnvelopeWriter.WriteProvideConnectionInfo(_sendBuffer, message);
+            DispatchEncodedFrame();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
         /// Synchronous admission on the poll thread; a refused command never
         /// touches the wire. Sends before <see cref="ConnectAsync"/> are
         /// refused (the machine alone cannot see the connect call).

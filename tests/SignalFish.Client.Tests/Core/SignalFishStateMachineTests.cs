@@ -15,9 +15,15 @@ namespace SignalFish.Client.Tests.Core
     public class SignalFishStateMachineTests
     {
         private const string RoomCode = "ABC123";
+        private const string PlanGeneration = "00000000-0000-0000-0000-00000000000c";
+        private const string StaleGeneration = "99999999-9999-9999-9999-999999999999";
 
         private static readonly Guid PlayerId = new Guid("0f8fad5b-d9cb-469f-a165-70867728950e");
         private static readonly Guid RoomId = new Guid("7c9e6679-7425-40de-944b-e07fc1f90ae7");
+        private static readonly Guid SessionPeerId = new Guid(
+            "00000000-0000-0000-0000-00000000000b"
+        );
+        private static readonly Guid StrangerId = new Guid("00000000-0000-0000-0000-00000000000e");
 
         private static readonly TestCaseData[] RequestAuthorityAdmissionCases = new[]
         {
@@ -707,9 +713,11 @@ namespace SignalFish.Client.Tests.Core
             /*
                 The sweep walks the full command x delivery-class value
                 space so an appended command cannot skip classification:
-                exactly the classified game-data sends (latest, volatile)
-                and the raw binary relay require a negotiated v3
-                connection; reliable JSON relay stays on the v2 floor.
+                exactly the classified game-data sends (latest, volatile),
+                the raw binary relay, and the mesh signaling sends (signal,
+                transport status) require a negotiated v3 connection;
+                reliable JSON relay and ProvideConnectionInfo stay on the
+                v2 floor.
             */
             for (int value = 1; value <= 255; value++)
             {
@@ -728,7 +736,9 @@ namespace SignalFish.Client.Tests.Core
                             command == ClientCommand.SendGameData
                             && delivery != GameDataClass.Reliable
                         )
-                        || command == ClientCommand.SendBinaryGameData;
+                        || command == ClientCommand.SendBinaryGameData
+                        || command == ClientCommand.SendSignal
+                        || command == ClientCommand.SendTransportStatus;
                     Assert.That(
                         SignalFishStateMachine.RequiresNegotiatedV3(command, delivery),
                         Is.EqualTo(expected),
@@ -828,6 +838,292 @@ namespace SignalFish.Client.Tests.Core
             machine.Apply(SessionEvent.ProtocolInfo(null));
 
             Assert.That(machine.TryAdmit(ClientCommand.JoinRoom, out _), Is.True);
+        }
+
+        [Test]
+        public void SessionPlanFactAppliesAdmissionStateForSignalSends()
+        {
+            SignalFishStateMachine machine = InRoom(RoomRole.Player);
+            Assert.That(machine.SessionPlanSeen, Is.False);
+            Assert.That(machine.SessionGeneration, Is.Null);
+            Assert.That(machine.SessionTransport, Is.EqualTo(default(SessionTransport)));
+            Assert.That(machine.IsSessionPeer(SessionPeerId), Is.False);
+
+            machine.Apply(
+                SessionEvent.SessionPlan(
+                    Plan(PlanGeneration, SessionTransport.WebRtc, SessionPeerId)
+                )
+            );
+
+            Assert.That(machine.SessionPlanSeen, Is.True);
+            Assert.That(machine.SessionGeneration, Is.EqualTo(PlanGeneration));
+            Assert.That(machine.SessionTransport, Is.EqualTo(SessionTransport.WebRtc));
+            Assert.That(machine.IsSessionPeer(SessionPeerId), Is.True);
+            Assert.That(
+                machine.IsSessionPeer(PlayerId),
+                Is.False,
+                "the plan always excludes the recipient itself"
+            );
+        }
+
+        [Test]
+        public void SessionPlanFactReplacesTheWholePeerSetLatestWins()
+        {
+            SignalFishStateMachine machine = WithPlan(
+                PlanGeneration,
+                SessionTransport.WebRtc,
+                SessionPeerId
+            );
+
+            machine.Apply(
+                SessionEvent.SessionPlan(Plan(StaleGeneration, SessionTransport.Relay, StrangerId))
+            );
+
+            Assert.That(machine.SessionGeneration, Is.EqualTo(StaleGeneration));
+            Assert.That(machine.SessionTransport, Is.EqualTo(SessionTransport.Relay));
+            Assert.That(machine.IsSessionPeer(SessionPeerId), Is.False);
+            Assert.That(machine.IsSessionPeer(StrangerId), Is.True);
+        }
+
+        [Test]
+        public void SessionPlanFactIsIgnoredWithoutConfirmedMembership()
+        {
+            SignalFishStateMachine machine = AuthenticatedAtLeast();
+            machine.Apply(
+                SessionEvent.SessionPlan(
+                    Plan(PlanGeneration, SessionTransport.WebRtc, SessionPeerId)
+                )
+            );
+
+            Assert.That(machine.SessionPlanSeen, Is.False);
+            Assert.That(machine.SessionGeneration, Is.Null);
+            Assert.That(machine.IsSessionPeer(SessionPeerId), Is.False);
+        }
+
+        [Test]
+        public void ConfirmedRoomExitClearsSessionPlanState()
+        {
+            SignalFishStateMachine player = WithPlan(
+                PlanGeneration,
+                SessionTransport.WebRtc,
+                SessionPeerId
+            );
+            player.Apply(SessionEvent.From(SessionEventKind.RoomLeft));
+            AssertPlanCleared(player);
+
+            SignalFishStateMachine spectator = WithPlan(
+                PlanGeneration,
+                SessionTransport.WebRtc,
+                SessionPeerId
+            );
+            spectator.Apply(SessionEvent.From(SessionEventKind.SpectatorLeft));
+            AssertPlanCleared(spectator);
+        }
+
+        [Test]
+        public void ReconnectedBaselineClearsSessionPlanStateUntilTheReplan()
+        {
+            SignalFishStateMachine machine = WithPlan(
+                PlanGeneration,
+                SessionTransport.WebRtc,
+                SessionPeerId
+            );
+            machine.Apply(
+                SessionEvent.Joined(SessionEventKind.Reconnected, Membership(RoomRole.Player))
+            );
+            AssertPlanCleared(machine);
+
+            /*
+                The reclaim re-enters the room without a plan; the server
+                re-plans the fresh seat right after and signaling resumes
+                from the new generation.
+            */
+            machine.Apply(
+                SessionEvent.SessionPlan(
+                    Plan(StaleGeneration, SessionTransport.WebRtc, SessionPeerId)
+                )
+            );
+            Assert.That(machine.SessionPlanSeen, Is.True);
+            Assert.That(machine.SessionGeneration, Is.EqualTo(StaleGeneration));
+        }
+
+        [Test]
+        public void MembershipBaselineClearsSessionPlanState()
+        {
+            /*
+                A tolerant re-baseline (a second join without a leave — a
+                lifecycle-violating server) must not keep the prior seat's
+                plan actionable: signals would fence into the stale room.
+            */
+            SignalFishStateMachine machine = WithPlan(
+                PlanGeneration,
+                SessionTransport.WebRtc,
+                SessionPeerId
+            );
+            machine.Apply(
+                SessionEvent.Joined(SessionEventKind.RoomJoined, Membership(RoomRole.Player))
+            );
+            AssertPlanCleared(machine);
+        }
+
+        [Test]
+        public void LegacyGenerationlessPlanStandsDownTheGenerationFence()
+        {
+            SignalFishStateMachine machine = WithPlan(null, SessionTransport.WebRtc, SessionPeerId);
+            Assert.That(machine.SessionGeneration, Is.Null);
+
+            bool admitted = TryAdmitSignal(
+                machine,
+                PlanGeneration,
+                SessionPeerId.ToString(),
+                out AdmissionError error
+            );
+            Assert.That(admitted, Is.True);
+            Assert.That(error, Is.EqualTo(default(AdmissionError)));
+        }
+
+        [Test]
+        public void TeardownClearsSessionPlanState()
+        {
+            SignalFishStateMachine machine = WithPlan(
+                PlanGeneration,
+                SessionTransport.WebRtc,
+                SessionPeerId
+            );
+            machine.Apply(SessionEvent.From(SessionEventKind.Disconnected));
+            AssertPlanCleared(machine);
+        }
+
+        [Test]
+        public void SendSignalPlanFencesFollowTheRustOrdering()
+        {
+            (
+                string Label,
+                SignalFishStateMachine Machine,
+                string Generation,
+                string To,
+                bool Admitted,
+                AdmissionError Expected
+            )[] rows =
+            {
+                (
+                    "inRoomV3NoPlan",
+                    V3InRoom(),
+                    PlanGeneration,
+                    SessionPeerId.ToString(),
+                    false,
+                    AdmissionError.SessionPlanUnavailable
+                ),
+                (
+                    "relayTransport",
+                    WithPlan(PlanGeneration, SessionTransport.Relay, SessionPeerId),
+                    PlanGeneration,
+                    SessionPeerId.ToString(),
+                    false,
+                    AdmissionError.SessionPlanUnavailable
+                ),
+                (
+                    "directTransport",
+                    WithPlan(PlanGeneration, SessionTransport.Direct, SessionPeerId),
+                    PlanGeneration,
+                    SessionPeerId.ToString(),
+                    false,
+                    AdmissionError.SessionPlanUnavailable
+                ),
+                (
+                    "staleGeneration",
+                    WithPlan(PlanGeneration, SessionTransport.WebRtc, SessionPeerId),
+                    StaleGeneration,
+                    SessionPeerId.ToString(),
+                    false,
+                    AdmissionError.StaleSessionGeneration
+                ),
+                (
+                    "peerAbsentFromPlan",
+                    WithPlan(PlanGeneration, SessionTransport.WebRtc, SessionPeerId),
+                    PlanGeneration,
+                    StrangerId.ToString(),
+                    false,
+                    AdmissionError.SessionPlanUnavailable
+                ),
+                (
+                    "targetNotAUuid",
+                    WithPlan(PlanGeneration, SessionTransport.WebRtc, SessionPeerId),
+                    PlanGeneration,
+                    "not-a-uuid",
+                    false,
+                    AdmissionError.SessionPlanUnavailable
+                ),
+                (
+                    "happyPath",
+                    WithPlan(PlanGeneration, SessionTransport.WebRtc, SessionPeerId),
+                    PlanGeneration,
+                    SessionPeerId.ToString(),
+                    true,
+                    default(AdmissionError)
+                ),
+            };
+
+            foreach (
+                (
+                    string label,
+                    SignalFishStateMachine machine,
+                    string generation,
+                    string to,
+                    bool admitted,
+                    AdmissionError expected
+                ) in rows
+            )
+            {
+                bool result = TryAdmitSignal(machine, generation, to, out AdmissionError error);
+                Assert.That(
+                    result,
+                    Is.EqualTo(admitted),
+                    "signal fence row failed (admitted): " + label
+                );
+                Assert.That(
+                    error,
+                    Is.EqualTo(expected),
+                    "signal fence row failed (error): " + label
+                );
+            }
+        }
+
+        [Test]
+        public void SendTransportStatusAdmissionTracksNegotiatedVersion()
+        {
+            SignalFishStateMachine machine = InRoom(RoomRole.Player);
+            Assert.That(
+                machine.TryAdmit(ClientCommand.SendTransportStatus, out AdmissionError refused),
+                Is.False
+            );
+            Assert.That(refused, Is.EqualTo(AdmissionError.ProtocolUnsupported));
+
+            machine.Apply(SessionEvent.ProtocolInfo(3));
+            Assert.That(
+                machine.TryAdmit(ClientCommand.SendTransportStatus, out AdmissionError admitted),
+                Is.True
+            );
+            Assert.That(admitted, Is.EqualTo(default(AdmissionError)));
+        }
+
+        [Test]
+        public void ProvideConnectionInfoAdmitsOnV2MachineWithPlayerMembership()
+        {
+            SignalFishStateMachine machine = InRoom(RoomRole.Player);
+            Assert.That(machine.NegotiatedProtocolVersion, Is.Null);
+            Assert.That(
+                machine.TryAdmit(ClientCommand.ProvideConnectionInfo, out AdmissionError admitted),
+                Is.True
+            );
+            Assert.That(admitted, Is.EqualTo(default(AdmissionError)));
+
+            SignalFishStateMachine spectator = InRoom(RoomRole.Spectator);
+            Assert.That(
+                spectator.TryAdmit(ClientCommand.ProvideConnectionInfo, out AdmissionError role),
+                Is.False
+            );
+            Assert.That(role, Is.EqualTo(AdmissionError.WrongRoomRole));
         }
 
         [Test]
@@ -997,6 +1293,99 @@ namespace SignalFish.Client.Tests.Core
                     : SessionEventKind.SpectatorJoined;
             machine.Apply(SessionEvent.Joined(kind, Membership(role)));
             return machine;
+        }
+
+        private static SignalFishStateMachine V3InRoom()
+        {
+            SignalFishStateMachine machine = InRoom(RoomRole.Player);
+            machine.Apply(SessionEvent.ProtocolInfo(3));
+            return machine;
+        }
+
+        private static SignalFishStateMachine WithPlan(
+            string? generation,
+            SessionTransport transport,
+            params Guid[] peers
+        )
+        {
+            SignalFishStateMachine machine = V3InRoom();
+            machine.Apply(SessionEvent.SessionPlan(Plan(generation, transport, peers)));
+            return machine;
+        }
+
+        private static SessionPlanMessage Plan(
+            string? generation,
+            SessionTransport transport,
+            params Guid[] peers
+        )
+        {
+            SessionPeerInfo[] peerInfos = new SessionPeerInfo[peers.Length];
+            for (int i = 0; i < peers.Length; i++)
+            {
+                peerInfos[i] = new SessionPeerInfo(peers[i], "P" + i, false, true);
+            }
+
+            return new SessionPlanMessage(
+                generation,
+                SessionTopology.Mesh,
+                transport,
+                null,
+                null,
+                peerInfos,
+                Array.Empty<IceServerInfo>(),
+                SessionTransport.Relay
+            );
+        }
+
+        private static void AssertPlanCleared(SignalFishStateMachine machine)
+        {
+            Assert.That(machine.SessionPlanSeen, Is.False);
+            Assert.That(machine.SessionGeneration, Is.Null);
+            Assert.That(machine.SessionTransport, Is.EqualTo(default(SessionTransport)));
+            Assert.That(machine.IsSessionPeer(SessionPeerId), Is.False);
+        }
+
+        private static bool TryAdmitSignal(
+            SignalFishStateMachine machine,
+            string generation,
+            string to,
+            out AdmissionError error
+        )
+        {
+            /*
+                The drivers' payload-scoped fence order for SendSignal: the
+                machine verdict first (membership, role, v3 gate), then the
+                plan fences read off the machine's public surface. Pinned
+                here so the ordering contract outlives either driver.
+            */
+            if (!machine.TryAdmit(ClientCommand.SendSignal, out error))
+            {
+                return false;
+            }
+
+            if (!machine.SessionPlanSeen)
+            {
+                error = AdmissionError.SessionPlanUnavailable;
+                return false;
+            }
+
+            if (machine.SessionGeneration is not null && machine.SessionGeneration != generation)
+            {
+                error = AdmissionError.StaleSessionGeneration;
+                return false;
+            }
+
+            if (
+                machine.SessionTransport != SessionTransport.WebRtc
+                || !Guid.TryParse(to, out Guid target)
+                || !machine.IsSessionPeer(target)
+            )
+            {
+                error = AdmissionError.SessionPlanUnavailable;
+                return false;
+            }
+
+            return true;
         }
 
         private static SignalFishStateMachine Terminal()

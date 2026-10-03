@@ -21,6 +21,8 @@ namespace SignalFish.Client.Tests.Polling
     public class SignalFishPollingClientTests
     {
         private const string RoomCode = "ABC123";
+        private const string PlanGeneration = "00000000-0000-0000-0000-00000000000c";
+        private const string StaleGeneration = "99999999-9999-9999-9999-999999999999";
 
         private static readonly string[] ProtocolCapabilities =
         {
@@ -378,6 +380,199 @@ namespace SignalFish.Client.Tests.Polling
             Assert.That(
                 Encoding.UTF8.GetString(pollEvent.GameData.Payload.ToArray()),
                 Is.EqualTo("{\"position\": {\"x\": 12, \"y\": 34}}")
+            );
+        }
+
+        [Test]
+        public async Task SendSignalRefusedWithoutSessionPlan()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await JoinV3Room(client, transport);
+
+            CommandSend refused = client.SendSignal(GoldenSignalMessage());
+            Assert.That(refused.Accepted, Is.False);
+            Assert.That(refused.Refusal, Is.EqualTo(AdmissionError.SessionPlanUnavailable));
+            Assert.That(
+                CountSentType(transport.SentText, "Signal"),
+                Is.EqualTo(0),
+                "a refused send never touches the wire"
+            );
+        }
+
+        [Test]
+        public async Task SendSignalWithStaleGenerationIsRefused()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await JoinV3Room(client, transport);
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "SessionPlan")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            SignalMessage stale = new SignalMessage(
+                PlayerId.ToString(),
+                StaleGeneration,
+                Encoding.UTF8.GetBytes("{\"Answer\": true}")
+            );
+            CommandSend refused = client.SendSignal(in stale);
+            Assert.That(refused.Accepted, Is.False);
+            Assert.That(refused.Refusal, Is.EqualTo(AdmissionError.StaleSessionGeneration));
+            Assert.That(CountSentType(transport.SentText, "Signal"), Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task SendSignalOnDirectTransportPlanIsRefused()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await JoinV3Room(client, transport);
+            EnqueueWire(transport, GoldenFixtures.ReadLine("v3-server-messages.jsonl", 11));
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            CommandSend refused = client.SendSignal(GoldenSignalMessage());
+            Assert.That(refused.Accepted, Is.False);
+            Assert.That(refused.Refusal, Is.EqualTo(AdmissionError.SessionPlanUnavailable));
+            Assert.That(CountSentType(transport.SentText, "Signal"), Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task SendSignalToNonPlanPeerIsRefused()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await JoinV3Room(client, transport);
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "SessionPlan")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            SignalMessage stranger = new SignalMessage(
+                "ffffffff-ffff-ffff-ffff-ffffffffffff",
+                PlanGeneration,
+                Encoding.UTF8.GetBytes("{\"Offer\": \"v=0\"}")
+            );
+            CommandSend refused = client.SendSignal(in stranger);
+            Assert.That(refused.Accepted, Is.False);
+            Assert.That(refused.Refusal, Is.EqualTo(AdmissionError.SessionPlanUnavailable));
+            Assert.That(CountSentType(transport.SentText, "Signal"), Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task SendSignalWithUppercaseTargetIsRefusedNotThrown()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await JoinV3Room(client, transport);
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "SessionPlan")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            /*
+                The target fence and the encoder must agree on the canonical
+                UUID form: a non-canonical (uppercase) target is a refusal,
+                never an encoder exception out of the send.
+            */
+            SignalMessage upper = new SignalMessage(
+                "00000000-0000-0000-0000-00000000000B",
+                PlanGeneration,
+                Encoding.UTF8.GetBytes("{\"Offer\": \"v=0\"}")
+            );
+            CommandSend refused = client.SendSignal(in upper);
+            Assert.That(refused.Accepted, Is.False);
+            Assert.That(refused.Refusal, Is.EqualTo(AdmissionError.SessionPlanUnavailable));
+            Assert.That(CountSentType(transport.SentText, "Signal"), Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task SendSignalWithLegacyGenerationlessPlanIsAdmitted()
+        {
+            /*
+                A Server-0.4 v3 plan carries no generation; the decode is
+                tolerant and the generation fence stands down (nothing to
+                supersede), so signaling to a plan peer still works.
+            */
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await JoinV3Room(client, transport);
+            EnqueueWire(
+                transport,
+                "{\"type\": \"SessionPlan\", \"data\": {\"topology\": \"mesh\", "
+                    + "\"transport\": \"webrtc\", \"peers\": ["
+                    + "{\"player_id\": \"00000000-0000-0000-0000-00000000000b\", "
+                    + "\"player_name\": \"Bob\", \"is_authority\": false, "
+                    + "\"initiate\": true}], \"fallback\": \"relay\"}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            CommandSend sent = client.SendSignal(GoldenSignalMessage());
+            Assert.That(sent.Accepted, Is.True);
+            Assert.That(CountSentType(transport.SentText, "Signal"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task SendSignalAfterSessionPlanWritesGoldenWireBytes()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await JoinV3Room(client, transport);
+
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "SessionPlan")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+
+            CommandSend sent = client.SendSignal(GoldenSignalMessage());
+            Assert.That(sent.Accepted, Is.True);
+            Assert.That(
+                transport.SentText[^1],
+                Is.EqualTo(GoldenFixtures.ReadFirstLineOfType("v3-client-messages.jsonl", "Signal"))
+            );
+        }
+
+        [Test]
+        public async Task SendTransportStatusIsGatedOnNegotiatedV3()
+        {
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+            EnqueueGolden(transport, "RoomJoined");
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+            Assert.That(client.Phase, Is.EqualTo(ConnectionPhase.InRoom));
+
+            CommandSend refused = client.SendTransportStatus(
+                new TransportStatusMessage("webrtc", true)
+            );
+            Assert.That(refused.Accepted, Is.False);
+            Assert.That(refused.Refusal, Is.EqualTo(AdmissionError.ProtocolUnsupported));
+            Assert.That(CountSentType(transport.SentText, "TransportStatus"), Is.EqualTo(0));
+
+            NegotiateV3(client, transport);
+            Assert.That(
+                client.SendTransportStatus(new TransportStatusMessage("webrtc", true)).Accepted,
+                Is.True
+            );
+            Assert.That(
+                transport.SentText[^1],
+                Is.EqualTo(
+                    GoldenFixtures.ReadFirstLineOfType(
+                        "v3-client-messages.jsonl",
+                        "TransportStatus"
+                    )
+                )
             );
         }
 
@@ -1152,6 +1347,56 @@ namespace SignalFish.Client.Tests.Polling
         private static void EnqueueWire(FakeTransport transport, string wire)
         {
             transport.Enqueue(Encoding.UTF8.GetBytes(wire), isText: true);
+        }
+
+        /// <summary>
+        /// The golden v3 Signal payload (an SDP offer) verbatim: targeting
+        /// the golden plan peer (...b) at the golden plan generation (...c),
+        /// so the sent frame must equal the golden v3 client line.
+        /// </summary>
+        private static SignalMessage GoldenSignalMessage()
+        {
+            return new SignalMessage(
+                "00000000-0000-0000-0000-00000000000b",
+                PlanGeneration,
+                Encoding.UTF8.GetBytes("{\"Offer\": \"v=0\\r\\no=- 0 0 IN IP4 0.0.0.0\\r\\n...\"}")
+            );
+        }
+
+        private static int CountSentType(IReadOnlyList<string> lines, string wireType)
+        {
+            string prefix = "{\"type\": \"" + wireType + "\"";
+            int count = 0;
+            foreach (string sent in lines)
+            {
+                if (sent.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// Drives the golden handshake, the v3 negotiation, and the golden
+        /// v3 join so the machine holds a confirmed player membership on
+        /// the negotiated-v3 wire.
+        /// </summary>
+        private static async Task JoinV3Room(
+            SignalFishPollingClient client,
+            FakeTransport transport
+        )
+        {
+            await ConnectAndAuthenticate(client, transport);
+            NegotiateV3(client, transport);
+            EnqueueWire(
+                transport,
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "RoomJoined")
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+            DrainAll(client);
+            Assert.That(client.Phase, Is.EqualTo(ConnectionPhase.InRoom));
         }
 
         private static List<PollEvent> DrainAll(SignalFishPollingClient client)

@@ -652,15 +652,17 @@ namespace SignalFish.Client.Protocol
         /// (<c>8-4-4-4-12</c>) the server requires for peer and operation
         /// identifiers; any other encoding is rejected as a malformed frame.
         /// </summary>
-        private static void RequireUuid(string value, string wireField)
+        /// <summary>
+        /// True when <paramref name="value"/> is exactly the canonical
+        /// 36-character lowercase hyphenated UUID form the wire requires —
+        /// the same shape <see cref="RequireUuid"/> enforces, as a
+        /// non-throwing check for admission fences.
+        /// </summary>
+        internal static bool IsCanonicalUuid(string value)
         {
-            RequireText(value, wireField);
-            if (value.Length != 36)
+            if (string.IsNullOrEmpty(value) || value.Length != 36)
             {
-                throw new ArgumentException(
-                    $"The message \"{wireField}\" must be a canonical 36-character hyphenated UUID.",
-                    nameof(value)
-                );
+                return false;
             }
 
             for (int i = 0; i < value.Length; i++)
@@ -670,19 +672,27 @@ namespace SignalFish.Client.Protocol
                 {
                     if (c != '-')
                     {
-                        throw new ArgumentException(
-                            $"The message \"{wireField}\" must use the 8-4-4-4-12 hyphen layout.",
-                            nameof(value)
-                        );
+                        return false;
                     }
                 }
                 else if (c is not ((>= '0' and <= '9') or (>= 'a' and <= 'f')))
                 {
-                    throw new ArgumentException(
-                        $"The message \"{wireField}\" must be lowercase hexadecimal.",
-                        nameof(value)
-                    );
+                    return false;
                 }
+            }
+
+            return true;
+        }
+
+        private static void RequireUuid(string value, string wireField)
+        {
+            RequireText(value, wireField);
+            if (!IsCanonicalUuid(value))
+            {
+                throw new ArgumentException(
+                    $"The message \"{wireField}\" must be a canonical 36-character lowercase hyphenated UUID.",
+                    nameof(value)
+                );
             }
         }
 

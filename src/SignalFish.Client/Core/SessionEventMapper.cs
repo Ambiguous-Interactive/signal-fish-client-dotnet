@@ -35,6 +35,7 @@ namespace SignalFish.Client.Core
                 case MessageKind.Error:
                 case MessageKind.AuthorityChanged:
                 case MessageKind.ProtocolInfo:
+                case MessageKind.SessionPlan:
                     return true;
                 default:
                     return false;
@@ -122,6 +123,14 @@ namespace SignalFish.Client.Core
                     }
 
                     sessionEvent = SessionEvent.ProtocolInfo(protocolInfo.ProtocolVersion);
+                    return true;
+                case MessageKind.SessionPlan:
+                    if (!SessionPlanMessage.TryDecode(envelope.Data, out SessionPlanMessage plan))
+                    {
+                        return false;
+                    }
+
+                    sessionEvent = SessionEvent.SessionPlan(in plan);
                     return true;
                 case MessageKind.Error:
                     // Informational only: the fence stays armed (fail-closed).

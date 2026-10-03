@@ -5,6 +5,103 @@ namespace SignalFish.Client.Protocol
     using System.Collections.Generic;
 
     /// <summary>
+    /// Shared decode-path list helpers for payload decoders (netstandard2.1
+    /// has no <c>JsonSerializerOptions</c> to lean on; every decoder walks
+    /// slices with <see cref="JsonScanner"/>).
+    /// </summary>
+    internal static class ProtocolArrays
+    {
+        internal delegate bool TryObjectDecode<T>(ReadOnlyMemory<byte> data, out T value)
+            where T : struct;
+
+        /// <summary>
+        /// Reads a scanned value that must be a JSON array of objects into a
+        /// list, decoding each element with <paramref name="decodeElement"/>.
+        /// Elements validate at member-value depth (2), the same level
+        /// <c>JsonScanner.ScanMember</c> uses for payload values. Decode
+        /// path only: allocates the result.
+        /// </summary>
+        internal static bool TryReadObjectArray<T>(
+            ReadOnlyMemory<byte> data,
+            Range valueRaw,
+            TryObjectDecode<T> decodeElement,
+            out IReadOnlyList<T> values
+        )
+            where T : struct
+        {
+            values = Array.Empty<T>();
+            (int Offset, int Length) s = valueRaw.GetOffsetAndLength(data.Length);
+            if (s.Length < 2 || data.Span[s.Offset] != (byte)'[')
+            {
+                return false;
+            }
+
+            JsonScanner scanner = new JsonScanner(data.Span.Slice(s.Offset, s.Length));
+            scanner.SkipWhitespace();
+            if (scanner.Expect((byte)'[') != default(DecodeError))
+            {
+                return false;
+            }
+
+            List<T> list = new List<T>();
+            scanner.SkipWhitespace();
+            if (scanner.Peek == (byte)']')
+            {
+                if (scanner.Expect((byte)']') != default(DecodeError))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                while (true)
+                {
+                    scanner.SkipWhitespace();
+                    if (
+                        scanner.ScanValueRaw(2, JsonScanner.MaxDepth, out Range element)
+                        != default(DecodeError)
+                    )
+                    {
+                        return false;
+                    }
+
+                    (int EOffset, int ELength) e = element.GetOffsetAndLength(s.Length);
+                    if (!decodeElement(data.Slice(s.Offset + e.EOffset, e.ELength), out T item))
+                    {
+                        return false;
+                    }
+
+                    list.Add(item);
+                    scanner.SkipWhitespace();
+                    byte next = scanner.Peek;
+                    if (next == (byte)',')
+                    {
+                        scanner.Expect((byte)',');
+                        continue;
+                    }
+
+                    if (next == (byte)']')
+                    {
+                        scanner.Expect((byte)']');
+                        break;
+                    }
+
+                    return false;
+                }
+            }
+
+            scanner.SkipWhitespace();
+            if (!scanner.IsEof)
+            {
+                return false;
+            }
+
+            values = list;
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Stable byte-sequence hashing for payload structs whose fields carry
     /// verbatim JSON slices (netstandard2.1 has no
     /// <c>HashCode.AddBytes</c>). FNV-1a 64-bit, folded to 32 bits.

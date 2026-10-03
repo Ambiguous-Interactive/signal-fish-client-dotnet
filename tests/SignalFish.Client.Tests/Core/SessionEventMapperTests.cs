@@ -43,8 +43,20 @@ namespace SignalFish.Client.Tests.Core
             + @"""room_code"":""ABC123"",""player_id"":""0f8fad5b-d9cb-469f-a165-70867728950e"","
             + @"""missed_events"":[]}}";
 
+        /*
+            Spec-shaped SessionPlan frame (the golden corpus's mesh sample,
+            inlined): generation + topology + transport + peers + fallback
+            are the required session-critical set; ice_servers rides along.
+        */
+        private const string SessionPlanFrame =
+            @"{""type"":""SessionPlan"",""data"":{""generation"":""00000000-0000-0000-0000-00000000000c"","
+            + @"""topology"":""mesh"",""transport"":""webrtc"",""peers"":[{""player_id"":""00000000-0000-0000-0000-00000000000b"","
+            + @"""player_name"":""Bob"",""is_authority"":false,""initiate"":true}],"
+            + @"""ice_servers"":[{""urls"":[""stun:stun.l.google.com:19302""]}],""fallback"":""relay""}}";
+
         private static readonly Guid PlayerId = new Guid("0f8fad5b-d9cb-469f-a165-70867728950e");
         private static readonly Guid RoomId = new Guid("7c9e6679-7425-40de-944b-e07fc1f90ae7");
+        private static readonly string[] StunUrls = { "stun:stun.l.google.com:19302" };
 
         private static readonly string[] GuidVariants =
         {
@@ -149,6 +161,72 @@ namespace SignalFish.Client.Tests.Core
             };
 
             foreach (string wire in wires)
+            {
+                Assert.That(TryMapWire(wire, out _), Is.False, wire);
+            }
+        }
+
+        [Test]
+        public void SessionPlanFrameMapsToTheDecodedPlanFact()
+        {
+            Assert.That(SessionEventMapper.IsSessionFact(MessageKind.SessionPlan), Is.True);
+            Assert.That(TryMapWire(SessionPlanFrame, out SessionEvent mapped), Is.True);
+
+            SessionPeerInfo[] peers =
+            {
+                new SessionPeerInfo(
+                    new Guid("00000000-0000-0000-0000-00000000000b"),
+                    "Bob",
+                    false,
+                    true
+                ),
+            };
+            IceServerInfo[] iceServers = { new IceServerInfo(StunUrls, null, null) };
+            SessionEvent expected = SessionEvent.SessionPlan(
+                new SessionPlanMessage(
+                    "00000000-0000-0000-0000-00000000000c",
+                    SessionTopology.Mesh,
+                    SessionTransport.WebRtc,
+                    null,
+                    null,
+                    peers,
+                    iceServers,
+                    SessionTransport.Relay
+                )
+            );
+
+            Assert.That(mapped.Kind, Is.EqualTo(SessionEventKind.SessionPlan));
+            Assert.That(mapped, Is.EqualTo(expected), "field-wise including the plan payload");
+            Assert.That(mapped.Plan.Host, Is.Null);
+            Assert.That(mapped.Plan.DirectEndpoint, Is.Null);
+            Assert.That(mapped.Plan.Peers, Has.Count.EqualTo(1));
+            Assert.That(mapped.Plan.Peers[0].PlayerId, Is.EqualTo(peers[0].PlayerId));
+            Assert.That(mapped.Plan.Peers[0].PlayerName, Is.EqualTo("Bob"));
+            Assert.That(mapped.Plan.Peers[0].IsAuthority, Is.False);
+            Assert.That(mapped.Plan.Peers[0].Initiate, Is.True);
+            Assert.That(mapped.Plan.IceServers, Has.Count.EqualTo(1));
+            Assert.That(mapped.Plan.IceServers[0].Urls, Is.EqualTo(StunUrls));
+            Assert.That(mapped.Plan.Fallback, Is.EqualTo(SessionTransport.Relay));
+        }
+
+        [Test]
+        public void SessionPlanMalformedOrIncompletePayloadsAreNotMapped()
+        {
+            string[] badWires =
+            {
+                // Missing peers.
+                @"{""type"":""SessionPlan"",""data"":{""generation"":""g"",""topology"":""mesh"",""transport"":""webrtc"",""fallback"":""relay""}}",
+                // Missing fallback.
+                @"{""type"":""SessionPlan"",""data"":{""generation"":""g"",""topology"":""mesh"",""transport"":""webrtc"",""peers"":[]}}",
+                // Unknown transport token.
+                @"{""type"":""SessionPlan"",""data"":{""generation"":""g"",""topology"":""mesh"",""transport"":""smoke"",""peers"":[],""fallback"":""relay""}}",
+                // Wrong-typed peer field.
+                @"{""type"":""SessionPlan"",""data"":{""generation"":""g"",""topology"":""mesh"",""transport"":""webrtc"",""peers"":[{""player_id"":""00000000-0000-0000-0000-00000000000b"",""player_name"":""Bob"",""is_authority"":""yes"",""initiate"":true}],""fallback"":""relay""}}",
+                // Payload is not an object.
+                @"{""type"":""SessionPlan""}",
+            };
+
+            foreach (string wire in badWires)
             {
                 Assert.That(TryMapWire(wire, out _), Is.False, wire);
             }

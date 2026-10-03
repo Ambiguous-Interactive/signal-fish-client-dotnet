@@ -64,5 +64,11 @@ namespace SignalFish.Client.Core
         /// teardown and re-echoed on every new connection.
         /// </summary>
         ProtocolInfo = 14,
+
+        /// <summary>
+        /// The authoritative v3 session plan (carries the plan); admission
+        /// state for Signal sends.
+        /// </summary>
+        SessionPlan = 15,
     }
 }
