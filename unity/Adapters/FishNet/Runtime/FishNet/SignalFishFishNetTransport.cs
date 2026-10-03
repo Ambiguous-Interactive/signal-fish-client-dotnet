@@ -185,7 +185,7 @@ namespace SignalFish.Client.Adapters.FishNet
             {
                 lock (_gate)
                 {
-                    return _client?.Snapshot.RoomCode;
+                    return _session?.Snapshot.RoomCode ?? _client?.Snapshot.RoomCode;
                 }
             }
         }
@@ -283,6 +283,18 @@ namespace SignalFish.Client.Adapters.FishNet
         private readonly object _gate = new object();
 
         private SignalFishClient? _client;
+
+        /// <summary>
+        /// The bootstrap-owned session: it holds the client until the
+        /// session is live, so the tick thread's drain can never steal the
+        /// events the bootstrap is itself waiting on (a RoomJoined consumed
+        /// by DrainRelay's default branch would time out every start).
+        /// </summary>
+        private SignalFishClient? _session;
+
+        /// <summary>Whether FishNet has been told the host's local client exists.</summary>
+        private bool _hostClientAnnounced;
+
         private HostLoopback? _loopback;
         private Task? _bootstrap;
         private byte[]? _sendScratch;
@@ -679,13 +691,26 @@ namespace SignalFish.Client.Adapters.FishNet
         private void Teardown(string reason)
         {
             SignalFishClient? client;
+            SignalFishClient? session;
             lock (_gate)
             {
                 _terminal = true;
                 _generation++;
                 client = _client;
+                session = _session;
                 _client = null;
+                _session = null;
                 _bootstrap = null;
+                _hostClientAnnounced = false;
+                /*
+                    Queued work belongs to the dead session: stale outbound
+                    frames would flush onto a successor before its v3
+                    negotiation and trip BinaryFormatNotNegotiated against
+                    the fresh session.
+                */
+                _outbound.Clear();
+                _serverPending.Clear();
+                _clientPending.Clear();
                 StartupError = StartupError ?? reason;
             }
 
@@ -697,6 +722,11 @@ namespace SignalFish.Client.Adapters.FishNet
                     for the typed confirmation before ending the session.
                 */
                 _ = DisposeQuietlyAsync(client);
+            }
+
+            if (session != null && !ReferenceEquals(session, client))
+            {
+                _ = DisposeQuietlyAsync(session);
             }
         }
 
@@ -1074,6 +1104,18 @@ namespace SignalFish.Client.Adapters.FishNet
             }
 
             _router.Clear();
+
+            lock (_gate)
+            {
+                if (_hostClientAnnounced)
+                {
+                    _hostClientAnnounced = false;
+                    StagePeer(
+                        SignalFishPeerRouter.HostClientConnectionId,
+                        RemoteConnectionState.Stopped
+                    );
+                }
+            }
         }
 
         private void NoteAuthority(AuthorityChangedMessage changed)
@@ -1140,7 +1182,13 @@ namespace SignalFish.Client.Adapters.FishNet
                         return;
                     }
 
-                    _client = client;
+                    /*
+                        The session is bootstrap-private until it is live:
+                        publishing it to the tick thread now would let
+                        DrainRelay consume the very events the waits below
+                        are polling for.
+                    */
+                    _session = client;
                     _loopback = new HostLoopback(_loopbackCapacity);
                 }
 
@@ -1199,15 +1247,14 @@ namespace SignalFish.Client.Adapters.FishNet
 
                 lock (_gate)
                 {
+                    if (_generation != generation)
+                    {
+                        _ = DisposeQuietlyAsync(client);
+                        return;
+                    }
+
                     _localPlayerId = joined.MembershipPlayerId;
-                }
-
-                SeedPeersFromSnapshot(joined.Snapshot);
-
-                if (IsStale(generation))
-                {
-                    await DisposeQuietlyAsync(client).ConfigureAwait(false);
-                    return;
+                    SeedPeersFromSnapshot(joined.Snapshot);
                 }
 
                 if (
@@ -1273,6 +1320,32 @@ namespace SignalFish.Client.Adapters.FishNet
                     {
                         StageState(server: false, LocalConnectionState.Started);
                     }
+
+                    /*
+                        Host mode: FishNet needs a NetworkConnection for the
+                        host's own client (its reserved id 0), or nothing
+                        looped to it is ever attributable. Announce it after
+                        the side states so FishNet sees the server come up
+                        first; DropAllPeers retires it with the server.
+                    */
+                    if (
+                        _serverState == LocalConnectionState.Started
+                        && _clientState == LocalConnectionState.Started
+                    )
+                    {
+                        StagePeer(
+                            SignalFishPeerRouter.HostClientConnectionId,
+                            RemoteConnectionState.Started
+                        );
+                        _hostClientAnnounced = true;
+                    }
+
+                    /*
+                        The session is live: hand it to the tick thread's
+                        drain, which owns the event stream from here on.
+                    */
+                    _client = client;
+                    _session = null;
                 }
             }
             catch (Exception ex)
