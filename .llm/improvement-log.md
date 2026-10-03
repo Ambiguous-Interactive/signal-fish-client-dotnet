@@ -9,6 +9,31 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-03 - session 036b: Bugbot round on PR #75 (jslib value serialization)
+
+- Trigger: Cursor Bugbot review of the WebGL transport PR; three findings
+  (one high), verified against Emscripten 2.0.19 sources before acting.
+- Evidence: `src/jsifier.js` `stringifyWithFunctions` prints library-object
+  values — functions via `.toString()` (any depth), primitives via
+  `JSON.stringify`, plain objects/arrays by recursion — so the shipped
+  `new TextEncoder()` reached the player as `{}` (every text frame dead,
+  CI green). The round-1 adversarial reviewer's contrary "AST-reprinted"
+  claim was accepted without source.
+- Findings: (1) verify bot claims about compiler/toolchain semantics
+  against the toolchain's own source, not plausibility arguments — and
+  never put constructed objects in jslib value positions (lazy-init
+  pattern). (2) Failure paths must own their resources: the connect-fail
+  throw kept the JS registry entry while the cancel path released its own
+  — sweep every exit of a state machine, not just the path the reviewer
+  reads. (3) Normalize wire facts at one boundary point (close codes):
+  the receive path bypassed the 1005→1006 rule the send/observe paths
+  used.
+- Applied: jslib lazy codecs + 1005 normalization at `onclose`; C#
+  `NormalizeCloseCode` single point + connect-fail dispose; lint gained
+  the `new`-in-value-position rule (13 self-test assertions); the
+  authoring contract lives in `unity-compatibility` skill. Open: live
+  browser validation (M7.4).
+
 ## 2026-10-03 - mesh core (M6.5) adversarial review catches
 
 - Trigger: session 033 (M6.5 mesh core); adversarial review over the
@@ -174,26 +199,9 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   from pruned session-012 entry folded into json-serialization.
 - Open: none.
 
-## 2026-09-23 - session 027: M6.3 core (accountability engine + v3 decodes)
+## 2026-09-23 - session 027 scope note
 
-- Trigger: M6.3 core (engine + decode surface), issue-debt round, and the
-  local-iteration speed mandate; one deliverable PR.
-- Evidence: fast-check 23.4 s -> 11.3 s full / ~5 s filtered. The
-  allocation gate caught a real 24 B/call hot-path allocation on day one;
-  the adversarial review caught a lint blocker + a broken exclusion switch
-  pre-PR; 26 Rust scenarios ported green on first full run.
-- Findings: (1) a `List.RemoveAll(lambda)` allocates its display class at
-  method entry even on early-return paths — use explicit loops on gated
-  hot paths. (2) NUnit3TestAdapter's vstest `TestCaseFilter` negation is
-  unreliable (`Category!=X` selects everything); signal exclusions via an
-  env-var + `OneTimeSetUp` `Assert.Ignore` instead. (3) PowerShell `@()`
-  array literals split `("a:" + $var)` elements at the `+` — compute the
-  token into a variable first. (4) Parallel sub-agents duplicated wire
-  types across namespaces when the contract pinned types but not their
-  file/namespace home — pin the home too.
-- Applied: engine + decodes + 33 tests landed (M6.3 core); #58 closed via
-  the shared `MaxVerbatimPayloadDepth` contract; integration follow-up
-  issue filed. Open: none.
+Pruned 2026-10-03: resolved and graduated (originals in git history).
 
 ## 2026-10-02 - session 030b: Bugbot review round on PR #67
 

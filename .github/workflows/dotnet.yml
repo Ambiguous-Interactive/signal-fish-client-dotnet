@@ -113,6 +113,15 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/sync-unity-package.ps1 -Check
 
+      # The WebGL reference transport bridges C# to a jslib plugin that no
+      # compiler here sees: this step pins the C#-to-jslib entry-point
+      # contract, compiles the plugin C# against the library sources, and
+      # syntax-checks the jslib.
+      - name: Lint the WebGL plugin contract
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/lint-webgl-plugin.ps1 -VerboseOutput
+
       # One restore covers both tool invocations below (CSharpier check and
       # the coverage report).
       - name: Restore pinned tools

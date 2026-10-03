@@ -41,9 +41,36 @@ Mono, IL2CPP, and WebGL. Unity is a first-class consumer, not an afterthought.
 
 `System.Net.WebSockets.ClientWebSocket` does not work on WebGL. This is the
 main reason the transport is an interface — see
-[websocket-transport](../websocket-transport/SKILL.md). WebGL builds inject
-a browser-WebSocket-based `ITransport` implementation (JS interop) provided
-by the consuming project or a companion package.
+[websocket-transport](../websocket-transport/SKILL.md). The Unity package
+ships a reference browser-WebSocket implementation
+(`Plugins/SignalFishWebGL/`: `SignalFishWebGLTransport` +
+`SignalFishWebSocket.jslib`); custom `ITransport` implementations from the
+consuming project remain an option. The C#-to-jslib entry-point contract is
+pinned by `scripts/lint-webgl-plugin.ps1` in dotnet CI (it also compiles the
+plugin C# and syntax-checks the jslib) because no compiler in this repo sees
+both sides together.
+
+## Authoring Emscripten jslib plugins
+
+The compiler evaluates each library file in Node at compile time, then
+prints every value on a library object through `stringifyWithFunctions`
+(`src/jsifier.js`): functions survive via `.toString()` at any depth,
+primitives via `JSON.stringify`, and plain objects/arrays by recursion —
+so a host object like `TextEncoder` collapses to `{}`. Consequences:
+
+- **Never put a constructed object in a value position** (`new
+  TextEncoder()`, `new Date()`, ...): it reaches the player as `{}`
+  while CI stays green. Create platform objects lazily at runtime
+  (a `null` value plus a first-use guard is the pattern).
+- Functions survive verbatim; numbers, strings, booleans, `null`, and
+  plain object/array literals are JSON-safe.
+- Never throw across the interop boundary: return codes, so a browser
+  fault cannot unwind into IL2CPP.
+- Observe-and-normalize wire facts (close codes) once, at the plugin
+  boundary, so every consumer sees the same value.
+
+`scripts/lint-webgl-plugin.ps1` flags the `new`-in-value-position class;
+live in-browser behavior remains an M7.4 runbook item.
 
 ## IL2CPP / stripping
 

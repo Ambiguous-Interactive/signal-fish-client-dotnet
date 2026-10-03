@@ -8,6 +8,16 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- WebGL reference transport (M7.3): the Unity package now ships a
+  browser-WebSocket `ITransport` for WebGL builds in
+  `Plugins/SignalFishWebGL/` (`SignalFishWebGLTransport` +
+  `SignalFishWebSocket.jslib`, compiled only on the WebGL platform) —
+  same contract as the .NET transport: connect-once, single reader,
+  terminal close surfaced once with the observed wire code, 64 KiB
+  send cap, polite 1000 dispose. WebGL limits apply (no threads:
+  receives poll a JS-side queue; no `client-config` probe: the 8 MiB
+  protocol default bounds receives). `WebSocketTransport` remains
+  unusable on WebGL; inject the WebGL transport there instead.
 - Unity package (M7.1/M7.2): the library now ships as the UPM package
   `com.ambiguous-interactive.signalfish` (source distribution, Unity
   2021.2+, zero dependencies preserved). `Runtime/` mirrors the library
