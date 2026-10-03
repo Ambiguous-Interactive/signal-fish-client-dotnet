@@ -63,5 +63,20 @@ namespace SignalFish.Client.Core
         /// verdict — the encoding rides a negotiated-v3 connection.
         /// </summary>
         BinaryFormatNotNegotiated = 10,
+
+        /// <summary>
+        /// A Signal send was refused: no SessionPlan has been observed on
+        /// this connection, the selected transport is not webrtc, or the
+        /// target is not a plan peer. The server would refuse or misroute
+        /// the signal.
+        /// </summary>
+        SessionPlanUnavailable = 11,
+
+        /// <summary>
+        /// A Signal send was refused: its generation does not match the
+        /// latest SessionPlan generation (a re-plan superseded it). Stamp
+        /// signals from the current plan's generation.
+        /// </summary>
+        StaleSessionGeneration = 12,
     }
 }

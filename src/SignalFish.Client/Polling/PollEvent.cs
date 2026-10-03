@@ -130,6 +130,21 @@ namespace SignalFish.Client.Polling
         /// <summary>The drain notice; meaningful only for <see cref="PollEventKind.GoingAway"/>.</summary>
         public GoingAwayMessage GoingAway { get; }
 
+        /// <summary>The session plan; meaningful only for <see cref="PollEventKind.SessionPlan"/>.</summary>
+        public SessionPlanMessage SessionPlan { get; }
+
+        /// <summary>The peer directive; meaningful only for <see cref="PollEventKind.NewPeer"/>.</summary>
+        public NewPeerMessage NewPeer { get; }
+
+        /// <summary>
+        /// The peer's transport status; meaningful only for
+        /// <see cref="PollEventKind.PeerTransportStatus"/>.
+        /// </summary>
+        public PeerTransportStatusMessage PeerTransportStatus { get; }
+
+        /// <summary>The relayed signal; meaningful only for <see cref="PollEventKind.Signal"/>.</summary>
+        public IncomingSignalMessage Signal { get; }
+
         /// <summary>The complete raw frame, as received (advanced inspection; empty for synthetic events).</summary>
         public ReadOnlyMemory<byte> Raw { get; }
 
@@ -166,6 +181,10 @@ namespace SignalFish.Client.Polling
             DeliveryReportMessage deliveryReport,
             RelayStatsMessage relayStats,
             GoingAwayMessage goingAway,
+            SessionPlanMessage sessionPlan,
+            NewPeerMessage newPeer,
+            PeerTransportStatusMessage peerTransportStatus,
+            IncomingSignalMessage signal,
             ReadOnlyMemory<byte> raw,
             string? diagnostic
         )
@@ -195,6 +214,10 @@ namespace SignalFish.Client.Polling
             DeliveryReport = deliveryReport;
             RelayStats = relayStats;
             GoingAway = goingAway;
+            SessionPlan = sessionPlan;
+            NewPeer = newPeer;
+            PeerTransportStatus = peerTransportStatus;
+            Signal = signal;
             Raw = raw;
             Diagnostic = diagnostic;
         }
@@ -212,6 +235,10 @@ namespace SignalFish.Client.Polling
                 default,
                 0,
                 null,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -263,6 +290,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 null
             );
         }
@@ -280,6 +311,10 @@ namespace SignalFish.Client.Polling
                 default,
                 0,
                 null,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -335,6 +370,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -357,6 +396,10 @@ namespace SignalFish.Client.Polling
                 default,
                 0,
                 null,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -420,6 +463,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 diagnostic
             );
@@ -438,6 +485,10 @@ namespace SignalFish.Client.Polling
                 default,
                 0,
                 typeText,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -492,6 +543,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -514,6 +569,10 @@ namespace SignalFish.Client.Polling
                 0,
                 null,
                 payload,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -566,6 +625,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -590,6 +653,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -640,6 +707,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -674,6 +745,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -697,6 +772,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 playerId,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -745,6 +824,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -773,6 +856,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -819,6 +906,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -849,6 +940,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -893,6 +988,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -925,6 +1024,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -967,6 +1070,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -1002,6 +1109,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 payload,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 raw,
@@ -1041,6 +1152,10 @@ namespace SignalFish.Client.Polling
                 default,
                 payload,
                 default,
+                default,
+                default,
+                default,
+                default,
                 raw,
                 null
             );
@@ -1062,6 +1177,171 @@ namespace SignalFish.Client.Polling
                 default,
                 0,
                 null,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                payload,
+                default,
+                default,
+                default,
+                default,
+                raw,
+                null
+            );
+        }
+
+        /// <summary>Creates the session-plan event with its payload.</summary>
+        internal static PollEvent FromSessionPlan(
+            in SessionPlanMessage payload,
+            ReadOnlyMemory<byte> raw
+        )
+        {
+            return new PollEvent(
+                PollEventKind.SessionPlan,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                0,
+                null,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                payload,
+                default,
+                default,
+                default,
+                raw,
+                null
+            );
+        }
+
+        /// <summary>Creates the new-peer event with its payload.</summary>
+        internal static PollEvent FromNewPeer(in NewPeerMessage payload, ReadOnlyMemory<byte> raw)
+        {
+            return new PollEvent(
+                PollEventKind.NewPeer,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                0,
+                null,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                payload,
+                default,
+                default,
+                raw,
+                null
+            );
+        }
+
+        /// <summary>Creates the peer-transport-status event with its payload.</summary>
+        internal static PollEvent FromPeerTransportStatus(
+            in PeerTransportStatusMessage payload,
+            ReadOnlyMemory<byte> raw
+        )
+        {
+            return new PollEvent(
+                PollEventKind.PeerTransportStatus,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                0,
+                null,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                payload,
+                default,
+                raw,
+                null
+            );
+        }
+
+        /// <summary>Creates the signal event with its payload.</summary>
+        internal static PollEvent FromSignal(
+            in IncomingSignalMessage payload,
+            ReadOnlyMemory<byte> raw
+        )
+        {
+            return new PollEvent(
+                PollEventKind.Signal,
+                default,
+                default,
+                default,
+                default,
+                default,
+                default,
+                0,
+                null,
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,
@@ -1113,6 +1393,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 default,
+                default,
+                default,
+                default,
+                default,
                 null
             );
         }
@@ -1143,6 +1427,10 @@ namespace SignalFish.Client.Polling
                 default,
                 default,
                 new ReconnectStatus(attempts, 0, lastReason),
+                default,
+                default,
+                default,
+                default,
                 default,
                 default,
                 default,

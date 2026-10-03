@@ -40,6 +40,13 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the connected spectators (empty when the frame omits the roster).</summary>
         public IReadOnlyList<SpectatorInfo> CurrentSpectators { get; }
 
+        /// <summary>
+        /// Gets the STUN/TURN servers for pre-gather ICE (v3; empty when the
+        /// frame omits the list — the v2 wire never carries it). The
+        /// <c>SessionPlan</c> ICE list supersedes this set.
+        /// </summary>
+        public IReadOnlyList<IceServerInfo> IceServers { get; }
+
         /// <summary>Initializes a new room snapshot.</summary>
         public RoomSnapshot(
             string? gameName,
@@ -52,6 +59,32 @@ namespace SignalFish.Client.Protocol
             IReadOnlyList<PlayerInfo> currentPlayers,
             IReadOnlyList<SpectatorInfo> currentSpectators
         )
+            : this(
+                gameName,
+                maxPlayers,
+                supportsAuthority,
+                isAuthority,
+                lobbyState,
+                relayType,
+                readyPlayers,
+                currentPlayers,
+                currentSpectators,
+                Array.Empty<IceServerInfo>()
+            ) { }
+
+        /// <summary>Initializes a new room snapshot with ICE servers.</summary>
+        public RoomSnapshot(
+            string? gameName,
+            uint maxPlayers,
+            bool supportsAuthority,
+            bool isAuthority,
+            string? lobbyState,
+            string? relayType,
+            IReadOnlyList<string>? readyPlayers,
+            IReadOnlyList<PlayerInfo> currentPlayers,
+            IReadOnlyList<SpectatorInfo> currentSpectators,
+            IReadOnlyList<IceServerInfo> iceServers
+        )
         {
             GameName = gameName;
             MaxPlayers = maxPlayers;
@@ -62,6 +95,7 @@ namespace SignalFish.Client.Protocol
             ReadyPlayers = readyPlayers;
             CurrentPlayers = currentPlayers ?? Array.Empty<PlayerInfo>();
             CurrentSpectators = currentSpectators ?? Array.Empty<SpectatorInfo>();
+            IceServers = iceServers ?? Array.Empty<IceServerInfo>();
         }
 
         /// <inheritdoc />
@@ -74,7 +108,8 @@ namespace SignalFish.Client.Protocol
             && AuthenticateMessage.NullableStringEquals(RelayType, other.RelayType)
             && NullableStringListEquals(ReadyPlayers, other.ReadyPlayers)
             && PlayerInfo.SequenceEquals(CurrentPlayers, other.CurrentPlayers)
-            && SpectatorInfo.SequenceEquals(CurrentSpectators, other.CurrentSpectators);
+            && SpectatorInfo.SequenceEquals(CurrentSpectators, other.CurrentSpectators)
+            && SessionPlanMessage.SequenceEquals(IceServers, other.IceServers);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is RoomSnapshot other && Equals(other);
@@ -92,6 +127,7 @@ namespace SignalFish.Client.Protocol
             hash.Add(ReadyPlayers?.Count ?? 0);
             hash.Add(CurrentPlayers.Count);
             hash.Add(CurrentSpectators.Count);
+            hash.Add(IceServers.Count);
             return hash.ToHashCode();
         }
 
@@ -123,6 +159,7 @@ namespace SignalFish.Client.Protocol
             IReadOnlyList<string>? readyPlayers = null;
             IReadOnlyList<PlayerInfo>? currentPlayers = null;
             IReadOnlyList<SpectatorInfo>? currentSpectators = null;
+            IReadOnlyList<IceServerInfo>? iceServers = null;
             bool gameSeen = false,
                 maxSeen = false,
                 supportsSeen = false,
@@ -131,7 +168,8 @@ namespace SignalFish.Client.Protocol
                 relaySeen = false,
                 readySeen = false,
                 playersSeen = false,
-                spectatorsSeen = false;
+                spectatorsSeen = false,
+                iceSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -285,6 +323,31 @@ namespace SignalFish.Client.Protocol
                         }
                     }
                 }
+                else if (scanner.KeyIs(keyRaw, "ice_servers"))
+                {
+                    if (iceSeen)
+                    {
+                        return false;
+                    }
+
+                    iceSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (
+                            !ProtocolArrays.TryReadObjectArray(
+                                data,
+                                valueRaw,
+                                IceServerInfo.TryDecode,
+                                out IReadOnlyList<IceServerInfo> parsed
+                            )
+                        )
+                        {
+                            return false;
+                        }
+
+                        iceServers = parsed;
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -303,7 +366,8 @@ namespace SignalFish.Client.Protocol
                 relayType,
                 readyPlayers,
                 currentPlayers ?? Array.Empty<PlayerInfo>(),
-                currentSpectators ?? Array.Empty<SpectatorInfo>()
+                currentSpectators ?? Array.Empty<SpectatorInfo>(),
+                iceServers ?? Array.Empty<IceServerInfo>()
             );
             return true;
         }

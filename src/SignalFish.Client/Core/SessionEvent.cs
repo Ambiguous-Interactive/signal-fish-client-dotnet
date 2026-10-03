@@ -1,6 +1,7 @@
 namespace SignalFish.Client.Core
 {
     using System;
+    using SignalFish.Client.Protocol;
 
     /// <summary>A single state-machine input. Struct: applying events never allocates.</summary>
     public readonly struct SessionEvent : IEquatable<SessionEvent>
@@ -31,12 +32,19 @@ namespace SignalFish.Client.Core
         /// </summary>
         public uint? NegotiatedProtocolVersion { get; }
 
+        /// <summary>
+        /// The authoritative v3 session plan; meaningful only for
+        /// <see cref="SessionEventKind.SessionPlan"/>.
+        /// </summary>
+        public SessionPlanMessage Plan { get; }
+
         private SessionEvent(
             SessionEventKind kind,
             RoomMembership membership,
             string? reconnectionToken,
             bool isAuthority,
-            uint? negotiatedProtocolVersion = null
+            uint? negotiatedProtocolVersion = null,
+            SessionPlanMessage plan = default
         )
         {
             Kind = kind;
@@ -44,6 +52,7 @@ namespace SignalFish.Client.Core
             ReconnectionToken = reconnectionToken;
             IsAuthority = isAuthority;
             NegotiatedProtocolVersion = negotiatedProtocolVersion;
+            Plan = plan;
         }
 
         /// <summary>Creates an event with no payload (liveness, failures, teardown).</summary>
@@ -95,6 +104,12 @@ namespace SignalFish.Client.Core
             );
         }
 
+        /// <summary>Creates the authoritative v3 session-plan event.</summary>
+        public static SessionEvent SessionPlan(in SessionPlanMessage plan)
+        {
+            return new SessionEvent(SessionEventKind.SessionPlan, default, null, false, null, plan);
+        }
+
         public static bool operator ==(SessionEvent left, SessionEvent right)
         {
             return left.Equals(right);
@@ -111,6 +126,7 @@ namespace SignalFish.Client.Core
                 && Membership == other.Membership
                 && IsAuthority == other.IsAuthority
                 && NegotiatedProtocolVersion == other.NegotiatedProtocolVersion
+                && Plan.Equals(other.Plan)
                 && string.Equals(
                     ReconnectionToken,
                     other.ReconnectionToken,
@@ -132,6 +148,7 @@ namespace SignalFish.Client.Core
                 hash = (hash * 31) + Membership.GetHashCode();
                 hash = (hash * 31) + IsAuthority.GetHashCode();
                 hash = (hash * 31) + NegotiatedProtocolVersion.GetHashCode();
+                hash = (hash * 31) + Plan.GetHashCode();
                 hash =
                     (hash * 31) + (ReconnectionToken?.GetHashCode(StringComparison.Ordinal) ?? 0);
                 return hash;

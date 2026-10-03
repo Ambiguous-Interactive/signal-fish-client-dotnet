@@ -294,7 +294,7 @@ namespace SignalFish.Client.Polling
                 Not a session fact: a gameplay/lifecycle payload (enqueued),
                 a protocol violation (enqueued), or an absorbed frame with
                 no v2 event surface (Pong, client-to-server echoes,
-                v3-only kinds). Null means absorbed.
+                operation results). Null means absorbed.
             */
             if (SessionEventMapper.IsSessionFact(envelope.Message))
             {
@@ -548,6 +548,15 @@ namespace SignalFish.Client.Polling
                     );
                     return PollEvent.FromProtocolInfo(protocolInfo, envelope.Raw);
                 }
+                case SessionEventKind.SessionPlan:
+                {
+                    /*
+                        Same as above: the fact's decode validated the
+                        payload, so the surfaced re-decode cannot fail.
+                    */
+                    SessionPlanMessage.TryDecode(envelope.Data, out SessionPlanMessage plan);
+                    return PollEvent.FromSessionPlan(plan, envelope.Raw);
+                }
                 default:
                     // TransportReady and Disconnected are synthetic (not frame-driven).
                     return PollEvent.From(PollEventKind.TransportReady);
@@ -776,12 +785,43 @@ namespace SignalFish.Client.Polling
                     }
 
                     return PollEvent.FromGoingAway(goingAway, envelope.Raw);
+                case MessageKind.NewPeer:
+                    if (!NewPeerMessage.TryDecode(envelope.Data, out NewPeerMessage newPeer))
+                    {
+                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
+                    }
+
+                    return PollEvent.FromNewPeer(newPeer, envelope.Raw);
+                case MessageKind.PeerTransportStatus:
+                    if (
+                        !PeerTransportStatusMessage.TryDecode(
+                            envelope.Data,
+                            out PeerTransportStatusMessage peerTransportStatus
+                        )
+                    )
+                    {
+                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
+                    }
+
+                    return PollEvent.FromPeerTransportStatus(peerTransportStatus, envelope.Raw);
+                case MessageKind.Signal:
+                    if (
+                        !IncomingSignalMessage.TryDecode(
+                            envelope.Data,
+                            out IncomingSignalMessage signal
+                        )
+                    )
+                    {
+                        return PollEvent.FromViolation(envelope.Message, envelope.Raw);
+                    }
+
+                    return PollEvent.FromSignal(signal, envelope.Raw);
                 default:
                     /*
                         Routed kinds with no v2 event surface: heartbeat
-                        replies (Pong refreshes liveness upstream), client-
-                        to-server echoes, and v3-only kinds. Absorbed;
-                        still one frame of budget.
+                        replies (Pong refreshes liveness upstream),
+                        client-to-server echoes, and server operation
+                        results. Absorbed; still one frame of budget.
                     */
                     return null;
             }

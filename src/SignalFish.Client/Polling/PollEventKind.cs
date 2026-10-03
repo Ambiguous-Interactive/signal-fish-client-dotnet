@@ -6,8 +6,8 @@ namespace SignalFish.Client.Polling
     /// The classification of one polled frame: session facts, gameplay
     /// payloads, and forward-compatibility events. One inbound frame yields
     /// at most one <see cref="PollEvent"/>; frames with no v2 event surface
-    /// (heartbeat replies, client-to-server echoes, v3-only kinds) are
-    /// absorbed silently and still refresh liveness.
+    /// (heartbeat replies, client-to-server echoes, room-operation results)
+    /// are absorbed silently and still refresh liveness.
     /// </summary>
     public enum PollEventKind : byte
     {
@@ -124,5 +124,17 @@ namespace SignalFish.Client.Polling
 
         /// <summary>Server draining notice (carries the deadline + retry-after payload).</summary>
         GoingAway = 31,
+
+        /// <summary>The per-recipient authoritative session plan (carries the plan payload).</summary>
+        SessionPlan = 32,
+
+        /// <summary>An additive WebRTC peer directive (carries the peer payload).</summary>
+        NewPeer = 33,
+
+        /// <summary>A peer's reported data-path transport state (carries the status payload).</summary>
+        PeerTransportStatus = 34,
+
+        /// <summary>A peer's verbatim WebRTC signal relay (carries the signal payload).</summary>
+        Signal = 35,
     }
 }

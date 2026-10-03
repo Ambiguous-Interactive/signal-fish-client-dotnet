@@ -446,6 +446,122 @@ namespace SignalFish.Client.Async
         }
 
         /// <summary>
+        /// Relays an opaque WebRTC signal to one peer of the latest
+        /// <c>SessionPlan</c> (player role, negotiated v3); the server
+        /// forwards it verbatim and recipients discard stale generations, so
+        /// the send is stamped and checked against the plan's admission
+        /// state: refused with
+        /// <see cref="AdmissionError.SessionPlanUnavailable"/> while no plan
+        /// has been observed, the selected transport is not webrtc, or the
+        /// target is not a plan peer, and with
+        /// <see cref="AdmissionError.StaleSessionGeneration"/> when the
+        /// signal's generation is not the latest plan's. Fails fast with
+        /// <see cref="AdmissionError.SendBufferFull"/> when the command
+        /// queue is full.
+        /// </summary>
+        public CommandSend SendSignal(in SignalMessage message)
+        {
+            lock (_gate)
+            {
+                ThrowIfDisposed();
+                AdmissionError refusal = AdmissionRefusal(ClientCommand.SendSignal);
+                if (refusal == default(AdmissionError) && !_machine.SessionPlanSeen)
+                {
+                    refusal = AdmissionError.SessionPlanUnavailable;
+                }
+
+                if (
+                    refusal == default(AdmissionError)
+                    && _machine.SessionGeneration is not null
+                    && _machine.SessionGeneration != message.Generation
+                )
+                {
+                    refusal = AdmissionError.StaleSessionGeneration;
+                }
+
+                /*
+                    A non-canonical generation can never be the live server
+                    generation; refuse it before the writer's backstop turns
+                    an admitted send into a throw.
+                */
+                if (
+                    refusal == default(AdmissionError)
+                    && !EnvelopeWriter.IsCanonicalUuid(message.Generation)
+                )
+                {
+                    refusal = AdmissionError.StaleSessionGeneration;
+                }
+
+                if (
+                    refusal == default(AdmissionError)
+                    && (
+                        _machine.SessionTransport != SessionTransport.WebRtc
+                        || !EnvelopeWriter.IsCanonicalUuid(message.To)
+                        || !_machine.IsSessionPeer(new Guid(message.To))
+                    )
+                )
+                {
+                    refusal = AdmissionError.SessionPlanUnavailable;
+                }
+
+                if (refusal != default(AdmissionError))
+                {
+                    return CommandSend.Refused(refusal);
+                }
+
+                _sendBuffer.Reset();
+                EnvelopeWriter.WriteSignal(_sendBuffer, message);
+                if (
+                    !_commands.TryEnqueue(
+                        new QueuedFrame(_sendBuffer.WrittenSpan.ToArray(), binary: false)
+                    )
+                )
+                {
+                    return CommandSend.Refused(AdmissionError.SendBufferFull);
+                }
+            }
+
+            SignalWake();
+            return CommandSend.Admitted;
+        }
+
+        /// <summary>
+        /// Reports this connection's data-path transport state (player
+        /// role, negotiated v3); the server fans the report out to the
+        /// peer set as informational <c>PeerTransportStatus</c> traffic.
+        /// Fails fast with <see cref="AdmissionError.SendBufferFull"/> when
+        /// the command queue is full.
+        /// </summary>
+        public CommandSend SendTransportStatus(in TransportStatusMessage message)
+        {
+            return QueueCommand(
+                ClientCommand.SendTransportStatus,
+                static (FrameBufferWriter writer, TransportStatusMessage payload) =>
+                    EnvelopeWriter.WriteTransportStatus(writer, payload),
+                message
+            );
+        }
+
+        /// <summary>
+        /// Publishes self-declared engine connection info to the room
+        /// (player role); the server repeats it to peers as the raw
+        /// material a <c>host</c> + <c>direct</c> plan is projected from.
+        /// v2-compatible: admission never demands a negotiated-v3
+        /// connection. Fails fast with
+        /// <see cref="AdmissionError.SendBufferFull"/> when the command
+        /// queue is full.
+        /// </summary>
+        public CommandSend SendProvideConnectionInfo(in ProvideConnectionInfoMessage message)
+        {
+            return QueueCommand(
+                ClientCommand.ProvideConnectionInfo,
+                static (FrameBufferWriter writer, ProvideConnectionInfoMessage payload) =>
+                    EnvelopeWriter.WriteProvideConnectionInfo(writer, payload),
+                message
+            );
+        }
+
+        /// <summary>
         /// The backpressure-aware counterpart to <see cref="SendGameData"/>:
         /// when the command queue is full, waits for a slot instead of
         /// failing fast, pacing the caller to actual transport throughput —

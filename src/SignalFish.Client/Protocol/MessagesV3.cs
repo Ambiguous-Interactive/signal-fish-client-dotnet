@@ -272,6 +272,11 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "data"))
                 {
+                    if (payloadSeen)
+                    {
+                        return false;
+                    }
+
                     (int Offset, int Length) slice = valueRaw.GetOffsetAndLength(data.Length);
                     payload = data.Slice(slice.Offset, slice.Length);
                     payloadSeen = true;
@@ -538,6 +543,11 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "operation"))
                 {
+                    if (operationSeen)
+                    {
+                        return false;
+                    }
+
                     if (!JsonScanner.TryReadObjectSlice(data, valueRaw, out operation))
                     {
                         return false;
@@ -666,6 +676,11 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "signal"))
                 {
+                    if (signalSeen)
+                    {
+                        return false;
+                    }
+
                     (int Offset, int Length) slice = valueRaw.GetOffsetAndLength(data.Length);
                     signal = data.Slice(slice.Offset, slice.Length);
                     signalSeen = true;

@@ -68,7 +68,7 @@ Client                              Server
 | Authority (`AuthorityRequest`) | v2+ | |
 | v3 negotiation (`protocol_version: 3`) | v3 | + `supported_transports`, `supported_topologies` |
 | Delivery classes `reliable`/`latest`/`volatile`, `seq`/`epoch`, `DeliveryReport` | v3 | mandatory once negotiated |
-| WebRTC mesh (`Signal`, `SessionPlan`, `NewPeer`) | v3 | obey server plan; never recompute glare |
+| WebRTC mesh (`SessionPlan`, `Signal`, `NewPeer`, `TransportStatus`, `PeerTransportStatus`) | v3 | obey the server plan; never recompute glare; keep the relay floor flowing (never block on P2P) |
 | `RoomOperation` (admin ops with `operation_id`) | v3 | |
 
 ## Server timeouts / limits (defaults)

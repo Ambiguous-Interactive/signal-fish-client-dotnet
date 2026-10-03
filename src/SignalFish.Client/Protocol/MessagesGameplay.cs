@@ -165,6 +165,11 @@ namespace SignalFish.Client.Protocol
 
                 if (scanner.KeyIs(keyRaw, "connection_info"))
                 {
+                    if (seen)
+                    {
+                        return false;
+                    }
+
                     if (!JsonScanner.TryReadObjectSlice(data, valueRaw, out connectionInfo))
                     {
                         return false;

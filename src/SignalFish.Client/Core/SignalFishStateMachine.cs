@@ -1,6 +1,7 @@
 namespace SignalFish.Client.Core
 {
     using System;
+    using System.Collections.Generic;
     using SignalFish.Client.Protocol;
 
     /// <summary>
@@ -88,6 +89,38 @@ namespace SignalFish.Client.Core
             get { return _negotiatedProtocolVersion; }
         }
 
+        /// <summary>
+        /// True once a v3 <c>SessionPlan</c> has been observed for the
+        /// current membership — the gate every Signal send checks first.
+        /// Cleared on leave, reconnection, and teardown (the server
+        /// re-plans a fresh seat).
+        /// </summary>
+        public bool SessionPlanSeen
+        {
+            get { return _sessionPlanSeen; }
+        }
+
+        /// <summary>
+        /// The latest plan's generation UUID; null while no plan has been
+        /// observed or for the legacy generation-less Server 0.4 v3 shape
+        /// (the send-fence stands down either way — nothing to supersede).
+        /// Signals must stamp the latest generation, or a re-plan superseded
+        /// them.
+        /// </summary>
+        public string? SessionGeneration
+        {
+            get { return _sessionGeneration; }
+        }
+
+        /// <summary>
+        /// The latest plan's selected data-path transport;
+        /// <c>default(SessionTransport)</c> while no plan has been observed.
+        /// </summary>
+        public SessionTransport SessionTransport
+        {
+            get { return _sessionTransport; }
+        }
+
         private bool _connected;
         private bool _transportReady;
         private bool _authenticated;
@@ -97,6 +130,10 @@ namespace SignalFish.Client.Core
         private bool _isAuthority;
         private uint? _negotiatedProtocolVersion;
         private bool _terminal;
+        private bool _sessionPlanSeen;
+        private string? _sessionGeneration;
+        private SessionTransport _sessionTransport;
+        private readonly List<Guid> _sessionPeers = new List<Guid>();
 
         /// <summary>Creates the machine in the connecting phase (constructed-live, Rust parity).</summary>
         public SignalFishStateMachine()
@@ -282,6 +319,14 @@ namespace SignalFish.Client.Core
                         baselines can never hold it.
                     */
                     _isAuthority = sessionEvent.IsAuthority;
+                    /*
+                        Any confirmed baseline is a hard plan boundary (Rust
+                        set_room parity): the reclaim/join re-enters the room
+                        without one, and the server re-plans the fresh seat
+                        right after. A re-baseline that kept the prior seat's
+                        plan would fence signals into a stale room.
+                    */
+                    ClearSessionPlan();
                     ReleaseIfPending(release);
                     break;
                 case SessionEventKind.RoomLeft:
@@ -303,6 +348,7 @@ namespace SignalFish.Client.Core
                     _membership = default;
                     _reconnectionToken = null;
                     _isAuthority = false;
+                    ClearSessionPlan();
                     ReleaseIfPending(LeaveRelease(sessionEvent.Kind));
                     break;
                 case SessionEventKind.RoomJoinFailed:
@@ -339,6 +385,29 @@ namespace SignalFish.Client.Core
                     */
                     _negotiatedProtocolVersion = sessionEvent.NegotiatedProtocolVersion;
                     break;
+                case SessionEventKind.SessionPlan:
+                    /*
+                        The plan is authoritative and latest-wins, but only
+                        for a live seat: its peer set names room members, so
+                        applying one without a confirmed membership would
+                        admit signals into a room the server never confirmed
+                        (fail-closed, matching the membership facts).
+                    */
+                    if (!_membership.IsPresent)
+                    {
+                        break;
+                    }
+
+                    _sessionPlanSeen = true;
+                    _sessionGeneration = sessionEvent.Plan.Generation;
+                    _sessionTransport = sessionEvent.Plan.Transport;
+                    _sessionPeers.Clear();
+                    for (int i = 0; i < sessionEvent.Plan.Peers.Count; i++)
+                    {
+                        _sessionPeers.Add(sessionEvent.Plan.Peers[i].PlayerId);
+                    }
+
+                    break;
                 case SessionEventKind.Disconnected:
                     ClearSession();
                     break;
@@ -352,13 +421,26 @@ namespace SignalFish.Client.Core
         }
 
         /// <summary>
+        /// Whether <paramref name="playerId"/> is a peer of the latest
+        /// session plan — the Signal target check. False while no plan has
+        /// been observed (the peer set is empty until a plan names one).
+        /// </summary>
+        public bool IsSessionPeer(Guid playerId)
+        {
+            return _sessionPeers.Contains(playerId);
+        }
+
+        /// <summary>
         /// Whether a command (with its game-data delivery class) may only
         /// ride a negotiated-v3 connection. The v2 floor is sacred:
         /// <see cref="GameDataClass.Reliable"/> relay reproduces the v2
         /// wire form and is never gated; classified delivery
         /// (<see cref="GameDataClass.Latest"/>,
-        /// <see cref="GameDataClass.Volatile"/>) is the first v3-only send
-        /// (mesh signaling adds itself with the M6.5 work).
+        /// <see cref="GameDataClass.Volatile"/>) and the mesh signaling
+        /// sends (<see cref="ClientCommand.SendSignal"/>,
+        /// <see cref="ClientCommand.SendTransportStatus"/>) are v3-only;
+        /// <see cref="ClientCommand.ProvideConnectionInfo"/> stays on the
+        /// v2-compatible floor.
         /// </summary>
         internal static bool RequiresNegotiatedV3(ClientCommand command, GameDataClass delivery)
         {
@@ -366,7 +448,9 @@ namespace SignalFish.Client.Core
                     command == ClientCommand.SendGameData
                     && (delivery == GameDataClass.Latest || delivery == GameDataClass.Volatile)
                 )
-                || command == ClientCommand.SendBinaryGameData;
+                || command == ClientCommand.SendBinaryGameData
+                || command == ClientCommand.SendSignal
+                || command == ClientCommand.SendTransportStatus;
         }
 
         private AdmissionError Admit(ClientCommand command, bool becomeAuthority)
@@ -414,6 +498,9 @@ namespace SignalFish.Client.Core
                 case ClientCommand.StartGame:
                 case ClientCommand.SendGameData:
                 case ClientCommand.SendBinaryGameData:
+                case ClientCommand.SendSignal:
+                case ClientCommand.SendTransportStatus:
+                case ClientCommand.ProvideConnectionInfo:
                     if (!_membership.IsPresent)
                     {
                         return AdmissionError.NotInRoom;
@@ -502,6 +589,15 @@ namespace SignalFish.Client.Core
             _reconnectionToken = null;
             _isAuthority = false;
             _negotiatedProtocolVersion = null;
+            ClearSessionPlan();
+        }
+
+        private void ClearSessionPlan()
+        {
+            _sessionPlanSeen = false;
+            _sessionGeneration = null;
+            _sessionTransport = default(SessionTransport);
+            _sessionPeers.Clear();
         }
 
         private static bool IsDirected(ClientCommand command)

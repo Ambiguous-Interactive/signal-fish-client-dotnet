@@ -9,6 +9,31 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-03 - mesh core (M6.5) adversarial review catches
+
+- Trigger: session 033 (M6.5 mesh core); adversarial review over the
+  parallel-agent implementation against the Rust spec and server docs.
+- Evidence: `Guid.TryParse` admitted non-canonical UUID targets the
+  encoder's `RequireUuid` then threw on (an "admitted" send that throws);
+  plan state survived a tolerant re-baseline (stale-room signal fencing);
+  legacy Server-0.4 generation-less plans decoded as violations where the
+  Rust spec decodes them by design; `RoomSnapshot.IceServers` joined the
+  struct but not its equality; the ICE-array walker was the third copy of
+  the same scanner loop.
+- Findings: a fence and its encoder must share one strictness predicate
+  (`IsCanonicalUuid`); every new struct field joins `Equals`/`GetHashCode`
+  or value-semantics consumers silently break; porting an Option-typed
+  wire field as non-nullable turns legacy deployments into violations;
+  duplicated scanner walkers drift.
+- Applied: strict shared `IsCanonicalUuid`, plan cleared on every
+  membership baseline, nullable `SessionPlanMessage.Generation` with a
+  stand-down fence, `fallback != relay` rejected at decode, ICE in
+  snapshot equality, `ProtocolArrays.TryReadObjectArray` as the SSOT
+  walker, driver-level fence tests.
+- Open: retired-generation fence (stale re-ordered plans) and inbound
+  stale-signal suppression are Rust behaviors consciously deferred —
+  tracked in the M6.6 follow-up issue.
+
 ## 2026-10-02 - msgpack-frame fuzz corpus red-green catches
 
 - Trigger: session 032 (issue #68, fuzz the MessagePack binary frame
