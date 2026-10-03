@@ -39,6 +39,13 @@ failure falls back to the protocol default without blocking the connect.
 ## WebGL (Unity)
 
 `ClientWebSocket` is unusable in WebGL builds: browsers do not expose raw
-sockets or upgrade headers. WebGL targets inject their own `ITransport`
-instead — the library is transport-agnostic by design. A reference browser
-WebSocket transport ships with the Unity package (planned milestone M7).
+sockets or upgrade headers. The Unity package therefore ships a reference
+browser-WebSocket transport — `SignalFishWebGLTransport` plus its
+`SignalFishWebSocket.jslib` plugin — behind the same `ITransport`
+contract: connect-at-most-once, single reader, the terminal close
+surfaced exactly once with the observed wire code, a 64 KiB send cap,
+and an 8 MiB receive bound (the browser cannot probe `client-config`).
+The plugin queues incoming frames on the JavaScript side and the
+transport polls them, because a browser page has no threads; that bounds
+receive throughput at the poll cadence, which is fine for signaling.
+See [Unity](unity.md) for usage and limits.

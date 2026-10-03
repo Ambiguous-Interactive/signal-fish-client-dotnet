@@ -41,9 +41,14 @@ Mono, IL2CPP, and WebGL. Unity is a first-class consumer, not an afterthought.
 
 `System.Net.WebSockets.ClientWebSocket` does not work on WebGL. This is the
 main reason the transport is an interface — see
-[websocket-transport](../websocket-transport/SKILL.md). WebGL builds inject
-a browser-WebSocket-based `ITransport` implementation (JS interop) provided
-by the consuming project or a companion package.
+[websocket-transport](../websocket-transport/SKILL.md). The Unity package
+ships a reference browser-WebSocket implementation
+(`Plugins/SignalFishWebGL/`: `SignalFishWebGLTransport` +
+`SignalFishWebSocket.jslib`); custom `ITransport` implementations from the
+consuming project remain an option. The C#-to-jslib entry-point contract is
+pinned by `scripts/lint-webgl-plugin.ps1` in dotnet CI (it also compiles the
+plugin C# and syntax-checks the jslib) because no compiler in this repo sees
+both sides together.
 
 ## IL2CPP / stripping
 
