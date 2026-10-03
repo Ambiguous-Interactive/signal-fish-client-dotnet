@@ -2,7 +2,7 @@
 #
 # Runs on every push to main and on all pull requests so its checks gate
 # every protected-branch candidate. Jobs: markdownlint, spell-check,
-# link-check, mkdocs-build (skeleton — the real site lands in M7.5).
+# link-check, mkdocs-build (mkdocs-material, full page set).
 #
 # No path filters: typos scans the whole repository, and the remaining jobs
 # are cheap, so a stable always-on gate beats partial coverage.
@@ -87,8 +87,8 @@ jobs:
           fail: true
 
   # ──────────────────────────────────────────────────────────────
-  # MkDocs build — prove the docs pipeline end to end. The real
-  # site (mkdocs-material, full page set) lands in M7.5.
+  # MkDocs build — prove the docs pipeline end to end (mkdocs-material,
+  # full page set).
   # On main pushes the built site is also staged for Pages.
   # ──────────────────────────────────────────────────────────────
   mkdocs-build:

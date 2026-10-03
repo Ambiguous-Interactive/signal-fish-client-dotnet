@@ -10,7 +10,7 @@ CI runs the same suite whenever a PR or main push touches the client or
 the suite (`e2e.yml`, service container). The full checklist passes
 against the live server: items 1-6 and the client-side half of item 7
 were first verified on PR #44's `e2e` run; the bidirectional partition
-drill completes item 7 (first verified on this PR's `e2e` run).
+drill completes item 7 (first verified on PR #46's `e2e` run).
 
 ## Checklist status
 

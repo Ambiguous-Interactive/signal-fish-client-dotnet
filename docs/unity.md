@@ -7,11 +7,7 @@ in this repository under
 
 ## Install
 
-- **GitHub Release (UPM tarball):** download
-  `com.ambiguous-interactive.signalfish-<version>.tgz` from the release,
-  then in Unity open **Window &gt; Package Manager &gt; Add package from
-  tarball**.
-- **From disk (development):** clone this repository and use
+- **From disk (current):** clone this repository and use
   **Add package from disk** on the package folder — the `Runtime`
   folder mirrors `src/SignalFish.Client` exactly (enforced by CI), so a
   checkout is always a working package.
@@ -31,7 +27,7 @@ Requirement: Unity 2021.2 or newer (Mono and IL2CPP).
   uses zero reflection, so nothing inside depends on stripping
   behavior.
 - `Plugins/SignalFishWebGL/` — the reference browser-WebSocket
-  transport for WebGL builds (see [WebGL](#webgl)); compiled only on
+  transport for WebGL builds (see [WebGL](webgl.md)); compiled only on
   that platform.
 - `Samples~/PollingDriver` — a minimal `MonoBehaviour` that drives the
   polling client (see below).
@@ -60,50 +56,11 @@ name, and player name, and press Play:
 
 `WebSocketTransport` wraps `ClientWebSocket`, which **does not exist on
 WebGL**. The package ships a reference browser-WebSocket transport in
-`Plugins/SignalFishWebGL/` instead:
-
-- `SignalFishWebGLTransport.cs` — an `ITransport` over
-  `[DllImport("__Internal")]` entry points (no engine references, no
-  unsafe code).
-- `SignalFishWebSocket.jslib` — the Emscripten plugin that owns the
-  browser `WebSocket`, queues incoming frames, and reports observed
-  close codes.
-- The `SignalFish.Client.WebGL` asmdef restricts both to the WebGL
-  platform, so other builds never see them.
-
-Usage — inject the transport, and for opt-in reconnection provide it as
-the reconnect transport factory:
-
-```csharp
-#if UNITY_WEBGL
-using SignalFish.Client.Async;
-using SignalFish.Client.Core;
-using SignalFish.Client.Reconnection;
-using SignalFish.Client.Transport;
-
-var options = new SignalFishClientOptions(
-    reconnectPolicy: new ReconnectPolicy(() => new SignalFishWebGLTransport()));
-var client = new SignalFishClient(
-    new SignalFishWebGLTransport(), new SystemClock(), options);
-#endif
-```
-
-WebGL limits worth knowing:
-
-- No threads: the plugin queues frames on the JavaScript side and the
-  transport polls it (~1 ms cadence, subject to browser timer
-  clamping). That is ample for signaling and modest relay loads, not a
-  max-throughput story.
-- No `client-config` probe: the receive bound defaults to the protocol
-  maximum (8 MiB); the send cap stays 64 KiB.
-- The transport is compiled only when the active build target is
-  WebGL — guard consuming code with `#if UNITY_WEBGL`.
-- `node --check` plus the C#-to-jslib entry-point contract lint run in
-  CI (`scripts/lint-webgl-plugin.ps1`); live in-browser validation is
-  the M7.4 runbook item.
-
-See [Transport](transport.md) for the interface contract and
-[the package layout](#what-ships-in-the-package).
+`Plugins/SignalFishWebGL/` instead — `SignalFishWebGLTransport` plus its
+`SignalFishWebSocket.jslib` plugin, compiled only on the WebGL platform.
+Usage (including the reconnect transport factory), limits, contract
+guarantees, and the CI lint are documented on the dedicated
+[WebGL](webgl.md) page.
 
 ## Validation status
 
