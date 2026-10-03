@@ -262,3 +262,29 @@ Pruned 2026-10-03: resolved and graduated (originals in git history).
 Entries pruned 2026-09-23 (sessions 011-014, 017b, 022-023, 025b-026):
 knowledge graduated into skills/rules; open items resolved or tracked as
 issues; originals in git history.
+
+## 2026-10-03 - session 039: M8.1 FishNet adapter
+
+- Trigger: the first authored-blind engine bridge (FishNet `Transport`)
+  concentrated risk in three places CI cannot compile: the SDK's API
+  shape, the define plumbing that activates the code, and the lifecycle
+  of an async bootstrap under a synchronous transport contract.
+- Findings: (1) `versionDefines` resources are **packages**, not asmdef
+  names, and an empty expression is invalid — the define silently never
+  fires and a guarded bridge compiles to nothing while every gate stays
+  green; gate the whole assembly with `defineConstraints` on the same
+  symbol so a missing SDK can never leave a dangling reference. (2) A
+  transport contract that raises events must stage them for the engine's
+  own thread (FishNet's handlers mutate non-thread-safe collections; its
+  own transports queue exactly this way). (3) An async bootstrap under a
+  synchronous start/stop API needs a generation counter checked after
+  every await, or stop-then-restart leaks a joined session and stale
+  identity. (4) Never fall back to a reserved identity (host connection
+  0) for an unrouted sender — misattribution is corruption; drop and
+  count.
+- Applied: all of the above in the bridge + lint (which now pins the
+  corrected define shape and the bridge's member completeness);
+  composition test pins the adapter UUID spelling against the library's
+  own binary game-data decoder. The pattern (pure CI-compiled core +
+  guarded thin bridge + structural gate) is the template for M8.2
+  Mirror.
