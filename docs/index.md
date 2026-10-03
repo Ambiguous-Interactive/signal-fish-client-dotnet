@@ -1,3 +1,13 @@
+---
+description: "C# client SDK for the Signal Fish multiplayer signaling service"
+---
+
+<p align="center">
+  <img src="assets/logo-banner.svg" alt="Signal Fish Client (.NET)" class="sf-home-logo" width="800" height="220">
+</p>
+
+<span class="sf-hero-tag">C# multiplayer signaling for Unity and .NET</span>
+
 # Signal Fish Client (.NET)
 
 A C# client SDK for the [Signal Fish](https://github.com/Ambiguous-Interactive/signal-fish-server)
@@ -5,6 +15,9 @@ multiplayer signaling service — connect a game over WebSocket, place players
 in rooms, relay game data, and react to everything the server does as typed
 events. The library targets `netstandard2.1`, carries zero NuGet
 dependencies, and ships as a Unity package (see [Unity](unity.md)).
+
+[Get started](getting-started.md){ .md-button .md-button--primary .sf-home-action }
+[View on GitHub](https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet){ .md-button .sf-home-action }
 
 ## Features
 
