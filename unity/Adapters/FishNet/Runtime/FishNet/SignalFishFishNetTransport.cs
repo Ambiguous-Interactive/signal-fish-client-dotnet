@@ -423,7 +423,7 @@ namespace SignalFish.Client.Adapters.FishNet
             lock (_gate)
             {
                 LocalConnectionState state = server ? _serverState : _clientState;
-                if (state.IsStartedOrStarting())
+                if (state == LocalConnectionState.Started || state == LocalConnectionState.Starting)
                 {
                     return false;
                 }
@@ -463,7 +463,15 @@ namespace SignalFish.Client.Adapters.FishNet
                 }
 
                 StageState(server, LocalConnectionState.Stopping);
-                teardown = _serverState.IsStoppedOrStopping() && _clientState.IsStoppedOrStopping();
+                teardown =
+                    (
+                        _serverState == LocalConnectionState.Stopped
+                        || _serverState == LocalConnectionState.Stopping
+                    )
+                    && (
+                        _clientState == LocalConnectionState.Stopped
+                        || _clientState == LocalConnectionState.Stopping
+                    );
             }
 
             if (server)
@@ -525,7 +533,10 @@ namespace SignalFish.Client.Adapters.FishNet
                 return;
             }
 
-            if (_serverState.IsStartedOrStarting())
+            if (
+                _serverState == LocalConnectionState.Started
+                || _serverState == LocalConnectionState.Starting
+            )
             {
                 /*
                     Host mode: the local server feed takes the frame
@@ -616,28 +627,52 @@ namespace SignalFish.Client.Adapters.FishNet
 
         private void StagePeer(int connectionId, RemoteConnectionState state)
         {
-            _pendingRemoteStates.Enqueue(new RemoteConnectionStateArgs(state, connectionId, Index));
+            /*
+                The bootstrap thread stages peers too (the join snapshot),
+                so the enqueue shares the gate with the tick thread's drain.
+            */
+            lock (_gate)
+            {
+                _pendingRemoteStates.Enqueue(
+                    new RemoteConnectionStateArgs(state, connectionId, Index)
+                );
+            }
         }
 
         private void DrainStagedEvents()
         {
-            while (_pendingServerStates.Count > 0)
+            List<LocalConnectionState> serverStates;
+            List<LocalConnectionState> clientStates;
+            List<RemoteConnectionStateArgs> remoteStates;
+            lock (_gate)
             {
-                OnServerConnectionState?.Invoke(
-                    new ServerConnectionStateArgs(_pendingServerStates.Dequeue(), Index)
-                );
+                /*
+                    Swap the queues out under the gate and raise outside it:
+                    FishNet's handlers may call back into this transport,
+                    and a callback re-taking the gate would be reentrant-safe
+                    but a slow handler would stall every staging thread.
+                */
+                serverStates = new List<LocalConnectionState>(_pendingServerStates);
+                _pendingServerStates.Clear();
+                clientStates = new List<LocalConnectionState>(_pendingClientStates);
+                _pendingClientStates.Clear();
+                remoteStates = new List<RemoteConnectionStateArgs>(_pendingRemoteStates);
+                _pendingRemoteStates.Clear();
             }
 
-            while (_pendingClientStates.Count > 0)
+            foreach (LocalConnectionState state in serverStates)
             {
-                OnClientConnectionState?.Invoke(
-                    new ClientConnectionStateArgs(_pendingClientStates.Dequeue(), Index)
-                );
+                OnServerConnectionState?.Invoke(new ServerConnectionStateArgs(state, Index));
             }
 
-            while (_pendingRemoteStates.Count > 0)
+            foreach (LocalConnectionState state in clientStates)
             {
-                OnRemoteConnectionState?.Invoke(_pendingRemoteStates.Dequeue());
+                OnClientConnectionState?.Invoke(new ClientConnectionStateArgs(state, Index));
+            }
+
+            foreach (RemoteConnectionStateArgs args in remoteStates)
+            {
+                OnRemoteConnectionState?.Invoke(args);
             }
         }
 
@@ -863,7 +898,10 @@ namespace SignalFish.Client.Adapters.FishNet
                     case PollEventKind.AuthorityChanged:
                         if (
                             pollEvent.AuthorityChanged.YouAreAuthority
-                            && !_serverState.IsStartedOrStarting()
+                            && (
+                                _serverState != LocalConnectionState.Started
+                                && _serverState != LocalConnectionState.Starting
+                            )
                         )
                         {
                             /*
@@ -944,56 +982,46 @@ namespace SignalFish.Client.Adapters.FishNet
                 target
             );
 
-            bool feedsThisSide = asServer
-                ? route == FishNetFrameRoute.ConsumeAsServer
-                : route == FishNetFrameRoute.ConsumeAsClient;
-            if (!feedsThisSide)
+            /*
+                Server-bound frames need a real route before they can go
+                anywhere: presenting an unrouted sender (a peer that left
+                or was kicked while its frames were in flight) as any real
+                connection would misattribute the segment, and the zero
+                fallback reads as the host's own client. Drop and count
+                here, so neither the direct path nor the cross-side stash
+                can ever carry connection id 0.
+            */
+            int connectionId = 0;
+            if (
+                route == FishNetFrameRoute.ConsumeAsServer
+                && !_router.TryGetConnection(gameData.FromPlayer, out connectionId)
+            )
             {
-                if (
-                    route == FishNetFrameRoute.ConsumeAsServer
-                    || route == FishNetFrameRoute.ConsumeAsClient
-                )
+                lock (_gate)
                 {
-                    theirs.Enqueue(
-                        new RelayFrame(
-                            channel,
-                            segment.ToArray(),
-                            TryRouteSender(gameData.FromPlayer)
-                        )
-                    );
+                    _routedDropped++;
                 }
 
                 return;
             }
 
-            int connectionId = 0;
-            if (asServer)
+            RelayFrame relayed = new RelayFrame(channel, segment.ToArray(), connectionId);
+
+            bool feedsThisSide = asServer
+                ? route == FishNetFrameRoute.ConsumeAsServer
+                : route == FishNetFrameRoute.ConsumeAsClient;
+            if (feedsThisSide)
             {
-                /*
-                    No route: a sender that left (or was kicked) while its
-                    frames were in flight. Presenting it as any real
-                    connection would misattribute the segment — the zero
-                    fallback reads as the host's own client — so drop and
-                    count instead.
-                */
-                if (!_router.TryGetConnection(gameData.FromPlayer, out connectionId))
-                {
-                    lock (_gate)
-                    {
-                        _routedDropped++;
-                    }
-
-                    return;
-                }
+                mine.Enqueue(relayed);
+                FeedPending(mine, asServer);
             }
-
-            mine.Enqueue(new RelayFrame(channel, segment.ToArray(), connectionId));
-            FeedPending(mine, asServer);
-        }
-
-        private int TryRouteSender(Guid senderId)
-        {
-            return _router.TryGetConnection(senderId, out int connectionId) ? connectionId : 0;
+            else if (
+                route == FishNetFrameRoute.ConsumeAsServer
+                || route == FishNetFrameRoute.ConsumeAsClient
+            )
+            {
+                theirs.Enqueue(relayed);
+            }
         }
 
         private void FeedServer(int connectionId, byte channel, byte[] segment)
@@ -1113,9 +1141,8 @@ namespace SignalFish.Client.Adapters.FishNet
                     }
 
                     _client = client;
+                    _loopback = new HostLoopback(_loopbackCapacity);
                 }
-
-                _loopback = new HostLoopback(_loopbackCapacity);
 
                 await client.ConnectAsync(new Uri(_endpoint)).ConfigureAwait(false);
                 if (IsStale(generation))
@@ -1176,6 +1203,12 @@ namespace SignalFish.Client.Adapters.FishNet
                 }
 
                 SeedPeersFromSnapshot(joined.Snapshot);
+
+                if (IsStale(generation))
+                {
+                    await DisposeQuietlyAsync(client).ConfigureAwait(false);
+                    return;
+                }
 
                 if (
                     client.Snapshot.NegotiatedProtocolVersion is not uint negotiated
@@ -1292,11 +1325,21 @@ namespace SignalFish.Client.Adapters.FishNet
 
                 if (!client.IsConnected)
                 {
+                    if (IsStale(generation))
+                    {
+                        return false;
+                    }
+
                     FailBothSides($"the session ended while waiting for {what}");
                     return false;
                 }
 
                 await Task.Delay(10).ConfigureAwait(false);
+            }
+
+            if (IsStale(generation))
+            {
+                return false;
             }
 
             FailBothSides($"timed out waiting for {what}");
@@ -1329,11 +1372,21 @@ namespace SignalFish.Client.Adapters.FishNet
 
                 if (!client.IsConnected)
                 {
+                    if (IsStale(generation))
+                    {
+                        return default;
+                    }
+
                     FailBothSides("the session ended while waiting for the room join");
                     return default;
                 }
 
                 await Task.Delay(10).ConfigureAwait(false);
+            }
+
+            if (IsStale(generation))
+            {
+                return default;
             }
 
             FailBothSides("timed out waiting for the room join");
