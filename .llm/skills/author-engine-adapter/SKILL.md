@@ -49,6 +49,26 @@ broadcast behavior - never against memory of an API.
   `Environment.TickCount64` - which does not exist on the
   netstandard2.1 API floor Unity compiles against even though the
   dotnet build passes.
+- **`global::` is load-bearing on engine usings.** The adapter
+  namespace `SignalFish.Client.Adapters.<Name>` is a member of the
+  enclosing `SignalFish.Client.Adapters` namespace, and
+  enclosing-namespace members win over using directives: plain
+  `using Fusion;` inside `...Adapters.Fusion` resolves to this
+  package, not the SDK - a compile failure in Unity that no dotnet
+  compiler sees. Spell every colliding using `using global::<Engine>;`
+  and global::-qualify base types shadowed by client namespaces
+  (`SignalFish.Client.Transport` shadows `Mirror.Transport`). The
+  shape-stub lane caught five of these in the Mirror/FishNet sources
+  on its first run.
+- **Pin stubs against the engine's actual source, not memory.** The
+  Mirror/FishNet stubs in `lint-unity-adapter.ps1` were checked against
+  the engines' repos: Mirror's callbacks are plain public `Action`
+  fields (not `event`s - transports raise them directly, so a derived
+  bridge may invoke them), FishNet's `LocalConnectionState` is
+  `[Flags]` (Stopped=1..Started=8), `RemoteConnectionState.Started =
+  2`, and `NetworkManager.LogWarning` is a static extension method.
+  A stub that invents the engine's shape compiles the bridge against a
+  lie.
 - **Verify every external-SDK member against the engine's actual source
   or docs, never memory.** Real case: a Unity Relay `Allocation` has no
   join code - the host must call `GetJoinCodeAsync(allocationId)`. The
