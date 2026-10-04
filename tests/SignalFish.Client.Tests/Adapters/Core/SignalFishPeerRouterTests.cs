@@ -1,8 +1,8 @@
-namespace SignalFish.Client.Tests
+namespace SignalFish.Client.Tests.Adapters.Core
 {
     using System;
     using NUnit.Framework;
-    using SignalFish.Client.Adapters.FishNet;
+    using SignalFish.Client.Adapters;
 
     /// <summary>
     /// Contract coverage for the peer router: monotonic never-reused
@@ -25,7 +25,7 @@ namespace SignalFish.Client.Tests
             Assert.That(router.TryAddPeer(PlayerA, out int connectionA), Is.True);
             Assert.That(router.TryAddPeer(PlayerB, out int connectionB), Is.True);
 
-            Assert.That(SignalFishPeerRouter.HostClientConnectionId, Is.EqualTo(0));
+            Assert.That(SignalFishPeerRouter.HostConnectionId, Is.EqualTo(0));
             Assert.That(connectionA, Is.EqualTo(1));
             Assert.That(connectionB, Is.EqualTo(2));
             Assert.That(router.PeerCount, Is.EqualTo(2));

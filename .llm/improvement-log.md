@@ -9,6 +9,32 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-04 - session 041: #83 adapter-core hoist (PowerShell strict-mode JSON)
+
+- Trigger: the #83 shared-core hoist rewrote `lint-unity-adapter.ps1`'s
+  asmdef handling; the rewritten self-test failed five shapes against a
+  lint that "worked" — then crashed on a malformed asmdef.
+- Evidence: (1) `$Json.PSObject.Properties[$var]` returns the member for
+  a literal key but the raw VALUE for a variable key (overload drift) —
+  a missing `references` key crashed `.Value` under StrictMode instead
+  of failing a check. (2) `return @()` unrolls to nothing at the call
+  site, so `.Count` threw on the empty-`defineConstraints` case (rule 1
+  again, new shape). (3) A local `$property` re-casing parameter
+  `$Property` is the same variable (case-insensitive) and corrupted the
+  streaming `Where-Object` pipeline into a scalar. (4) The rewritten
+  fixture helper wrote `Join-Path $core.Root ...` without the test repo
+  root — it silently polluted the REAL repo (overwriting a new
+  uncommitted file) while all "green" assertions ran against fixtures.
+- Findings: tooling changes need their failure shapes exercised
+  red-first — the malformed-input crash only surfaced because the new
+  self-test hit it; fixture writers must join the fixture root or they
+  write into the working tree.
+- Applied: `Get-JsonArray`/`Get-JsonValue` enumerate member infos and
+  every call site `@()`-wraps; self-test helper joins `$repo`; two new
+  `powershell-tooling` rules (8: indexer overload drift + @() call-site
+  normalization; 9: no re-cased locals).
+- Open: none — knowledge graduated into the skill.
+
 ## 2026-10-04 - session 040: M8.2 Mirror adapter (blind bridge, two-round review)
 
 - Trigger: a second blind-authored engine bridge (Mirror) plus the
@@ -36,7 +62,8 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 - Applied: guard lint is region-aware per line; bridge-lifecycle fixes
   above; detector contract pinned for both adapters; PR feedback
   recorded in-session (this entry).
-- Open: M8.7 live validation (licensed seat); #83 core hoist.
+- Open: M8.7 live validation (licensed seat); #83 hoist landed in
+  session 041 — entry pruneable once its M8.7 open item resolves.
 
 ## 2026-10-03 - session 036b: Bugbot round on PR #75 (jslib value serialization)
 

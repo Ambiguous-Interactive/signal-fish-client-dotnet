@@ -128,6 +128,17 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Changed
 
+- The Unity adapter packages share one adapter-core package: the new
+  `com.ambiguous-interactive.signalfish.adapters.core` owns the 18-byte
+  adapter header (`AdapterWire`), the MTU math (`AdapterMtu`), the peer
+  router (`SignalFishPeerRouter`), and the star-topology receive rules
+  (`SignalFishReceiveRules` with `AdapterFrameRoute`), under
+  adapter-neutral names in the `SignalFish.Client.Adapters` namespace.
+  The FishNet and Mirror packages now depend on it — install it next to
+  them — so a header or routing fix is one edit instead of one per
+  adapter. FishNet's `SignalFishPeerRouter.HostClientConnectionId` is
+  now `HostConnectionId`.
+
 - A game-data frame carrying a coalescing key on a non-`latest` class is
   now a delivery violation (surfaced and handled per `ViolationPolicy`)
   instead of being silently normalized — the server refuses such sends,

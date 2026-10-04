@@ -1,17 +1,17 @@
 #nullable enable
-namespace SignalFish.Client.Adapters.Mirror
+namespace SignalFish.Client.Adapters
 {
     using System;
     using System.Collections.Generic;
 
     /// <summary>
-    /// The bidirectional map between Signal Fish player ids and Mirror
-    /// server-side connection ids. Mirror knows only its own integer
+    /// The bidirectional map between Signal Fish player ids and engine
+    /// server-side connection ids. The engine knows only its own integer
     /// connection ids; the relay knows only player UUIDs. The router
     /// assigns ids monotonically from one — never reused while the router
-    /// lives — so a peer that leaves and rejoins is a brand-new Mirror
-    /// connection exactly as Mirror expects, and zero stays reserved for
-    /// the host's local connection. All members are thread-safe.
+    /// lives — so a peer that leaves and rejoins is a brand-new engine
+    /// connection exactly as the engine expects, and zero stays reserved
+    /// for the host's local connection. All members are thread-safe.
     /// </summary>
     public sealed class SignalFishPeerRouter
     {
@@ -39,7 +39,7 @@ namespace SignalFish.Client.Adapters.Mirror
         /// Routes a peer, assigning the next connection id. Succeeds once
         /// per peer lifetime: an already-routed peer keeps its id and the
         /// call fails, so a join/rejoin race can never renumber a peer
-        /// Mirror still believes connected.
+        /// the engine still believes connected.
         /// </summary>
         public bool TryAddPeer(Guid peerId, out int connectionId)
         {
@@ -70,7 +70,7 @@ namespace SignalFish.Client.Adapters.Mirror
         }
 
         /// <summary>
-        /// Drops a peer's route, reporting the id Mirror saw. Fails for a
+        /// Drops a peer's route, reporting the id the engine saw. Fails for a
         /// peer that was never routed.
         /// </summary>
         public bool TryRemovePeer(Guid peerId, out int connectionId)

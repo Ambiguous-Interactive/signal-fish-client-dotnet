@@ -1,33 +1,33 @@
 #nullable enable
-namespace SignalFish.Client.Adapters.Mirror
+namespace SignalFish.Client.Adapters
 {
     using System;
 
     /// <summary>
     /// What one inbound Signal Fish game-data frame means to this
-    /// machine's Mirror side: consume it into the local server feed, the
+    /// machine's engine side: consume it into the local server feed, the
     /// local client feed, or drop it for a named reason. The relay is a
-    /// room broadcast, so every peer sees every frame; Mirror's star
+    /// room broadcast, so every peer sees every frame; the engine's star
     /// topology — clients talk only to the server — is realized by these
     /// rules: the authority consumes its peers' upstream frames, and
     /// everyone else consumes only the authority's downstream frames
     /// addressed to them (or to everyone).
     /// </summary>
-    public enum MirrorFrameRoute : byte
+    public enum AdapterFrameRoute : byte
     {
-        /// <summary>Sentinel for <c>default(MirrorFrameRoute)</c>; not a route.</summary>
+        /// <summary>Sentinel for <c>default(AdapterFrameRoute)</c>; not a route.</summary>
         [Obsolete(
             "This value only exists so the enum default (0) is not a route. Route decisions are never default."
         )]
         None = 0,
 
-        /// <summary>Feed the local Mirror server (this machine is the authority).</summary>
+        /// <summary>Feed the local engine server (this machine is the authority).</summary>
         ConsumeAsServer = 1,
 
-        /// <summary>Feed the local Mirror client.</summary>
+        /// <summary>Feed the local engine client.</summary>
         ConsumeAsClient = 2,
 
-        /// <summary>The sender is this machine; the local connection already delivered it.</summary>
+        /// <summary>The sender is this machine; the engine's local path already delivered it.</summary>
         DropSelfOrigin = 3,
 
         /// <summary>The sender is not the authority and this machine is not the authority.</summary>
@@ -39,13 +39,14 @@ namespace SignalFish.Client.Adapters.Mirror
 
     /// <summary>
     /// The pure routing decision for one inbound adapter frame. The rules,
-    /// in order: a machine never consumes its own broadcast (Mirror's local
-    /// connection delivers the host's own client traffic in-process, and
-    /// the relay floor does not echo a sender's own broadcast back — pinned
-    /// by the conformance suite; the rule is defense in depth); the
-    /// authority consumes every other player's frame on its server feed; a
-    /// non-authority consumes only the authority's frames, and only when
-    /// they are broadcast or addressed to it.
+    /// in order: a machine never consumes its own broadcast (the engine's
+    /// local path — a host-mode loopback or local connection — delivers
+    /// local sends without a relay round trip, and the relay floor does
+    /// not echo a sender's own broadcast back — pinned by the conformance
+    /// suite; the rule is defense in depth); the authority consumes every
+    /// other player's frame on its server feed; a non-authority consumes
+    /// only the authority's frames, and only when they are broadcast or
+    /// addressed to it.
     /// </summary>
     public static class SignalFishReceiveRules
     {
@@ -55,7 +56,7 @@ namespace SignalFish.Client.Adapters.Mirror
         /// equal <paramref name="localPlayerId"/> when this machine is the
         /// authority.
         /// </summary>
-        public static MirrorFrameRoute Route(
+        public static AdapterFrameRoute Route(
             bool localIsAuthority,
             Guid localPlayerId,
             Guid authorityPlayerId,
@@ -65,25 +66,25 @@ namespace SignalFish.Client.Adapters.Mirror
         {
             if (senderId == localPlayerId)
             {
-                return MirrorFrameRoute.DropSelfOrigin;
+                return AdapterFrameRoute.DropSelfOrigin;
             }
 
             if (localIsAuthority)
             {
-                return MirrorFrameRoute.ConsumeAsServer;
+                return AdapterFrameRoute.ConsumeAsServer;
             }
 
             if (senderId != authorityPlayerId)
             {
-                return MirrorFrameRoute.DropForeignSender;
+                return AdapterFrameRoute.DropForeignSender;
             }
 
-            if (targetId != MirrorAdapterWire.BroadcastTarget && targetId != localPlayerId)
+            if (targetId != AdapterWire.BroadcastTarget && targetId != localPlayerId)
             {
-                return MirrorFrameRoute.DropWrongTarget;
+                return AdapterFrameRoute.DropWrongTarget;
             }
 
-            return MirrorFrameRoute.ConsumeAsClient;
+            return AdapterFrameRoute.ConsumeAsClient;
         }
     }
 }

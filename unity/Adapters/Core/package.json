@@ -1,0 +1,15 @@
+{
+    "name": "com.ambiguous-interactive.signalfish.adapters.core",
+    "version": "0.1.0",
+    "displayName": "Signal Fish Adapter Core",
+    "description": "Engine-neutral core for Signal Fish engine adapters: the 18-byte header that frames engine facts (target, delivery channel, version) inside one binary game-data payload, the engine-visible MTU math, the peer router, and the star-topology receive rules. Install it with a Signal Fish adapter transport package.",
+    "unity": "2021.2",
+    "license": "MIT",
+    "documentationUrl": "https://ambiguous-interactive.github.io/signal-fish-client-dotnet/adapters/",
+    "licensesUrl": "https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/blob/main/LICENSE",
+    "author": {
+        "name": "Ambiguous Interactive",
+        "url": "https://github.com/Ambiguous-Interactive"
+    },
+    "samples": []
+}

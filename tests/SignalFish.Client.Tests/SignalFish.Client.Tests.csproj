@@ -27,24 +27,17 @@
     </ItemGroup>
 
     <ItemGroup>
-        <!-- The FishNet adapter's pure core (unity/Adapters/FishNet/
-             Runtime/Core) is engine- and FishNet-free C#, so the dotnet
-             test suite compiles and exercises it directly; the contract
-             lint pins the same sources against the Unity compile shape. -->
+        <!-- The shared adapter core (unity/Adapters/Core/Runtime) is
+             engine- and SDK-free C#, so the dotnet test suite compiles and
+             exercises it directly; the contract lint pins the same sources
+             against the Unity compile shape and forbids adapter-local
+             copies of the shared types. -->
+        <Compile Include="..\..\unity\Adapters\Core\Runtime\**\*.cs" LinkBase="Adapters\Core" />
+        <!-- The FishNet adapter's own pure core (the host-mode loopback)
+             is engine- and FishNet-free C# exercised the same way. -->
         <Compile
             Include="..\..\unity\Adapters\FishNet\Runtime\Core\**\*.cs"
             LinkBase="Adapters\FishNet\Core"
-        />
-    </ItemGroup>
-
-    <ItemGroup>
-        <!-- The Mirror adapter's pure core (unity/Adapters/Mirror/
-             Runtime/Core) is engine- and Mirror-free C#, so the dotnet
-             test suite compiles and exercises it directly; the contract
-             lint pins the same sources against the Unity compile shape. -->
-        <Compile
-            Include="..\..\unity\Adapters\Mirror\Runtime\Core\**\*.cs"
-            LinkBase="Adapters\Mirror\Core"
         />
     </ItemGroup>
 

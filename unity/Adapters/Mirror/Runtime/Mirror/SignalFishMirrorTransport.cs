@@ -28,7 +28,7 @@ namespace SignalFish.Client.Adapters.Mirror
     /// Mirror session. The room's authority plays the Mirror server; the
     /// other members play Mirror clients; game traffic rides the v3
     /// binary game-data lane as raw frames wrapped in the adapter's
-    /// <see cref="MirrorAdapterWire"/> header. The Signal Fish relay is a
+    /// <see cref="AdapterWire"/> header. The Signal Fish relay is a
     /// room broadcast, so Mirror's star topology is realized by
     /// <see cref="SignalFishReceiveRules"/>: the authority consumes its
     /// peers' upstream frames, and clients consume only the authority's
@@ -448,12 +448,12 @@ namespace SignalFish.Client.Adapters.Mirror
                     return;
                 }
 
-                if (_maxFrameBytes <= MirrorAdapterMtu.WireReserve)
+                if (_maxFrameBytes <= AdapterMtu.WireReserve)
                 {
                     Stage(
                         StagedKind.ClientFailed,
                         error: TransportError.InvalidSend,
-                        reason: $"MaxFrameBytes ({_maxFrameBytes}) must exceed the adapter wire reserve ({MirrorAdapterMtu.WireReserve})"
+                        reason: $"MaxFrameBytes ({_maxFrameBytes}) must exceed the adapter wire reserve ({AdapterMtu.WireReserve})"
                     );
                     return;
                 }
@@ -506,7 +506,7 @@ namespace SignalFish.Client.Adapters.Mirror
                 return;
             }
 
-            EnqueueOutbound(MirrorAdapterWire.BroadcastTarget, channelId, connectionId: 0, segment);
+            EnqueueOutbound(AdapterWire.BroadcastTarget, channelId, connectionId: 0, segment);
         }
 
         /// <inheritdoc />
@@ -555,10 +555,10 @@ namespace SignalFish.Client.Adapters.Mirror
                     StartupError = null;
                 }
 
-                if (_maxFrameBytes <= MirrorAdapterMtu.WireReserve)
+                if (_maxFrameBytes <= AdapterMtu.WireReserve)
                 {
                     UnityEngine.Debug.LogError(
-                        $"[SignalFishMirrorTransport] MaxFrameBytes ({_maxFrameBytes}) must exceed the adapter wire reserve ({MirrorAdapterMtu.WireReserve}); the server side cannot start."
+                        $"[SignalFishMirrorTransport] MaxFrameBytes ({_maxFrameBytes}) must exceed the adapter wire reserve ({AdapterMtu.WireReserve}); the server side cannot start."
                     );
                     StartupError =
                         StartupError ?? "MaxFrameBytes is below the adapter wire reserve";
@@ -695,7 +695,7 @@ namespace SignalFish.Client.Adapters.Mirror
         /// <inheritdoc />
         public override int GetMaxPacketSize(int channelId = Channels.Reliable)
         {
-            return MirrorAdapterMtu.MaxSegmentBytes(_maxFrameBytes);
+            return AdapterMtu.MaxSegmentBytes(_maxFrameBytes);
         }
 
         /// <inheritdoc />
@@ -917,7 +917,7 @@ namespace SignalFish.Client.Adapters.Mirror
                 return false;
             }
 
-            int maxPacketSize = MirrorAdapterMtu.MaxSegmentBytes(_maxFrameBytes);
+            int maxPacketSize = AdapterMtu.MaxSegmentBytes(_maxFrameBytes);
             if (segment.Count > maxPacketSize)
             {
                 LogWarning(
@@ -929,10 +929,15 @@ namespace SignalFish.Client.Adapters.Mirror
             return true;
         }
 
+        /*
+            The engine's delivery ids double as the shared header's
+            channel bytes: Channels.Reliable = 0, Channels.Unreliable = 1
+            (Mirror v96.9.23; pinned by lint-unity-adapter).
+        */
         private static bool ChannelIsKnown(int channelId)
         {
-            return channelId == MirrorAdapterWire.ReliableChannel
-                || channelId == MirrorAdapterWire.UnreliableChannel;
+            return channelId == AdapterWire.ReliableChannel
+                || channelId == AdapterWire.UnreliableChannel;
         }
 
         private void EnqueueOutbound(
@@ -983,21 +988,20 @@ namespace SignalFish.Client.Adapters.Mirror
                     frame = _outbound.Peek();
                 }
 
-                int wireLength = MirrorAdapterWire.HeaderLength + frame.Segment.Length;
+                int wireLength = AdapterWire.HeaderLength + frame.Segment.Length;
                 if (_sendScratch == null || _sendScratch.Length < wireLength)
                 {
                     _sendScratch = new byte[
                         Math.Max(
                             wireLength,
-                            MirrorAdapterMtu.MaxSegmentBytes(_maxFrameBytes)
-                                + MirrorAdapterWire.HeaderLength
+                            AdapterMtu.MaxSegmentBytes(_maxFrameBytes) + AdapterWire.HeaderLength
                         )
                     ];
                 }
 
                 Span<byte> wire = _sendScratch.AsSpan(0, wireLength);
                 if (
-                    !MirrorAdapterWire.TryEncode(
+                    !AdapterWire.TryEncode(
                         frame.Channel,
                         frame.Target,
                         frame.Segment,
@@ -1044,7 +1048,7 @@ namespace SignalFish.Client.Adapters.Mirror
                     _outbound.Dequeue();
                 }
 
-                if (frame.Target == MirrorAdapterWire.BroadcastTarget)
+                if (frame.Target == AdapterWire.BroadcastTarget)
                 {
                     OnClientDataSent?.Invoke(new ArraySegment<byte>(frame.Segment), frame.Channel);
                 }
@@ -1160,7 +1164,7 @@ namespace SignalFish.Client.Adapters.Mirror
         )
         {
             if (
-                !MirrorAdapterWire.TryDecode(
+                !AdapterWire.TryDecode(
                     gameData.Payload.Span,
                     out byte channel,
                     out Guid target,
@@ -1176,7 +1180,7 @@ namespace SignalFish.Client.Adapters.Mirror
                 return;
             }
 
-            MirrorFrameRoute route = SignalFishReceiveRules.Route(
+            AdapterFrameRoute route = SignalFishReceiveRules.Route(
                 _localIsAuthority,
                 _localPlayerId,
                 _authorityPlayerId,
@@ -1195,7 +1199,7 @@ namespace SignalFish.Client.Adapters.Mirror
             */
             int connectionId = SignalFishPeerRouter.HostConnectionId;
             if (
-                route == MirrorFrameRoute.ConsumeAsServer
+                route == AdapterFrameRoute.ConsumeAsServer
                 && !_router.TryGetConnection(gameData.FromPlayer, out connectionId)
             )
             {
@@ -1210,16 +1214,16 @@ namespace SignalFish.Client.Adapters.Mirror
             RelayFrame relayed = new RelayFrame(channel, segment.ToArray(), connectionId);
 
             bool feedsThisSide = asServer
-                ? route == MirrorFrameRoute.ConsumeAsServer
-                : route == MirrorFrameRoute.ConsumeAsClient;
+                ? route == AdapterFrameRoute.ConsumeAsServer
+                : route == AdapterFrameRoute.ConsumeAsClient;
             if (feedsThisSide)
             {
                 mine.Enqueue(relayed);
                 FeedPending(mine, asServer);
             }
             else if (
-                route == MirrorFrameRoute.ConsumeAsServer
-                || route == MirrorFrameRoute.ConsumeAsClient
+                route == AdapterFrameRoute.ConsumeAsServer
+                || route == AdapterFrameRoute.ConsumeAsClient
             )
             {
                 theirs.Enqueue(relayed);

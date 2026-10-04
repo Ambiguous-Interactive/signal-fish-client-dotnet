@@ -1,21 +1,21 @@
-namespace SignalFish.Client.Tests.Adapters.Mirror
+namespace SignalFish.Client.Tests.Adapters.Core
 {
     using System;
     using System.Collections.Generic;
     using System.Text;
     using NUnit.Framework;
-    using SignalFish.Client.Adapters.Mirror;
+    using SignalFish.Client.Adapters;
     using SignalFish.Client.Protocol;
 
     /// <summary>
-    /// Contract coverage for the Mirror adapter's wire header: the pinned
+    /// Contract coverage for the FishNet adapter's wire header: the pinned
     /// byte layout, RFC-4122 UUID spelling shared with the library's
     /// binary game-data decoder, round-trip preservation of channel,
     /// target, and segment, and every refusal shape (short frames, unknown
     /// header versions, unknown channels, undersized buffers).
     /// </summary>
     [TestFixture]
-    public class MirrorAdapterWireTests
+    public class AdapterWireTests
     {
         private static readonly Guid TargetPlayer = new Guid(
             "00112233-4455-6677-8899-aabbccddeeff"
@@ -24,37 +24,33 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
         private static readonly TestCaseData[] RoundTripFrames =
         {
             new TestCaseData(
-                MirrorAdapterWire.ReliableChannel,
-                MirrorAdapterWire.BroadcastTarget,
+                AdapterWire.ReliableChannel,
+                AdapterWire.BroadcastTarget,
                 Array.Empty<byte>()
             ).SetName("ReliableBroadcastEmpty"),
             new TestCaseData(
-                MirrorAdapterWire.ReliableChannel,
+                AdapterWire.ReliableChannel,
                 TargetPlayer,
                 new byte[] { 0x01, 0x02, 0xfe }
             ).SetName("ReliableTargetedBinary"),
             new TestCaseData(
-                MirrorAdapterWire.UnreliableChannel,
-                MirrorAdapterWire.BroadcastTarget,
+                AdapterWire.UnreliableChannel,
+                AdapterWire.BroadcastTarget,
                 Encoding.UTF8.GetBytes("position")
             ).SetName("UnreliableBroadcastText"),
-            new TestCaseData(
-                MirrorAdapterWire.UnreliableChannel,
-                TargetPlayer,
-                new byte[512]
-            ).SetName("UnreliableTargetedLarge"),
+            new TestCaseData(AdapterWire.UnreliableChannel, TargetPlayer, new byte[512]).SetName(
+                "UnreliableTargetedLarge"
+            ),
         };
 
         private static readonly TestCaseData[] BrokenFrames =
         {
             new TestCaseData(Array.Empty<byte>()).SetName("Empty"),
-            new TestCaseData(new byte[] { MirrorAdapterWire.HeaderVersion }).SetName(
-                "ShorterThanHeader"
-            ),
-            new TestCaseData(new byte[] { 0x02, MirrorAdapterWire.ReliableChannel }).SetName(
+            new TestCaseData(new byte[] { AdapterWire.HeaderVersion }).SetName("ShorterThanHeader"),
+            new TestCaseData(new byte[] { 0x02, AdapterWire.ReliableChannel }).SetName(
                 "UnknownHeaderVersion"
             ),
-            new TestCaseData(new byte[] { MirrorAdapterWire.HeaderVersion, 0x07, 0x00 }).SetName(
+            new TestCaseData(new byte[] { AdapterWire.HeaderVersion, 0x07, 0x00 }).SetName(
                 "UnknownChannel"
             ),
         };
@@ -68,10 +64,10 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
         [Test]
         public void HeaderLayoutPinsVersionChannelAndNetworkUuid()
         {
-            Span<byte> buffer = stackalloc byte[MirrorAdapterWire.HeaderLength];
+            Span<byte> buffer = stackalloc byte[AdapterWire.HeaderLength];
             Assert.That(
-                MirrorAdapterWire.TryEncode(
-                    MirrorAdapterWire.ReliableChannel,
+                AdapterWire.TryEncode(
+                    AdapterWire.ReliableChannel,
                     TargetPlayer,
                     ReadOnlySpan<byte>.Empty,
                     buffer,
@@ -80,9 +76,9 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
                 Is.True
             );
 
-            Assert.That(written, Is.EqualTo(MirrorAdapterWire.HeaderLength));
-            Assert.That(buffer[0], Is.EqualTo(MirrorAdapterWire.HeaderVersion));
-            Assert.That(buffer[1], Is.EqualTo(MirrorAdapterWire.ReliableChannel));
+            Assert.That(written, Is.EqualTo(AdapterWire.HeaderLength));
+            Assert.That(buffer[0], Is.EqualTo(AdapterWire.HeaderVersion));
+            Assert.That(buffer[1], Is.EqualTo(AdapterWire.ReliableChannel));
             Assert.That(
                 buffer.Slice(2, 16).ToArray(),
                 Is.EqualTo(
@@ -114,9 +110,9 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
         public void NetworkUuidRoundTripsTheLibraryBinaryGameDataSpelling()
         {
             Span<byte> wire = stackalloc byte[16];
-            MirrorAdapterWire.WriteNetworkUuid(wire, TargetPlayer);
+            AdapterWire.WriteNetworkUuid(wire, TargetPlayer);
 
-            Guid decoded = MirrorAdapterWire.ReadNetworkUuid(wire);
+            Guid decoded = AdapterWire.ReadNetworkUuid(wire);
             Assert.That(decoded, Is.EqualTo(TargetPlayer));
         }
 
@@ -131,12 +127,12 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
                 here, not in a player.
             */
             Span<byte> wire = stackalloc byte[16];
-            MirrorAdapterWire.WriteNetworkUuid(wire, TargetPlayer);
+            AdapterWire.WriteNetworkUuid(wire, TargetPlayer);
 
-            byte[] adapterFrame = new byte[MirrorAdapterWire.HeaderLength + 2];
+            byte[] adapterFrame = new byte[AdapterWire.HeaderLength + 2];
             Assert.That(
-                MirrorAdapterWire.TryEncode(
-                    MirrorAdapterWire.UnreliableChannel,
+                AdapterWire.TryEncode(
+                    AdapterWire.UnreliableChannel,
                     TargetPlayer,
                     new byte[] { 0x2a, 0x2b },
                     adapterFrame,
@@ -181,7 +177,7 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
             Assert.That(gameData.Payload.ToArray(), Is.EqualTo(adapterFrame));
 
             Assert.That(
-                MirrorAdapterWire.TryDecode(
+                AdapterWire.TryDecode(
                     gameData.Payload.Span,
                     out byte channel,
                     out Guid target,
@@ -189,7 +185,7 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
                 ),
                 Is.True
             );
-            Assert.That(channel, Is.EqualTo(MirrorAdapterWire.UnreliableChannel));
+            Assert.That(channel, Is.EqualTo(AdapterWire.UnreliableChannel));
             Assert.That(target, Is.EqualTo(TargetPlayer));
             Assert.That(segment.ToArray(), Is.EqualTo(new byte[] { 0x2a, 0x2b }));
         }
@@ -201,15 +197,15 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
             byte[] segment
         )
         {
-            Span<byte> buffer = stackalloc byte[MirrorAdapterWire.HeaderLength + segment.Length];
+            Span<byte> buffer = stackalloc byte[AdapterWire.HeaderLength + segment.Length];
             Assert.That(
-                MirrorAdapterWire.TryEncode(channel, target, segment, buffer, out int written),
+                AdapterWire.TryEncode(channel, target, segment, buffer, out int written),
                 Is.True
             );
-            Assert.That(written, Is.EqualTo(MirrorAdapterWire.HeaderLength + segment.Length));
+            Assert.That(written, Is.EqualTo(AdapterWire.HeaderLength + segment.Length));
 
             Assert.That(
-                MirrorAdapterWire.TryDecode(
+                AdapterWire.TryDecode(
                     buffer,
                     out byte decodedChannel,
                     out Guid decodedTarget,
@@ -225,17 +221,17 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
         [TestCaseSource(nameof(BrokenFrames))]
         public void BrokenFramesRefuseToDecode(byte[] frame)
         {
-            Assert.That(MirrorAdapterWire.TryDecode(frame, out _, out _, out _), Is.False);
+            Assert.That(AdapterWire.TryDecode(frame, out _, out _, out _), Is.False);
         }
 
         [TestCaseSource(nameof(UnencodableChannels))]
         public void UnknownChannelsRefuseToEncode(byte channel)
         {
-            Span<byte> buffer = stackalloc byte[MirrorAdapterWire.HeaderLength];
+            Span<byte> buffer = stackalloc byte[AdapterWire.HeaderLength];
             Assert.That(
-                MirrorAdapterWire.TryEncode(
+                AdapterWire.TryEncode(
                     channel,
-                    MirrorAdapterWire.BroadcastTarget,
+                    AdapterWire.BroadcastTarget,
                     ReadOnlySpan<byte>.Empty,
                     buffer,
                     out int written
@@ -249,11 +245,11 @@ namespace SignalFish.Client.Tests.Adapters.Mirror
         public void UndersizedBufferRefusesToEncode()
         {
             byte[] segment = { 0x01 };
-            Span<byte> buffer = stackalloc byte[MirrorAdapterWire.HeaderLength];
+            Span<byte> buffer = stackalloc byte[AdapterWire.HeaderLength];
             Assert.That(
-                MirrorAdapterWire.TryEncode(
-                    MirrorAdapterWire.ReliableChannel,
-                    MirrorAdapterWire.BroadcastTarget,
+                AdapterWire.TryEncode(
+                    AdapterWire.ReliableChannel,
+                    AdapterWire.BroadcastTarget,
                     segment,
                     buffer,
                     out int written

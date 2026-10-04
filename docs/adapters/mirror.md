@@ -49,8 +49,9 @@ order) beats silently dropping frames a game marked reliable.
 ## Install and set up
 
 1. Install the packages: `com.ambiguous-interactive.signalfish`, the
-   Mirror asset, then this adapter, and let Unity compile twice (see the
-   detector note above).
+   shared adapter core `com.ambiguous-interactive.signalfish.adapters.core`,
+   the Mirror asset, then this adapter, and let Unity compile twice (see
+   the detector note above).
 2. Add a `NetworkManager` and put `SignalFishMirrorTransport` on the same
    GameObject, under the transport list.
 3. Fill the session fields: `Endpoint` (the v2 relay floor endpoint;

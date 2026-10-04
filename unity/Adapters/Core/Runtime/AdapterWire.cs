@@ -1,21 +1,21 @@
 #nullable enable
-namespace SignalFish.Client.Adapters.Mirror
+namespace SignalFish.Client.Adapters
 {
     using System;
     using System.Buffers.Binary;
 
     /// <summary>
-    /// The Mirror adapter's wire constants and the header that carries
-    /// Mirror facts inside one opaque Signal Fish binary game-data
+    /// The engine adapters' wire constants and the header that carries
+    /// engine facts inside one opaque Signal Fish binary game-data
     /// payload. The Signal Fish relay is a room broadcast — it has no
     /// per-peer addressing and no class metadata on the binary lane — so
-    /// the adapter frames its own facts (target, channel, version) ahead
-    /// of the Mirror segment; the segment itself rides verbatim. Layout:
-    /// <c>[0] header version, [1] Mirror channel byte, [2..17] target
+    /// an adapter frames its own facts (target, channel, version) ahead
+    /// of the engine segment; the segment itself rides verbatim. Layout:
+    /// <c>[0] header version, [1] delivery channel byte, [2..17] target
     /// player UUID (16 RFC-4122 network-order bytes, all-zero means
-    /// broadcast), [18..] Mirror segment</c>.
+    /// broadcast), [18..] engine segment</c>.
     /// </summary>
-    public static class MirrorAdapterWire
+    public static class AdapterWire
     {
         /// <summary>The header byte length every encoded frame carries.</summary>
         public const int HeaderLength = 18;
@@ -23,19 +23,30 @@ namespace SignalFish.Client.Adapters.Mirror
         /// <summary>The current header version; receivers refuse others.</summary>
         public const byte HeaderVersion = 1;
 
-        /// <summary>Mirror's reliable channel (<c>Channels.Reliable</c>).</summary>
+        /// <summary>
+        /// The delivery channel byte for reliable traffic. Both pinned
+        /// engines spell reliable as zero (FishNet <c>Channel.Reliable</c>,
+        /// Mirror <c>Channels.Reliable</c>); the per-adapter pins live in
+        /// <c>scripts/lint-unity-adapter.ps1</c>.
+        /// </summary>
         public const byte ReliableChannel = 0;
 
-        /// <summary>Mirror's unreliable channel (<c>Channels.Unreliable</c>).</summary>
+        /// <summary>
+        /// The delivery channel byte for unreliable traffic. Both pinned
+        /// engines spell unreliable as one (FishNet
+        /// <c>Channel.Unreliable</c>, Mirror <c>Channels.Unreliable</c>);
+        /// the per-adapter pins live in
+        /// <c>scripts/lint-unity-adapter.ps1</c>.
+        /// </summary>
         public const byte UnreliableChannel = 1;
 
         /// <summary>The broadcast target spelling (the all-zero UUID).</summary>
         public static readonly Guid BroadcastTarget = Guid.Empty;
 
         /// <summary>
-        /// Gets whether the channel byte is one the adapter frames. Unknown
-        /// bytes are refused so a Mirror channel addition can never silently
-        /// cross a wire the receiver would misread.
+        /// Gets whether the channel byte is one the header frames. Unknown
+        /// bytes are refused so an engine channel addition can never
+        /// silently cross a wire the receiver would misread.
         /// </summary>
         public static bool IsKnownChannel(byte channel)
         {

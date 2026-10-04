@@ -1,7 +1,7 @@
 {
     "name": "SignalFish.Transport.FishNet",
     "rootNamespace": "SignalFish.Client.Adapters.FishNet",
-    "references": ["SignalFish.Client", "FishNet.Runtime"],
+    "references": ["SignalFish.Client", "SignalFish.Adapters.Core", "FishNet.Runtime"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

@@ -3,6 +3,7 @@ namespace SignalFish.Client.Tests
     using System;
     using System.Text;
     using NUnit.Framework;
+    using SignalFish.Client.Adapters;
     using SignalFish.Client.Adapters.FishNet;
 
     /// <summary>
@@ -19,14 +20,14 @@ namespace SignalFish.Client.Tests
             HostLoopback loopback = new HostLoopback(capacityPerDirection: 4);
             Assert.That(
                 loopback.TryEnqueueClientToServer(
-                    FishNetAdapterWire.ReliableChannel,
+                    AdapterWire.ReliableChannel,
                     Encoding.UTF8.GetBytes("first")
                 ),
                 Is.True
             );
             Assert.That(
                 loopback.TryEnqueueClientToServer(
-                    FishNetAdapterWire.UnreliableChannel,
+                    AdapterWire.UnreliableChannel,
                     Encoding.UTF8.GetBytes("second")
                 ),
                 Is.True
@@ -34,11 +35,11 @@ namespace SignalFish.Client.Tests
 
             Assert.That(loopback.TryDequeueClientToServer(out HostLoopbackFrame first), Is.True);
             Assert.That(Encoding.UTF8.GetString(first.Segment.Span), Is.EqualTo("first"));
-            Assert.That(first.Channel, Is.EqualTo(FishNetAdapterWire.ReliableChannel));
+            Assert.That(first.Channel, Is.EqualTo(AdapterWire.ReliableChannel));
 
             Assert.That(loopback.TryDequeueClientToServer(out HostLoopbackFrame second), Is.True);
             Assert.That(Encoding.UTF8.GetString(second.Segment.Span), Is.EqualTo("second"));
-            Assert.That(second.Channel, Is.EqualTo(FishNetAdapterWire.UnreliableChannel));
+            Assert.That(second.Channel, Is.EqualTo(AdapterWire.UnreliableChannel));
         }
 
         [Test]
@@ -47,7 +48,7 @@ namespace SignalFish.Client.Tests
             HostLoopback loopback = new HostLoopback(capacityPerDirection: 2);
             Assert.That(
                 loopback.TryEnqueueServerToClient(
-                    FishNetAdapterWire.ReliableChannel,
+                    AdapterWire.ReliableChannel,
                     Encoding.UTF8.GetBytes("down")
                 ),
                 Is.True
@@ -64,14 +65,14 @@ namespace SignalFish.Client.Tests
             HostLoopback loopback = new HostLoopback(capacityPerDirection: 1);
             Assert.That(
                 loopback.TryEnqueueClientToServer(
-                    FishNetAdapterWire.ReliableChannel,
+                    AdapterWire.ReliableChannel,
                     Encoding.UTF8.GetBytes("kept")
                 ),
                 Is.True
             );
             Assert.That(
                 loopback.TryEnqueueClientToServer(
-                    FishNetAdapterWire.ReliableChannel,
+                    AdapterWire.ReliableChannel,
                     Encoding.UTF8.GetBytes("dropped")
                 ),
                 Is.False
@@ -88,14 +89,14 @@ namespace SignalFish.Client.Tests
             HostLoopback loopback = new HostLoopback(capacityPerDirection: 2);
             Assert.That(
                 loopback.TryEnqueueClientToServer(
-                    FishNetAdapterWire.ReliableChannel,
+                    AdapterWire.ReliableChannel,
                     Encoding.UTF8.GetBytes("up")
                 ),
                 Is.True
             );
             Assert.That(
                 loopback.TryEnqueueServerToClient(
-                    FishNetAdapterWire.ReliableChannel,
+                    AdapterWire.ReliableChannel,
                     Encoding.UTF8.GetBytes("down")
                 ),
                 Is.True

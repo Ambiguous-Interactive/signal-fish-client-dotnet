@@ -1,6 +1,6 @@
 ---
 name: powershell-tooling
-description: PowerShell failure classes proven by real bugs in this repo - strict-mode scalar unroll, comma-plus-@() array nesting, array-to-string coercion, Write-Error under Stop inside loops, pwsh -File array binding, CWD-dependent tool invocations in scripts, sync scripts that cannot converge, and the report-all-then-fail contract.
+description: PowerShell failure classes proven by real bugs in this repo - strict-mode scalar unroll, comma-plus-@() array nesting, array-to-string coercion, Write-Error under Stop inside loops, pwsh -File array binding, CWD-dependent tool invocations in scripts, member-info indexer overload drift, case-insensitive name collisions, sync scripts that cannot converge, and the report-all-then-fail contract.
 metadata:
   category: core
 ---
@@ -127,6 +127,36 @@ it is hardest to debug. Two sub-cases seen in this repo:
   and `scripts/install-hooks.sh` (same class, different language — check
   shell siblings too). Regression test:
   `scripts/tests/test-install-hooks.ps1`.
+
+## 8. `PSObject.Properties[$var]` resolves by overload, not by key
+
+Indexing the member-info collection with a **string literal** returns the
+`PSNoteProperty`; with a **string variable** the runtime binder picks a
+different overload and returns the raw VALUE (or nothing for a missing
+key) — so a missing-key guard never fires and `.Value` explodes under
+StrictMode.
+
+- **Rule**: enumerate instead of indexing:
+  `$member = @($Json.PSObject.Properties | Where-Object { $_.Name -eq $Name })`.
+  Normalize at call sites with `@(...)` — a returned empty array unrolls
+  to nothing (rule 1), so `@(Get-JsonArray ...).Count` is the safe shape.
+- Evidence: `lint-unity-adapter.ps1` crashed with "The property 'Value'
+  cannot be found" on a hand-edited asmdef missing `references`
+  (session 041; pinned by self-test case "missing shared-core reference").
+
+## 9. Never re-case a parameter as a local
+
+PowerShell variables are case-insensitive: a local `$property` assigned
+inside a function whose parameter is `$Property` is the SAME variable.
+Assigning it while a streaming `Where-Object` script block still reads
+the parameter corrupts the pipeline — `@(... | Where-Object { ... $Property })`
+came back as a scalar `System.String` instead of an array.
+
+- **Rule**: a local may never differ from an in-scope name only by case.
+  Rename the local (`$member`), not the parameter.
+- Evidence: reproduced in isolation during session 041 while fixing rule
+  8; the isolated repro worked at script scope and broke inside the
+  function only because of the collision.
 
 ## Testing tooling
 

@@ -53,9 +53,10 @@ broadcast per target peer.
 
 1. Install the packages: FishNet (its git URL UPM install or a vendored
    `Assets/` install — both are detected), then
-   `com.ambiguous-interactive.signalfish`, then this adapter, and let
-   Unity compile twice (the define detector lights the adapter up after
-   FishNet's first compile).
+   `com.ambiguous-interactive.signalfish`, then the shared adapter core
+   `com.ambiguous-interactive.signalfish.adapters.core`, then this
+   adapter, and let Unity compile twice (the define detector lights the
+   adapter up after FishNet's first compile).
 2. Add a `NetworkManager` and put `SignalFishFishNetTransport` under its
    transport list.
 3. Fill the session fields: `Endpoint` (the v2 relay floor endpoint;
