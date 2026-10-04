@@ -29,4 +29,4 @@ same code.
   automatically after the configured delay.
 
 The player object networked over this session is whatever you spawn
-yourself — the bridge carries bytes, not behaviours.
+yourself — the bridge carries bytes, not game code.
