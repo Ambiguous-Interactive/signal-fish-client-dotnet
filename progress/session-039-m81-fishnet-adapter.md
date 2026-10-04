@@ -111,11 +111,38 @@ upstream before acting:
   the no-self-echo assumption the routing leans on (already pinned by
   the CI E2E suite).
 
+## Bugbot rounds (post-push)
+
+Cursor Bugbot reviewed three commits; every finding was verified before
+acting, and the two sub-agent rounds above had already closed the two
+items that were stale by the time the bot ran.
+
+- **The event-stream steal (the one that mattered)**: the bootstrap
+  published the session before the room join completed, so FishNet's
+  tick thread drained the same queue the bootstrap was waiting on — a
+  `RoomJoined` consumed by the bridge's own drain timed out every start.
+  The session is now bootstrap-private (`_session`) and is handed to the
+  tick thread only when the session goes live.
+- **The host connection**: host mode looped data for the reserved
+  connection id 0 without ever announcing it; the announce, its state
+  answers (`GetConnectionState`/`GetConnectionAddress`), its retirement
+  on either side stopping, and the loopback's lifetime (cleared with the
+  connection, drain captures the reference) all landed across three
+  rounds.
+- **Teardown leftovers**: queued outbound and stashed frames survived
+  into a successor session and tripped `BinaryFormatNotNegotiated`
+  against it; teardown now clears every queue.
+- **Late writes in stale windows**: the join-seed (identity + peer
+  routes) moved inside the gate behind the staleness check, and the wait
+  loops re-check staleness before tearing down.
+
+All four workflows green on the final commit (`7b41e50`); no bot
+findings remained. Merged as squash `af4e941`.
+
 ## Verification
 
 - `dotnet build -warnaserror` clean; 856 unit tests green on net8.0 and
-  net10.0 (41 new); all six convention lints green; CSharpier clean.
-- `lint-fishnet-adapter` full lane green (core compile + contract);
+  net10.0 (41 new); all six convention lints green; CSharpier clean.- `lint-fishnet-adapter` full lane green (core compile + contract);
   `lint-webgl-plugin` untouched and green; `sync-unity-package -Check`
   green (the adapter lives outside the mirrored package).
 - `scripts/tests/run-all.ps1` green — 15 self-test files including the
