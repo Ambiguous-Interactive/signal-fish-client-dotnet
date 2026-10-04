@@ -113,7 +113,6 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 
 Pruned 2026-10-04: the devcontainer rounds, the maintain-plan restructure, and the 027 scope note — graduated into `.devcontainer`, `.llm/skills/maintain-plan`, and git history.
 
-
 - Trigger: Cursor Bugbot flagged 2 High findings on commit 0a36a6e;
   addressed per [address-pr-feedback](./skills/address-pr-feedback/SKILL.md).
 - Evidence: both findings reproduced red before fixing (a stale-engine
