@@ -400,6 +400,18 @@ namespace SignalFish.Client.Adapters.FishNet
         /// <inheritdoc />
         public override RemoteConnectionState GetConnectionState(int connectionId)
         {
+            if (connectionId == SignalFishPeerRouter.HostClientConnectionId)
+            {
+                /*
+                    The host's local client is announced, never routed: the
+                    router holds remote peers only, so its state lives in
+                    the announce flag.
+                */
+                return _hostClientAnnounced
+                    ? RemoteConnectionState.Started
+                    : RemoteConnectionState.Stopped;
+            }
+
             return _router.TryGetPeer(connectionId, out _)
                 ? RemoteConnectionState.Started
                 : RemoteConnectionState.Stopped;
@@ -410,8 +422,15 @@ namespace SignalFish.Client.Adapters.FishNet
         {
             /*
                 The relay exposes player identities, not network addresses;
-                the routed player id is the stable thing to show.
+                the routed player id is the stable thing to show. The host
+                client has no route — it is this machine — so its own
+                player id answers for it.
             */
+            if (connectionId == SignalFishPeerRouter.HostClientConnectionId)
+            {
+                return _hostClientAnnounced ? $"signal-fish:{_localPlayerId}" : string.Empty;
+            }
+
             return _router.TryGetPeer(connectionId, out Guid peerId)
                 ? $"signal-fish:{peerId}"
                 : string.Empty;
@@ -490,6 +509,15 @@ namespace SignalFish.Client.Adapters.FishNet
             {
                 DropAllPeers();
             }
+            else
+            {
+                /*
+                    Host mode: stopping the local client disconnects the
+                    host connection on the local server, and vice versa —
+                    the reserved id 0 is live only while both sides are.
+                */
+                RetireHostClientIfGone();
+            }
 
             if (teardown)
             {
@@ -508,6 +536,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 }
             }
 
+            RetireHostClientIfGone();
             return true;
         }
 
@@ -1104,17 +1133,32 @@ namespace SignalFish.Client.Adapters.FishNet
             }
 
             _router.Clear();
+            RetireHostClientIfGone();
+        }
 
+        private void RetireHostClientIfGone()
+        {
             lock (_gate)
             {
-                if (_hostClientAnnounced)
-                {
-                    _hostClientAnnounced = false;
-                    StagePeer(
-                        SignalFishPeerRouter.HostClientConnectionId,
-                        RemoteConnectionState.Stopped
+                bool bothSidesLive =
+                    (
+                        _serverState == LocalConnectionState.Started
+                        || _serverState == LocalConnectionState.Starting
+                    )
+                    && (
+                        _clientState == LocalConnectionState.Started
+                        || _clientState == LocalConnectionState.Starting
                     );
+                if (!_hostClientAnnounced || bothSidesLive)
+                {
+                    return;
                 }
+
+                _hostClientAnnounced = false;
+                StagePeer(
+                    SignalFishPeerRouter.HostClientConnectionId,
+                    RemoteConnectionState.Stopped
+                );
             }
         }
 
