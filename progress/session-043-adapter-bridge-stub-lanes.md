@@ -16,7 +16,7 @@ too, and its first run earned its keep immediately:
   bridge + package Runtime sources type-check at the netstandard2.1
   floor (C# 9, nullable, warnings as errors) with the adapter define
   set, on every CI run.
-- **The lanes caught five real Unity compile blockers on their first
+- **The lanes caught three real Unity compile blockers on their first
   run** — the exact failure class the issue predicted (errors surface
   only in a consumer's editor):
   - C# name resolution gives enclosing-namespace members precedence
@@ -41,7 +41,7 @@ too, and its first run earned its keep immediately:
   (`global::` is load-bearing — the next adapters, Fusion/Steamworks,
   will hit the same trap) and the verify-stubs-against-engine-source
   rule with the concrete catches.
-- CHANGELOG Fixed entry (the five compile blockers ship in published
+- CHANGELOG Fixed entry (the compile blockers ship in published
   source packages).
 
 ## Validation

@@ -58,8 +58,10 @@ broadcast behavior - never against memory of an API.
   compiler sees. Spell every colliding using `using global::<Engine>;`
   and global::-qualify base types shadowed by client namespaces
   (`SignalFish.Client.Transport` shadows `Mirror.Transport`). The
-  shape-stub lane caught five of these in the Mirror/FishNet sources
-  on its first run.
+  shape-stub lane caught three of these in the Runtime sources on its
+  first run; the same-class sweep fixed the two `Samples~` drivers
+  (which the lane intentionally does not compile - samples are
+  consumer-compiled).
 - **Pin stubs against the engine's actual source, not memory.** The
   Mirror/FishNet stubs in `lint-unity-adapter.ps1` were checked against
   the engines' repos: Mirror's callbacks are plain public `Action`
