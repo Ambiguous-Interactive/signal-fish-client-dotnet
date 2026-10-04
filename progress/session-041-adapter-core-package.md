@@ -78,3 +78,6 @@ one shared UPM source package:
 - M8.7 live validation runbook covers the packages (licensed seat).
 - Watch item: one first-run test flake (net8.0, did not recur in three
   full-suite reruns); if it surfaces in CI, RCA there.
+- Dependency lane: dependabot now ignores NUnit ≥ 5.0.0 — FsCheck.NUnit
+  3.4.0 (latest) pins NUnit < 5.0.0, so bump PR #86 cannot go green.
+  RCA + re-enable steps in #88; coverlet 10.1.0 rides the next group.

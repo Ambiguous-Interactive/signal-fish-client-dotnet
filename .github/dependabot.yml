@@ -11,6 +11,14 @@ updates:
       nuget-dependencies:
         patterns:
           - '*'
+    ignore:
+      # NUnit 5 is blocked upstream: FsCheck.NUnit 3.4.0 (the latest
+      # release) constrains NUnit to >= 4.0.0 && < 5.0.0, so the bump
+      # fails restore under warnings-as-errors (NU1608). Remove this
+      # ignore when FsCheck ships NUnit 5 support (see the tracking
+      # issue).
+      - dependency-name: 'NUnit'
+        versions: ['>= 5.0.0']
 
   - package-ecosystem: github-actions
     directory: /
