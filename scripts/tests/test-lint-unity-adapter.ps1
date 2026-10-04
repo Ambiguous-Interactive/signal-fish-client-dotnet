@@ -125,6 +125,7 @@ try {
             '        public System.Action<ArraySegment<byte>, int> OnClientDataSent = null!;',
             '        public System.Action<int, string> OnClientError = null!;',
             '        public System.Action OnClientDisconnected = null!;',
+            '        public System.Action<Exception> OnClientTransportException = null!;',
             '        public System.Action<int, string> OnServerConnectedWithAddress = null!;',
             '        public System.Action<int, ArraySegment<byte>, int> OnServerDataReceived = null!;',
             '        public System.Action<int, ArraySegment<byte>, int> OnServerDataSent = null!;',

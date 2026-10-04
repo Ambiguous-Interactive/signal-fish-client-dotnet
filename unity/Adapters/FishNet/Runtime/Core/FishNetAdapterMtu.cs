@@ -25,8 +25,9 @@ namespace SignalFish.Client.Adapters.FishNet
         /// <summary>
         /// Computes the largest FishNet segment the adapter can carry for
         /// one frame. Throws <see cref="ArgumentOutOfRangeException"/> when
-        /// the frame bound cannot even fit the reserve — a misconfigured
-        /// client fails at construction instead of reporting a zero MTU.
+        /// the frame bound cannot even fit the reserve — the caller's
+        /// start path validates the bound first so a misconfigured client
+        /// fails once, loudly, instead of throwing on every send query.
         /// </summary>
         public static int MaxSegmentBytes(int maxFrameBytes)
         {

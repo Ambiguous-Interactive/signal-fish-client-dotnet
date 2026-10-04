@@ -443,17 +443,50 @@ namespace SignalFish.Client.Adapters.Mirror
                     return;
                 }
 
+                if (_maxFrameBytes <= MirrorAdapterMtu.WireReserve)
+                {
+                    Stage(
+                        StagedKind.ClientFailed,
+                        error: TransportError.InvalidSend,
+                        reason: $"MaxFrameBytes ({_maxFrameBytes}) must exceed the adapter wire reserve ({MirrorAdapterMtu.WireReserve})"
+                    );
+                    return;
+                }
+
                 /*
-                    A live bootstrap has already fixed the room (the server
-                    side started first): the client side rides that session.
+                    A live session already has the room answer: riding it
+                    needs no relay round trip, and a different code cannot
+                    silently strand Mirror's client in limbo.
                 */
-                if (_bootstrap == null)
+                if (_client != null)
+                {
+                    if (_client.Snapshot.RoomCode == roomCode)
+                    {
+                        _clientState = SessionSideState.Started;
+                        Stage(StagedKind.ClientConnected);
+                    }
+                    else
+                    {
+                        Stage(
+                            StagedKind.ClientFailed,
+                            error: TransportError.InvalidSend,
+                            reason: $"this machine is already in room {_client.Snapshot.RoomCode}"
+                        );
+                    }
+
+                    return;
+                }
+
+                /*
+                    A running bootstrap has already fixed the room (the
+                    server side started first): the client side rides it.
+                */
+                _clientState = SessionSideState.Starting;
+                if (_bootstrap == null || _bootstrap.IsCompleted)
                 {
                     _pendingRoomCode = roomCode;
                     _bootstrap = RunBootstrapAsync();
                 }
-
-                _clientState = SessionSideState.Starting;
             }
         }
 
@@ -486,6 +519,13 @@ namespace SignalFish.Client.Adapters.Mirror
                 teardown = _serverState == SessionSideState.Stopped;
             }
 
+            /*
+                Mirror holds the client in Disconnecting until the
+                transport answers with OnClientDisconnected — starting or
+                connected, a voluntary stop always owes the callback.
+            */
+            Stage(StagedKind.ClientDropped);
+
             if (teardown)
             {
                 Teardown("stopped locally");
@@ -503,6 +543,16 @@ namespace SignalFish.Client.Adapters.Mirror
                     return;
                 }
 
+                if (_maxFrameBytes <= MirrorAdapterMtu.WireReserve)
+                {
+                    UnityEngine.Debug.LogError(
+                        $"[SignalFishMirrorTransport] MaxFrameBytes ({_maxFrameBytes}) must exceed the adapter wire reserve ({MirrorAdapterMtu.WireReserve}); the server side cannot start."
+                    );
+                    StartupError =
+                        StartupError ?? "MaxFrameBytes is below the adapter wire reserve";
+                    return;
+                }
+
                 if (_terminal)
                 {
                     _terminal = false;
@@ -513,7 +563,18 @@ namespace SignalFish.Client.Adapters.Mirror
                 _serverActive = true;
                 _serverState = SessionSideState.Starting;
 
-                if (_bootstrap == null)
+                if (_client != null)
+                {
+                    /*
+                        Late server start on a live session (client-only
+                        until now): the room is joined, so only the
+                        authority grant is missing.
+                    */
+                    _ = RunAuthorityUpgradeAsync();
+                    return;
+                }
+
+                if (_bootstrap == null || _bootstrap.IsCompleted)
                 {
                     _pendingRoomCode = _roomCode;
                     _bootstrap = RunBootstrapAsync();
@@ -816,7 +877,7 @@ namespace SignalFish.Client.Adapters.Mirror
             }
         }
 
-        private static async Task DisposeQuietlyAsync(SignalFishClient client)
+        private async Task DisposeQuietlyAsync(SignalFishClient client)
         {
             try
             {
@@ -825,6 +886,7 @@ namespace SignalFish.Client.Adapters.Mirror
             catch (Exception ex)
             {
                 UnityEngine.Debug.LogException(ex);
+                OnClientTransportException?.Invoke(ex);
             }
         }
 
@@ -1358,14 +1420,16 @@ namespace SignalFish.Client.Adapters.Mirror
                     /*
                         The session is live: hand it to the main thread's
                         drain, which owns the event stream from here on.
+                        The bootstrap is done - a later start rides the
+                        session, never this dead task.
                     */
                     _client = client;
                     _session = null;
-                }
-
-                if (clientWasStarting)
-                {
-                    Stage(StagedKind.ClientConnected);
+                    _bootstrap = null;
+                    if (clientWasStarting)
+                    {
+                        Stage(StagedKind.ClientConnected);
+                    }
                 }
             }
             catch (Exception ex)
@@ -1396,6 +1460,81 @@ namespace SignalFish.Client.Adapters.Mirror
             if (!condition)
             {
                 throw new InvalidOperationException(failure);
+            }
+        }
+
+        /*
+            The late server start on a live client-only session: the room
+            is joined, so only the authority grant is missing. Failures
+            are session-fatal exactly like a bootstrap failure — a server
+            side that cannot lead the room it just joined serves nothing.
+        */
+        private async Task RunAuthorityUpgradeAsync()
+        {
+            int generation;
+            SignalFishClient? client;
+            lock (_gate)
+            {
+                generation = _generation;
+                client = _client;
+            }
+
+            if (client == null)
+            {
+                return;
+            }
+
+            try
+            {
+                if (client.Snapshot.IsAuthority)
+                {
+                    MarkServerStarted(generation);
+                    return;
+                }
+
+                Require(
+                    client.SendAuthorityRequest(becomeAuthority: true).Accepted,
+                    "the authority request was refused"
+                );
+                if (
+                    !await WaitForAsync(
+                            client,
+                            () => client.Snapshot.IsAuthority,
+                            "the authority grant",
+                            generation
+                        )
+                        .ConfigureAwait(false)
+                )
+                {
+                    return;
+                }
+
+                MarkServerStarted(generation);
+            }
+            catch (Exception ex)
+            {
+                if (IsStale(generation))
+                {
+                    return;
+                }
+
+                FailSession(
+                    TransportError.Unexpected,
+                    $"the authority upgrade failed: {ex.Message}"
+                );
+            }
+        }
+
+        private void MarkServerStarted(int generation)
+        {
+            lock (_gate)
+            {
+                if (IsStale(generation) || !_serverActive)
+                {
+                    return;
+                }
+
+                _serverState = SessionSideState.Started;
             }
         }
 

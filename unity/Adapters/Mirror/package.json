@@ -17,7 +17,7 @@
     "samples": [
         {
             "displayName": "Late Join and Reconnect",
-            "description": "A SignalFishRoomManager bootstrap plus a driver NetworkBehaviour that shows the host/client flows, late joining an existing room by code, and rejoining after a drop.",
+            "description": "A SignalFishRoomManager bootstrap plus a MonoBehaviour driver that shows the host/client flows, late joining an existing room by code, and rejoining after a drop.",
             "path": "Samples~/LateJoinReconnect"
         }
     ]

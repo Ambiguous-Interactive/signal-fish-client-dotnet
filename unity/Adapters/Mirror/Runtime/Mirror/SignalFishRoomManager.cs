@@ -6,6 +6,7 @@
 #if SIGNALFISH_MIRROR
 namespace SignalFish.Client.Adapters.Mirror
 {
+    using System;
     using Mirror;
     using UnityEngine;
 

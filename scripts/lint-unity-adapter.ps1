@@ -33,9 +33,9 @@
          where one exists, package name) the asmdef pins - the two
          activation mechanisms can never drift apart.
       5. Bridge completeness: the bridge file must carry every member of
-         the pinned engine Transport surface (a dropped override or
-         unraised callback is a runtime miss in the editor, invisible to
-         every compiler here).
+         the pinned engine Transport surface, checked by name presence
+         (a dropped override or unraised callback is a runtime miss in
+         the editor, invisible to every compiler here).
 
 .PARAMETER Adapter
     One adapter name, or omit to lint every adapter.
@@ -136,6 +136,7 @@ $adapters = @{
             'OnClientDataSent',
             'OnClientError',
             'OnClientDisconnected',
+            'OnClientTransportException',
             'OnServerConnectedWithAddress',
             'OnServerDataReceived',
             'OnServerDataSent',
@@ -149,6 +150,64 @@ function Get-RelativePath([string]$Base, [string]$Path) {
     $relative = [System.IO.Path]::GetFullPath($Path).Substring(
         [System.IO.Path]::GetFullPath($Base).TrimEnd('\', '/').Length + 1)
     return ($relative -replace '\\', '/')
+}
+
+function Get-UnguardedLines {
+    param([string]$Path, [string]$Define)
+
+    # Lines outside every `#if <define>` region that reference the SDK.
+    # #else flips the innermost region; #elif flips and re-evaluates.
+    $unguarded = New-Object 'System.Collections.Generic.List[object]'
+    $regions = New-Object 'System.Collections.Generic.List[bool]'
+    $lines = [System.IO.File]::ReadAllLines($Path)
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i].TrimStart()
+        if ($line -match '^#\s*if\s+(.+)$') {
+            $regions.Add(($Matches[1] -match [regex]::Escape($Define)))
+            continue
+        }
+
+        if ($line -match '^#\s*if\b') {
+            $regions.Add($false)
+            continue
+        }
+
+        if ($line -match '^#\s*elif\s+(.+)$') {
+            if ($regions.Count -gt 0) {
+                $regions[$regions.Count - 1] = ($Matches[1] -match [regex]::Escape($Define))
+            }
+
+            continue
+        }
+
+        if ($line -match '^#\s*else\b') {
+            if ($regions.Count -gt 0) {
+                $regions[$regions.Count - 1] = -not $regions[$regions.Count - 1]
+            }
+
+            continue
+        }
+
+        if ($line -match '^#\s*endif\b') {
+            if ($regions.Count -gt 0) {
+                $regions.RemoveAt($regions.Count - 1)
+            }
+
+            continue
+        }
+
+        if ($line -match '^#') {
+            continue
+        }
+
+        if (($regions -contains $true) -or $line -notmatch $referencePattern) {
+            continue
+        }
+
+        $unguarded.Add([pscustomobject]@{ Line = ($i + 1); Text = $line })
+    }
+
+    return $unguarded
 }
 
 function Invoke-AdapterLint {
@@ -185,6 +244,9 @@ function Invoke-AdapterLint {
     # 1. Guard contract and vendoring. The SDK reference spellings differ
     #    by SDK surface (FishNet is referenced qualified; Mirror mostly
     #    through `using Mirror;`), so each pin carries its own pattern.
+    #    The guard check is per-line and region-aware: only text outside
+    #    `#if <define>` regions can violate, so a file guarded somewhere
+    #    but not everywhere still fails.
     $referencePattern =
         if ($Pin.SdkNamespace -eq 'FishNet') { '(^|[^\w.])FishNet\.' }
         else { '(^|[^\w.])Mirror(\.[A-Za-z_]|;)' }
@@ -203,18 +265,18 @@ function Invoke-AdapterLint {
             continue
         }
 
-        $inRuntime = $source -match '[\\/]Runtime[\\/]'
-        if ($inRuntime -and $text -match $referencePattern) {
-            if ($text -notmatch "#if\s+$($Pin.Define)" -or $text -notmatch '#endif') {
+        if ($source -match '[\\/]Runtime[\\/]') {
+            $unguarded = @(Get-UnguardedLines -Path $source -Define $Pin.Define)
+            foreach ($entry in $unguarded) {
                 $violations.Add(
-                    "$relative : references $($Pin.SdkNamespace) types but is not wrapped in ``#if $($Pin.Define)`` / ``#endif`` - without the SDK the package must compile to nothing.")
+                    "$relative`:$($entry.Line) : references $($Pin.SdkNamespace) types outside ``#if $($Pin.Define)`` - without the SDK the package must compile to nothing.")
             }
-        }
 
-        if ($inRuntime -and ($coreFiles -contains $source)) {
-            if ($text -match 'UnityEngine|SIGNALFISH_') {
-                $violations.Add(
-                    "$relative : core sources must stay engine- and SDK-free (no UnityEngine, no SIGNALFISH_* references).")
+            if ($coreFiles -contains $source) {
+                if ($text -match 'UnityEngine|SIGNALFISH_') {
+                    $violations.Add(
+                        "$relative : core sources must stay engine- and SDK-free (no UnityEngine, no SIGNALFISH_* references).")
+                }
             }
         }
     }

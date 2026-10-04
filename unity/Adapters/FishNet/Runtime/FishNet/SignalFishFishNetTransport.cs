@@ -460,6 +460,16 @@ namespace SignalFish.Client.Adapters.FishNet
                     return false;
                 }
 
+                if (_maxFrameBytes <= FishNetAdapterMtu.WireReserve)
+                {
+                    UnityEngine.Debug.LogError(
+                        $"[SignalFishFishNetTransport] MaxFrameBytes ({_maxFrameBytes}) must exceed the adapter wire reserve ({FishNetAdapterMtu.WireReserve}); the connection cannot start."
+                    );
+                    StartupError =
+                        StartupError ?? "MaxFrameBytes is below the adapter wire reserve";
+                    return false;
+                }
+
                 if (_terminal)
                 {
                     /*
