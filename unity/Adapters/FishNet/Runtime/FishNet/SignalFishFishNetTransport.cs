@@ -729,6 +729,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 session = _session;
                 _client = null;
                 _session = null;
+                _loopback = null;
                 _bootstrap = null;
                 _hostClientAnnounced = false;
                 /*
@@ -896,14 +897,19 @@ namespace SignalFish.Client.Adapters.FishNet
 
         private void DrainLoopback(bool asServer)
         {
-            if (_loopback == null)
+            /*
+                Capture the reference: the bootstrap thread can null it
+                (teardown, host retirement) while this iterate runs.
+            */
+            HostLoopback? loopback = _loopback;
+            if (loopback == null)
             {
                 return;
             }
 
             if (asServer)
             {
-                while (_loopback.TryDequeueClientToServer(out HostLoopbackFrame frame))
+                while (loopback.TryDequeueClientToServer(out HostLoopbackFrame frame))
                 {
                     FeedServer(
                         SignalFishPeerRouter.HostClientConnectionId,
@@ -914,7 +920,7 @@ namespace SignalFish.Client.Adapters.FishNet
             }
             else
             {
-                while (_loopback.TryDequeueServerToClient(out HostLoopbackFrame frame))
+                while (loopback.TryDequeueServerToClient(out HostLoopbackFrame frame))
                 {
                     FeedClient(frame.Channel, frame.Segment.ToArray());
                 }
@@ -1155,6 +1161,12 @@ namespace SignalFish.Client.Adapters.FishNet
                 }
 
                 _hostClientAnnounced = false;
+                /*
+                    The loopback exists for the host client: with it retired,
+                    queued in-process frames would feed a connection FishNet
+                    has already removed.
+                */
+                _loopback = null;
                 StagePeer(
                     SignalFishPeerRouter.HostClientConnectionId,
                     RemoteConnectionState.Stopped
