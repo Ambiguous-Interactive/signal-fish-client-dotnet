@@ -1,8 +1,8 @@
-namespace SignalFish.Client.Tests
+namespace SignalFish.Client.Tests.Adapters.Core
 {
     using System;
     using NUnit.Framework;
-    using SignalFish.Client.Adapters.FishNet;
+    using SignalFish.Client.Adapters;
 
     /// <summary>
     /// Contract coverage for the MTU math: the default-budget result, the
@@ -10,12 +10,12 @@ namespace SignalFish.Client.Tests
     /// cannot even fit the wire reserve.
     /// </summary>
     [TestFixture]
-    public class FishNetAdapterMtuTests
+    public class AdapterMtuTests
     {
         private static readonly TestCaseData[] ImpossibleBudgets =
         {
-            new TestCaseData(FishNetAdapterMtu.WireReserve).SetName("ExactlyTheReserve"),
-            new TestCaseData(FishNetAdapterMtu.WireReserve - 1).SetName("BelowTheReserve"),
+            new TestCaseData(AdapterMtu.WireReserve).SetName("ExactlyTheReserve"),
+            new TestCaseData(AdapterMtu.WireReserve - 1).SetName("BelowTheReserve"),
             new TestCaseData(0).SetName("Zero"),
             new TestCaseData(-65536).SetName("Negative"),
         };
@@ -24,25 +24,22 @@ namespace SignalFish.Client.Tests
         public void DefaultFrameBoundYieldsTheDocumentedSegmentBudget()
         {
             Assert.That(
-                FishNetAdapterMtu.MaxSegmentBytes(64 * 1024),
-                Is.EqualTo(64 * 1024 - FishNetAdapterMtu.WireReserve)
+                AdapterMtu.MaxSegmentBytes(64 * 1024),
+                Is.EqualTo(64 * 1024 - AdapterMtu.WireReserve)
             );
         }
 
         [Test]
         public void SmallestPossibleBudgetYieldsASingleByte()
         {
-            Assert.That(
-                FishNetAdapterMtu.MaxSegmentBytes(FishNetAdapterMtu.WireReserve + 1),
-                Is.EqualTo(1)
-            );
+            Assert.That(AdapterMtu.MaxSegmentBytes(AdapterMtu.WireReserve + 1), Is.EqualTo(1));
         }
 
         [TestCaseSource(nameof(ImpossibleBudgets))]
         public void ImpossibleBudgetsAreRefusedLoudly(int maxFrameBytes)
         {
             Assert.Throws<ArgumentOutOfRangeException>(
-                (Action)(() => FishNetAdapterMtu.MaxSegmentBytes(maxFrameBytes))
+                (Action)(() => AdapterMtu.MaxSegmentBytes(maxFrameBytes))
             );
         }
     }

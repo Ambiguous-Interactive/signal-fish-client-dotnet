@@ -1,8 +1,8 @@
-namespace SignalFish.Client.Tests
+namespace SignalFish.Client.Tests.Adapters.Core
 {
     using System;
     using NUnit.Framework;
-    using SignalFish.Client.Adapters.FishNet;
+    using SignalFish.Client.Adapters;
 
     /// <summary>
     /// The full routing decision matrix over data: who consumes which
@@ -29,8 +29,8 @@ namespace SignalFish.Client.Tests
                 AuthorityPlayer,
                 AuthorityPlayer,
                 OtherPlayer,
-                FishNetAdapterWire.BroadcastTarget,
-                FishNetFrameRoute.ConsumeAsServer
+                AdapterWire.BroadcastTarget,
+                AdapterFrameRoute.ConsumeAsServer
             ).SetName("AuthorityConsumesPeerBroadcast"),
             new TestCaseData(
                 true,
@@ -38,23 +38,23 @@ namespace SignalFish.Client.Tests
                 AuthorityPlayer,
                 OtherPlayer,
                 LocalPlayer,
-                FishNetFrameRoute.ConsumeAsServer
+                AdapterFrameRoute.ConsumeAsServer
             ).SetName("AuthorityConsumesPeerTargetedFrame"),
             new TestCaseData(
                 true,
                 AuthorityPlayer,
                 AuthorityPlayer,
                 AuthorityPlayer,
-                FishNetAdapterWire.BroadcastTarget,
-                FishNetFrameRoute.DropSelfOrigin
+                AdapterWire.BroadcastTarget,
+                AdapterFrameRoute.DropSelfOrigin
             ).SetName("AuthorityDropsOwnEcho"),
             new TestCaseData(
                 false,
                 LocalPlayer,
                 AuthorityPlayer,
                 AuthorityPlayer,
-                FishNetAdapterWire.BroadcastTarget,
-                FishNetFrameRoute.ConsumeAsClient
+                AdapterWire.BroadcastTarget,
+                AdapterFrameRoute.ConsumeAsClient
             ).SetName("ClientConsumesAuthorityBroadcast"),
             new TestCaseData(
                 false,
@@ -62,7 +62,7 @@ namespace SignalFish.Client.Tests
                 AuthorityPlayer,
                 AuthorityPlayer,
                 LocalPlayer,
-                FishNetFrameRoute.ConsumeAsClient
+                AdapterFrameRoute.ConsumeAsClient
             ).SetName("ClientConsumesAuthorityFrameAddressedToIt"),
             new TestCaseData(
                 false,
@@ -70,15 +70,15 @@ namespace SignalFish.Client.Tests
                 AuthorityPlayer,
                 AuthorityPlayer,
                 OtherPlayer,
-                FishNetFrameRoute.DropWrongTarget
+                AdapterFrameRoute.DropWrongTarget
             ).SetName("ClientDropsAuthorityFrameAddressedElsewhere"),
             new TestCaseData(
                 false,
                 LocalPlayer,
                 AuthorityPlayer,
                 OtherPlayer,
-                FishNetAdapterWire.BroadcastTarget,
-                FishNetFrameRoute.DropForeignSender
+                AdapterWire.BroadcastTarget,
+                AdapterFrameRoute.DropForeignSender
             ).SetName("ClientDropsNonAuthorityBroadcast"),
             new TestCaseData(
                 false,
@@ -86,15 +86,15 @@ namespace SignalFish.Client.Tests
                 AuthorityPlayer,
                 OtherPlayer,
                 LocalPlayer,
-                FishNetFrameRoute.DropForeignSender
+                AdapterFrameRoute.DropForeignSender
             ).SetName("ClientDropsNonAuthorityFrameEvenWhenAddressedToIt"),
             new TestCaseData(
                 false,
                 LocalPlayer,
                 AuthorityPlayer,
                 LocalPlayer,
-                FishNetAdapterWire.BroadcastTarget,
-                FishNetFrameRoute.DropSelfOrigin
+                AdapterWire.BroadcastTarget,
+                AdapterFrameRoute.DropSelfOrigin
             ).SetName("ClientDropsOwnEcho"),
         };
 
@@ -105,10 +105,10 @@ namespace SignalFish.Client.Tests
             Guid authorityPlayerId,
             Guid senderId,
             Guid targetId,
-            FishNetFrameRoute expected
+            AdapterFrameRoute expected
         )
         {
-            FishNetFrameRoute route = SignalFishReceiveRules.Route(
+            AdapterFrameRoute route = SignalFishReceiveRules.Route(
                 localIsAuthority,
                 localPlayerId,
                 authorityPlayerId,

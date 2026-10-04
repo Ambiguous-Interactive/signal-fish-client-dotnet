@@ -126,7 +126,7 @@ namespace SignalFish.Client.Adapters.FishNet
         /// <summary>
         /// Queues a frame from the local FishNet client into the local
         /// server feed; the sender presents as
-        /// <see cref="SignalFishPeerRouter.HostClientConnectionId"/>.
+        /// <see cref="SignalFishPeerRouter.HostConnectionId"/>.
         /// </summary>
         public bool TryEnqueueClientToServer(byte channel, ReadOnlySpan<byte> segment)
         {

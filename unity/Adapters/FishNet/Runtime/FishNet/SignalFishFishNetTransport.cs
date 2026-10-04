@@ -28,7 +28,7 @@ namespace SignalFish.Client.Adapters.FishNet
     /// FishNet session. The room's authority plays the FishNet server; the
     /// other members play FishNet clients; game traffic rides the v3
     /// binary game-data lane as raw frames wrapped in the adapter's
-    /// <see cref="FishNetAdapterWire"/> header. The Signal Fish relay is a
+    /// <see cref="AdapterWire"/> header. The Signal Fish relay is a
     /// room broadcast, so FishNet's star topology is realized by
     /// <see cref="SignalFishReceiveRules"/>: the authority consumes its
     /// peers' upstream frames, and clients consume only the authority's
@@ -401,7 +401,7 @@ namespace SignalFish.Client.Adapters.FishNet
         /// <inheritdoc />
         public override RemoteConnectionState GetConnectionState(int connectionId)
         {
-            if (connectionId == SignalFishPeerRouter.HostClientConnectionId)
+            if (connectionId == SignalFishPeerRouter.HostConnectionId)
             {
                 /*
                     The host's local client is announced, never routed: the
@@ -427,7 +427,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 client has no route — it is this machine — so its own
                 player id answers for it.
             */
-            if (connectionId == SignalFishPeerRouter.HostClientConnectionId)
+            if (connectionId == SignalFishPeerRouter.HostConnectionId)
             {
                 return _hostClientAnnounced ? $"signal-fish:{_localPlayerId}" : string.Empty;
             }
@@ -440,13 +440,13 @@ namespace SignalFish.Client.Adapters.FishNet
         /// <inheritdoc />
         public override int GetMTU(byte channel)
         {
-            return FishNetAdapterMtu.MaxSegmentBytes(_maxFrameBytes);
+            return AdapterMtu.MaxSegmentBytes(_maxFrameBytes);
         }
 
         /// <inheritdoc />
         public override bool IsLocalTransport(int connectionid)
         {
-            return connectionid == SignalFishPeerRouter.HostClientConnectionId;
+            return connectionid == SignalFishPeerRouter.HostConnectionId;
         }
 
         /// <inheritdoc />
@@ -472,10 +472,10 @@ namespace SignalFish.Client.Adapters.FishNet
                     StartupError = null;
                 }
 
-                if (_maxFrameBytes <= FishNetAdapterMtu.WireReserve)
+                if (_maxFrameBytes <= AdapterMtu.WireReserve)
                 {
                     UnityEngine.Debug.LogError(
-                        $"[SignalFishFishNetTransport] MaxFrameBytes ({_maxFrameBytes}) must exceed the adapter wire reserve ({FishNetAdapterMtu.WireReserve}); the connection cannot start."
+                        $"[SignalFishFishNetTransport] MaxFrameBytes ({_maxFrameBytes}) must exceed the adapter wire reserve ({AdapterMtu.WireReserve}); the connection cannot start."
                     );
                     StartupError =
                         StartupError ?? "MaxFrameBytes is below the adapter wire reserve";
@@ -599,7 +599,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 return;
             }
 
-            EnqueueOutbound(FishNetAdapterWire.BroadcastTarget, channelId, segment);
+            EnqueueOutbound(AdapterWire.BroadcastTarget, channelId, segment);
         }
 
         /// <inheritdoc />
@@ -614,7 +614,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 return;
             }
 
-            if (connectionId == SignalFishPeerRouter.HostClientConnectionId)
+            if (connectionId == SignalFishPeerRouter.HostConnectionId)
             {
                 _loopback?.TryEnqueueServerToClient(channelId, segment);
                 return;
@@ -652,9 +652,14 @@ namespace SignalFish.Client.Adapters.FishNet
             FlushOutbound();
         }
 
+        /*
+            The engine's delivery ids double as the shared header's
+            channel bytes: Channel.Reliable = 0, Channel.Unreliable = 1
+            (FishNet 4.0.0; pinned by lint-unity-adapter).
+        */
         private static bool ChannelIsKnown(byte channelId)
         {
-            return FishNetAdapterWire.IsKnownChannel(channelId);
+            return AdapterWire.IsKnownChannel(channelId);
         }
 
         /*
@@ -791,7 +796,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 return false;
             }
 
-            int mtu = FishNetAdapterMtu.MaxSegmentBytes(_maxFrameBytes);
+            int mtu = AdapterMtu.MaxSegmentBytes(_maxFrameBytes);
             if (segment.Count > mtu)
             {
                 LogWarning(
@@ -846,21 +851,20 @@ namespace SignalFish.Client.Adapters.FishNet
                     frame = _outbound.Peek();
                 }
 
-                int wireLength = FishNetAdapterWire.HeaderLength + frame.Segment.Length;
+                int wireLength = AdapterWire.HeaderLength + frame.Segment.Length;
                 if (_sendScratch == null || _sendScratch.Length < wireLength)
                 {
                     _sendScratch = new byte[
                         Math.Max(
                             wireLength,
-                            FishNetAdapterMtu.MaxSegmentBytes(_maxFrameBytes)
-                                + FishNetAdapterWire.HeaderLength
+                            AdapterMtu.MaxSegmentBytes(_maxFrameBytes) + AdapterWire.HeaderLength
                         )
                     ];
                 }
 
                 Span<byte> wire = _sendScratch.AsSpan(0, wireLength);
                 if (
-                    !FishNetAdapterWire.TryEncode(
+                    !AdapterWire.TryEncode(
                         frame.Channel,
                         frame.Target,
                         frame.Segment,
@@ -923,7 +927,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 while (loopback.TryDequeueClientToServer(out HostLoopbackFrame frame))
                 {
                     FeedServer(
-                        SignalFishPeerRouter.HostClientConnectionId,
+                        SignalFishPeerRouter.HostConnectionId,
                         frame.Channel,
                         frame.Segment.ToArray()
                     );
@@ -1034,7 +1038,7 @@ namespace SignalFish.Client.Adapters.FishNet
         )
         {
             if (
-                !FishNetAdapterWire.TryDecode(
+                !AdapterWire.TryDecode(
                     gameData.Payload.Span,
                     out byte channel,
                     out Guid target,
@@ -1050,7 +1054,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 return;
             }
 
-            FishNetFrameRoute route = SignalFishReceiveRules.Route(
+            AdapterFrameRoute route = SignalFishReceiveRules.Route(
                 _localIsAuthority,
                 _localPlayerId,
                 _authorityPlayerId,
@@ -1069,7 +1073,7 @@ namespace SignalFish.Client.Adapters.FishNet
             */
             int connectionId = 0;
             if (
-                route == FishNetFrameRoute.ConsumeAsServer
+                route == AdapterFrameRoute.ConsumeAsServer
                 && !_router.TryGetConnection(gameData.FromPlayer, out connectionId)
             )
             {
@@ -1084,16 +1088,16 @@ namespace SignalFish.Client.Adapters.FishNet
             RelayFrame relayed = new RelayFrame(channel, segment.ToArray(), connectionId);
 
             bool feedsThisSide = asServer
-                ? route == FishNetFrameRoute.ConsumeAsServer
-                : route == FishNetFrameRoute.ConsumeAsClient;
+                ? route == AdapterFrameRoute.ConsumeAsServer
+                : route == AdapterFrameRoute.ConsumeAsClient;
             if (feedsThisSide)
             {
                 mine.Enqueue(relayed);
                 FeedPending(mine, asServer);
             }
             else if (
-                route == FishNetFrameRoute.ConsumeAsServer
-                || route == FishNetFrameRoute.ConsumeAsClient
+                route == AdapterFrameRoute.ConsumeAsServer
+                || route == AdapterFrameRoute.ConsumeAsClient
             )
             {
                 theirs.Enqueue(relayed);
@@ -1178,10 +1182,7 @@ namespace SignalFish.Client.Adapters.FishNet
                     has already removed.
                 */
                 _loopback = null;
-                StagePeer(
-                    SignalFishPeerRouter.HostClientConnectionId,
-                    RemoteConnectionState.Stopped
-                );
+                StagePeer(SignalFishPeerRouter.HostConnectionId, RemoteConnectionState.Stopped);
             }
         }
 
@@ -1401,7 +1402,7 @@ namespace SignalFish.Client.Adapters.FishNet
                     )
                     {
                         StagePeer(
-                            SignalFishPeerRouter.HostClientConnectionId,
+                            SignalFishPeerRouter.HostConnectionId,
                             RemoteConnectionState.Started
                         );
                         _hostClientAnnounced = true;

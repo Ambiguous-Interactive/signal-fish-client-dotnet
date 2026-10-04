@@ -1,7 +1,7 @@
 {
     "name": "SignalFish.Transport.Mirror",
     "rootNamespace": "SignalFish.Client.Adapters.Mirror",
-    "references": ["SignalFish.Client", "Mirror"],
+    "references": ["SignalFish.Client", "SignalFish.Adapters.Core", "Mirror"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
