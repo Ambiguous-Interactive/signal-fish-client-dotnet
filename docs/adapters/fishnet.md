@@ -11,11 +11,15 @@ The adapter is a separate UPM package:
 [unity/Adapters/FishNet](https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/tree/main/unity/Adapters/FishNet)
 (`com.ambiguous-interactive.signalfish.transport.fishnet`). It never
 references FishNet sources: the assembly's `versionDefines` key off
-FishNet's UPM package (`com.firstgeargames.fishnet`, 4.x), and its
+FishNet's UPM package (`com.firstgeargames.fishnet`, 4.x) when it is
+installed as a package, an editor define detector probes for the
+compiled `FishNet.Runtime` assembly (the vendored `Assets/` layout) and
+toggles the same `SIGNALFISH_FISHNET` define, and the asmdef's
 `defineConstraints` skip the whole assembly when the define is absent —
 so the package is inert without FishNet, and the `FishNet.Runtime`
-assembly reference can never dangle. FishNet installed loose under
-`Assets/` (not as a package) is **not detected** in this version.
+assembly reference can never dangle. After a fresh FishNet install,
+let the editor compile once; the detector lights the adapter up on its
+next pass.
 
 ## How the bridge maps FishNet onto a room
 
@@ -47,10 +51,11 @@ broadcast per target peer.
 
 ## Install and set up
 
-1. Install the packages: FishNet **as a UPM package** (its git URL —
-   this is also what the define detection keys on), then
+1. Install the packages: FishNet (its git URL UPM install or a vendored
+   `Assets/` install — both are detected), then
    `com.ambiguous-interactive.signalfish`, then this adapter, and let
-   Unity compile.
+   Unity compile twice (the define detector lights the adapter up after
+   FishNet's first compile).
 2. Add a `NetworkManager` and put `SignalFishFishNetTransport` under its
    transport list.
 3. Fill the session fields: `Endpoint` (the v2 relay floor endpoint;
@@ -96,11 +101,11 @@ Unity is never built in CI (a locked project decision). The
 CI-compilable part is the adapter's pure core — the wire header, peer
 router, receive rules, MTU math, and host loopback — which runs in the
 dotnet test suite and compiles standalone (netstandard2.1, C# 9,
-warnings as errors) in the `lint-fishnet-adapter` CI gate. The gate also
+warnings as errors) in the `lint-unity-adapter` CI gate. The gate also
 pins the define-guard contract (no FishNet reference outside
 `#if SIGNALFISH_FISHNET`, no vendored SDK sources, the `versionDefines`
-pin, declared sample paths) and the bridge's member completeness against
-the pinned FishNet 4.x `Transport` surface.
+pin, the detector contract, declared sample paths) and the bridge's
+member completeness against the pinned FishNet 4.x `Transport` surface.
 
 The bridge itself is authored against the FishNet 4.x transport
 contract and the library's conformance suite; **live two-client
@@ -112,5 +117,5 @@ Known, deliberate limitations in this version: both FishNet channels
 ride the reliable relay lane (above), authority migration without a
 running server side tears down instead of silently stalling (above), an
 authority-side `SendToClient` costs one relay broadcast per target peer,
-and FishNet installed loose under `Assets/` is not detected by the
-version define.
+and a fresh FishNet install needs one editor compile before the detector
+can light the adapter up (above).

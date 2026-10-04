@@ -114,6 +114,7 @@ nav:
       - Unity Package: unity.md
       - WebGL: webgl.md
       - FishNet Transport: adapters/fishnet.md
+      - Mirror Transport: adapters/mirror.md
   - Project:
       - Server Conformance: conformance.md
       - Performance Baselines: benchmarks.md

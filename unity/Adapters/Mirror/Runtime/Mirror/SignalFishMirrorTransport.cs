@@ -1,20 +1,20 @@
 /*
-    SIGNALFISH_FISHNET is produced by this package's asmdef versionDefines
-    when FishNet's UPM package (com.firstgeargames.fishnet) is installed,
-    or by the editor define detector when FishNet is vendored under
-    Assets/; the asmdef's defineConstraints skip the whole assembly when
-    the define is absent - the package is inert without FishNet, and no
-    FishNet type is ever referenced unguarded.
+    SIGNALFISH_MIRROR is produced by this package's editor define
+    detector (Editor/SignalFishMirrorDefineDetector.cs) whenever the
+    Mirror assembly is in the project — Mirror ships as an asset (no UPM
+    package), so a detector, not versionDefines, owns the define. The
+    asmdef's defineConstraints skip the whole assembly when the define is
+    absent: the package is inert without Mirror, and no Mirror type is
+    ever referenced unguarded.
 */
 #nullable enable
-#if SIGNALFISH_FISHNET
-namespace SignalFish.Client.Adapters.FishNet
+#if SIGNALFISH_MIRROR
+namespace SignalFish.Client.Adapters.Mirror
 {
     using System;
     using System.Collections.Generic;
     using System.Threading.Tasks;
-    using FishNet.Managing;
-    using FishNet.Transporting;
+    using Mirror;
     using SignalFish.Client;
     using SignalFish.Client.Async;
     using SignalFish.Client.Core;
@@ -24,38 +24,41 @@ namespace SignalFish.Client.Adapters.FishNet
     using UnityEngine;
 
     /// <summary>
-    /// The FishNet transport bridge (M8.1): one Signal Fish room carries a
-    /// FishNet session. The room's authority plays the FishNet server; the
-    /// other members play FishNet clients; game traffic rides the v3
+    /// The Mirror transport bridge (M8.2): one Signal Fish room carries a
+    /// Mirror session. The room's authority plays the Mirror server; the
+    /// other members play Mirror clients; game traffic rides the v3
     /// binary game-data lane as raw frames wrapped in the adapter's
-    /// <see cref="FishNetAdapterWire"/> header. The Signal Fish relay is a
-    /// room broadcast, so FishNet's star topology is realized by
+    /// <see cref="MirrorAdapterWire"/> header. The Signal Fish relay is a
+    /// room broadcast, so Mirror's star topology is realized by
     /// <see cref="SignalFishReceiveRules"/>: the authority consumes its
     /// peers' upstream frames, and clients consume only the authority's
     /// downstream frames addressed to them (or to everyone).
     ///
-    /// Assign the component under a NetworkManager's transport list, fill
-    /// the session fields, and start host or client through FishNet as
-    /// usual. The Signal Fish session (connect, authenticate, join, v3
-    /// binary negotiation, and the authority grant on the host path) runs
-    /// inside StartConnection; the FishNet side reports Started once the
-    /// room is live. The host's local client loops back in-process — its
-    /// frames never touch the relay.
+    /// Assign the component under a NetworkManager (Mirror picks it as
+    /// <c>Transport.active</c>), fill the session fields, and start host
+    /// or client through Mirror as usual — for a client, the
+    /// NetworkManager's address is the Signal Fish room code. The Signal
+    /// Fish session (connect, authenticate, join, v3 binary negotiation,
+    /// and the authority grant on the host path) runs inside
+    /// ServerStart/ClientConnect; Mirror sees connections only once the
+    /// room is live. Host mode needs no loopback: Mirror's local
+    /// connection delivers the host's own client traffic in-process,
+    /// never through this transport.
     ///
-    /// Threading: FishNet iterates both sides on one thread, and every
-    /// FishNet-facing callback (connection states, receives) is raised
-    /// from that thread's iterate, exactly like FishNet's own transports
-    /// — the async bootstrap thread only stages facts into queues. Shared
-    /// fields read on the tick thread are written under the gate or
-    /// ordered by the Starting→Started transition.
+    /// Threading: Mirror iterates the transport on the main thread, and
+    /// every Mirror-facing callback (connections, receives) is raised
+    /// from those iterate points — the async bootstrap thread only
+    /// stages facts into queues. Shared fields read on the main thread
+    /// are written under the gate or ordered by the Starting→Started
+    /// transition.
     ///
-    /// Validation status: authored against the FishNet 4.x transport
+    /// Validation status: authored against the Mirror 96.9.x transport
     /// contract and the library's conformance suite, but not yet compiled
     /// in Unity — live validation is the M8.7 runbook item (needs a
     /// licensed Unity seat; Unity never runs in CI).
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class SignalFishFishNetTransport : Transport
+    public sealed class SignalFishMirrorTransport : Transport
     {
         /// <summary>One frame queued for the relay (an owned copy).</summary>
         private readonly struct OutboundFrame
@@ -64,17 +67,20 @@ namespace SignalFish.Client.Adapters.FishNet
 
             internal byte Channel { get; }
 
+            internal int ConnectionId { get; }
+
             internal byte[] Segment { get; }
 
-            internal OutboundFrame(Guid target, byte channel, byte[] segment)
+            internal OutboundFrame(Guid target, byte channel, int connectionId, byte[] segment)
             {
                 Target = target;
                 Channel = channel;
+                ConnectionId = connectionId;
                 Segment = segment;
             }
         }
 
-        /// <summary>One relayed frame routed to a FishNet side.</summary>
+        /// <summary>One relayed frame routed to a Mirror side.</summary>
         private readonly struct RelayFrame
         {
             internal byte Channel { get; }
@@ -105,6 +111,50 @@ namespace SignalFish.Client.Adapters.FishNet
             }
         }
 
+        /// <summary>One Mirror-facing fact staged off the main thread.</summary>
+        private readonly struct StagedEvent
+        {
+            internal StagedKind Kind { get; }
+
+            internal int ConnectionId { get; }
+
+            internal TransportError Error { get; }
+
+            internal string Reason { get; }
+
+            internal StagedEvent(
+                StagedKind kind,
+                int connectionId = 0,
+                TransportError error = TransportError.Unexpected,
+                string reason = ""
+            )
+            {
+                Kind = kind;
+                ConnectionId = connectionId;
+                Error = error;
+                Reason = reason;
+            }
+        }
+
+        /// <summary>The kind of Mirror-facing fact staged for the next early update.</summary>
+        private enum StagedKind : byte
+        {
+            PeerStarted = 0,
+            PeerStopped = 1,
+            ClientConnected = 2,
+            ClientFailed = 3,
+            ClientDropped = 4,
+            ServerError = 5,
+        }
+
+        /// <summary>Per-side Mirror session state.</summary>
+        private enum SessionSideState : byte
+        {
+            Stopped = 0,
+            Starting = 1,
+            Started = 2,
+        }
+
         /// <summary>The outbound queue bound, in frames.</summary>
         private const int OutboundCapacity = 1024;
 
@@ -130,9 +180,10 @@ namespace SignalFish.Client.Adapters.FishNet
         }
 
         /// <summary>
-        /// Gets or sets the room code to join; empty creates a new room
-        /// (the host path). The joined room's code surfaces on
-        /// <see cref="JoinedRoomCode"/>.
+        /// Gets or sets the room code the server side creates-or-joins;
+        /// empty creates a new room. Client joins take the room code from
+        /// <see cref="ClientConnect(string)"/> (the NetworkManager's
+        /// address), not from this field.
         /// </summary>
         public string RoomCode
         {
@@ -162,13 +213,6 @@ namespace SignalFish.Client.Adapters.FishNet
         {
             get { return _maxFrameBytes; }
             set { _maxFrameBytes = value; }
-        }
-
-        /// <summary>Gets or sets the host-mode loopback capacity per direction.</summary>
-        public int LoopbackCapacity
-        {
-            get { return _loopbackCapacity; }
-            set { _loopbackCapacity = value; }
         }
 
         /// <summary>
@@ -219,29 +263,16 @@ namespace SignalFish.Client.Adapters.FishNet
             }
         }
 
-        /// <summary>Gets how many host-loopback frames overflowed.</summary>
-        public int LoopbackDropped
-        {
-            get { return _loopback?.Dropped ?? 0; }
-        }
-
         /// <summary>Gets how many remote peers are currently routed.</summary>
         public int PeerCount
         {
             get { return _router.PeerCount; }
         }
 
-        /// <summary>Gets the last bootstrap failure, for diagnostics.</summary>
+        /// <summary>Gets the last session failure, for diagnostics.</summary>
         public string? StartupError { get; private set; }
-        public override event Action<ClientConnectionStateArgs>? OnClientConnectionState;
 
-        public override event Action<ServerConnectionStateArgs>? OnServerConnectionState;
-
-        public override event Action<RemoteConnectionStateArgs>? OnRemoteConnectionState;
-
-        public override event Action<ClientReceivedDataArgs>? OnClientReceivedData;
-
-        public override event Action<ServerReceivedDataArgs>? OnServerReceivedData;
+        private readonly object _gate = new object();
 
         /// <summary>
         /// Bumped on every teardown; an in-flight bootstrap that observes a
@@ -258,49 +289,44 @@ namespace SignalFish.Client.Adapters.FishNet
         /// <summary>The session went terminal; every state change is final.</summary>
         private bool _terminal;
 
-        /// <summary>The frames queued for the relay, flushed in IterateOutgoing.</summary>
+        /// <summary>Whether the Mirror server side has been started and not stopped.</summary>
+        private bool _serverActive;
+
+        private SessionSideState _clientState = SessionSideState.Stopped;
+        private SessionSideState _serverState = SessionSideState.Stopped;
+
+        /// <summary>The frames queued for the relay, flushed in the late updates.</summary>
         private readonly Queue<OutboundFrame> _outbound = new Queue<OutboundFrame>();
 
-        /// <summary>Relay frames routed for the server feed, awaiting its iterate.</summary>
+        /// <summary>Relay frames routed for the server feed, awaiting its early update.</summary>
         private readonly Queue<RelayFrame> _serverPending = new Queue<RelayFrame>();
 
-        /// <summary>Relay frames routed for the client feed, awaiting its iterate.</summary>
+        /// <summary>Relay frames routed for the client feed, awaiting its early update.</summary>
         private readonly Queue<RelayFrame> _clientPending = new Queue<RelayFrame>();
 
         /// <summary>
-        /// FishNet-facing connection-state events staged off the tick
-        /// thread, drained at the top of every iterate.
+        /// Mirror-facing facts staged off the main thread, drained at the
+        /// top of every early update.
         /// </summary>
-        private readonly Queue<LocalConnectionState> _pendingServerStates =
-            new Queue<LocalConnectionState>();
-
-        private readonly Queue<LocalConnectionState> _pendingClientStates =
-            new Queue<LocalConnectionState>();
-
-        private readonly Queue<RemoteConnectionStateArgs> _pendingRemoteStates =
-            new Queue<RemoteConnectionStateArgs>();
+        private readonly Queue<StagedEvent> _staged = new Queue<StagedEvent>();
 
         private readonly SignalFishPeerRouter _router = new SignalFishPeerRouter();
-        private readonly object _gate = new object();
 
         private SignalFishClient? _client;
 
         /// <summary>
         /// The bootstrap-owned session: it holds the client until the
-        /// session is live, so the tick thread's drain can never steal the
+        /// session is live, so the main thread's drain can never steal the
         /// events the bootstrap is itself waiting on (a RoomJoined consumed
         /// by DrainRelay's default branch would time out every start).
         /// </summary>
         private SignalFishClient? _session;
 
-        /// <summary>Whether FishNet has been told the host's local client exists.</summary>
-        private bool _hostClientAnnounced;
+        /// <summary>The room code the next bootstrap joins (or creates when empty).</summary>
+        private string _pendingRoomCode = "";
 
-        private HostLoopback? _loopback;
         private Task? _bootstrap;
         private byte[]? _sendScratch;
-        private LocalConnectionState _serverState = LocalConnectionState.Stopped;
-        private LocalConnectionState _clientState = LocalConnectionState.Stopped;
         private Guid _localPlayerId;
         private Guid _authorityPlayerId;
         private bool _localIsAuthority;
@@ -314,14 +340,16 @@ namespace SignalFish.Client.Adapters.FishNet
 
         [SerializeField]
         [Tooltip("Public game name the room is created with.")]
-        private string _gameName = "fishnet-game";
+        private string _gameName = "mirror-game";
 
         [SerializeField]
         [Tooltip("This machine's player name inside the room.")]
         private string _playerName = "player";
 
         [SerializeField]
-        [Tooltip("Room code to join; empty creates a new room (the host path).")]
+        [Tooltip(
+            "Room code the server side creates-or-joins; empty creates a new room. Client joins take the code from the NetworkManager address instead."
+        )]
         private string _roomCode = "";
 
         [SerializeField]
@@ -337,266 +365,102 @@ namespace SignalFish.Client.Adapters.FishNet
         [Header("Transport budgets")]
         [SerializeField]
         [Tooltip(
-            "The client's inbound physical-frame bound in bytes; the FishNet MTU is this minus the adapter wire reserve."
+            "The client's inbound physical-frame bound in bytes; the Mirror packet size is this minus the adapter wire reserve."
         )]
         private int _maxFrameBytes = 64 * 1024;
 
-        [SerializeField]
-        [Tooltip("Host-mode loopback capacity per direction, in frames.")]
-        private int _loopbackCapacity = 256;
-
         [Header("Timing")]
         [SerializeField]
-        [Tooltip("Seconds the session bootstrap may take before StartConnection reports failure.")]
+        [Tooltip("Seconds the session bootstrap may take before the start fails.")]
         private float _startTimeoutSeconds = 10f;
 
         /// <inheritdoc />
-        public override void Initialize(NetworkManager networkManager, int transportIndex)
+        public override bool Available()
         {
-            base.Initialize(networkManager, transportIndex);
+            return true;
         }
 
         /// <inheritdoc />
-        public override void HandleClientConnectionState(
-            ClientConnectionStateArgs connectionStateArgs
-        )
+        public override Uri ServerUri()
         {
-            OnClientConnectionState?.Invoke(connectionStateArgs);
+            string roomCode = JoinedRoomCode ?? "unjoined";
+            return new Uri($"signalfish://{roomCode}");
         }
 
         /// <inheritdoc />
-        public override void HandleServerConnectionState(
-            ServerConnectionStateArgs connectionStateArgs
-        )
-        {
-            OnServerConnectionState?.Invoke(connectionStateArgs);
-        }
-
-        /// <inheritdoc />
-        public override void HandleRemoteConnectionState(
-            RemoteConnectionStateArgs connectionStateArgs
-        )
-        {
-            OnRemoteConnectionState?.Invoke(connectionStateArgs);
-        }
-
-        /// <inheritdoc />
-        public override void HandleClientReceivedDataArgs(ClientReceivedDataArgs receivedDataArgs)
-        {
-            OnClientReceivedData?.Invoke(receivedDataArgs);
-        }
-
-        /// <inheritdoc />
-        public override void HandleServerReceivedDataArgs(ServerReceivedDataArgs receivedDataArgs)
-        {
-            OnServerReceivedData?.Invoke(receivedDataArgs);
-        }
-
-        /// <inheritdoc />
-        public override LocalConnectionState GetConnectionState(bool server)
-        {
-            return server ? _serverState : _clientState;
-        }
-
-        /// <inheritdoc />
-        public override RemoteConnectionState GetConnectionState(int connectionId)
-        {
-            if (connectionId == SignalFishPeerRouter.HostClientConnectionId)
-            {
-                /*
-                    The host's local client is announced, never routed: the
-                    router holds remote peers only, so its state lives in
-                    the announce flag.
-                */
-                return _hostClientAnnounced
-                    ? RemoteConnectionState.Started
-                    : RemoteConnectionState.Stopped;
-            }
-
-            return _router.TryGetPeer(connectionId, out _)
-                ? RemoteConnectionState.Started
-                : RemoteConnectionState.Stopped;
-        }
-
-        /// <inheritdoc />
-        public override string GetConnectionAddress(int connectionId)
+        public override bool ServerActive()
         {
             /*
-                The relay exposes player identities, not network addresses;
-                the routed player id is the stable thing to show. The host
-                client has no route — it is this machine — so its own
-                player id answers for it.
+                Starting counts: Mirror must not conclude the server is
+                gone while the room bootstrap is still connecting.
             */
-            if (connectionId == SignalFishPeerRouter.HostClientConnectionId)
+            lock (_gate)
             {
-                return _hostClientAnnounced ? $"signal-fish:{_localPlayerId}" : string.Empty;
+                return _serverActive;
             }
-
-            return _router.TryGetPeer(connectionId, out Guid peerId)
-                ? $"signal-fish:{peerId}"
-                : string.Empty;
         }
 
         /// <inheritdoc />
-        public override int GetMTU(byte channel)
-        {
-            return FishNetAdapterMtu.MaxSegmentBytes(_maxFrameBytes);
-        }
-
-        /// <inheritdoc />
-        public override bool IsLocalTransport(int connectionid)
-        {
-            return connectionid == SignalFishPeerRouter.HostClientConnectionId;
-        }
-
-        /// <inheritdoc />
-        public override bool StartConnection(bool server)
+        public override bool ClientConnected()
         {
             lock (_gate)
             {
-                LocalConnectionState state = server ? _serverState : _clientState;
-                if (state == LocalConnectionState.Started || state == LocalConnectionState.Starting)
+                return _clientState == SessionSideState.Started;
+            }
+        }
+
+        /// <inheritdoc />
+        public override void ClientConnect(string address)
+        {
+            string roomCode = (address ?? string.Empty).Trim();
+            lock (_gate)
+            {
+                if (_clientState == SessionSideState.Starting)
                 {
-                    return false;
+                    LogWarning("ClientConnect ignored: the client side is already connecting.");
+                    return;
+                }
+
+                if (_clientState == SessionSideState.Started)
+                {
+                    LogWarning("ClientConnect ignored: the client side is already connected.");
+                    return;
                 }
 
                 if (_terminal)
                 {
-                    /*
-                        A torn-down bridge re-arms from scratch; the dead
-                        bootstrap's generation bump keeps it from ever
-                        touching this one.
-                    */
                     _terminal = false;
                     _bootstrap = null;
                     StartupError = null;
                 }
 
-                StageState(server, LocalConnectionState.Starting);
+                if (roomCode.Length == 0)
+                {
+                    Stage(StagedKind.ClientFailed, error: TransportError.InvalidSend);
+                    UnityEngine.Debug.LogError(
+                        "[SignalFishMirrorTransport] the NetworkManager address is the Signal Fish room code; it cannot be empty"
+                    );
+                    return;
+                }
+
+                /*
+                    A live bootstrap has already fixed the room (the server
+                    side started first): the client side rides that session.
+                */
                 if (_bootstrap == null)
                 {
+                    _pendingRoomCode = roomCode;
                     _bootstrap = RunBootstrapAsync();
                 }
 
-                return true;
+                _clientState = SessionSideState.Starting;
             }
         }
 
         /// <inheritdoc />
-        public override bool StopConnection(bool server)
-        {
-            bool teardown;
-            lock (_gate)
-            {
-                LocalConnectionState state = server ? _serverState : _clientState;
-                if (state == LocalConnectionState.Stopped)
-                {
-                    return false;
-                }
-
-                StageState(server, LocalConnectionState.Stopping);
-                teardown =
-                    (
-                        _serverState == LocalConnectionState.Stopped
-                        || _serverState == LocalConnectionState.Stopping
-                    )
-                    && (
-                        _clientState == LocalConnectionState.Stopped
-                        || _clientState == LocalConnectionState.Stopping
-                    );
-            }
-
-            if (server)
-            {
-                DropAllPeers();
-            }
-            else
-            {
-                /*
-                    Host mode: stopping the local client disconnects the
-                    host connection on the local server, and vice versa —
-                    the reserved id 0 is live only while both sides are.
-                */
-                RetireHostClientIfGone();
-            }
-
-            if (teardown)
-            {
-                Teardown("stopped locally");
-                lock (_gate)
-                {
-                    StageState(server: true, LocalConnectionState.Stopped);
-                    StageState(server: false, LocalConnectionState.Stopped);
-                }
-            }
-            else
-            {
-                lock (_gate)
-                {
-                    StageState(server, LocalConnectionState.Stopped);
-                }
-            }
-
-            RetireHostClientIfGone();
-            return true;
-        }
-
-        /// <inheritdoc />
-        public override bool StopConnection(int connectionId, bool immediately)
-        {
-            /*
-                The relay owns peer lifecycles: a kick is the room owner's
-                server-side concern, not something this bridge can force.
-                Report the disconnect FishNet-side if the peer is real; the
-                player stays in the room, so their later frames drop as
-                unrouted until they rejoin.
-            */
-            if (!_router.TryGetPeer(connectionId, out Guid peerId))
-            {
-                return false;
-            }
-
-            DropPeer(peerId);
-            return true;
-        }
-
-        /// <inheritdoc />
-        public override void Shutdown()
-        {
-            StopConnection(server: true);
-            StopConnection(server: false);
-        }
-
-        /// <inheritdoc />
-        public override void SendToServer(byte channelId, ArraySegment<byte> segment)
-        {
-            if (!ValidateSend(channelId, segment))
-            {
-                return;
-            }
-
-            if (
-                _serverState == LocalConnectionState.Started
-                || _serverState == LocalConnectionState.Starting
-            )
-            {
-                /*
-                    Host mode: the local server feed takes the frame
-                    without a relay round trip; the sender presents as the
-                    host's reserved connection id.
-                */
-                _loopback?.TryEnqueueClientToServer(channelId, segment);
-                return;
-            }
-
-            EnqueueOutbound(FishNetAdapterWire.BroadcastTarget, channelId, segment);
-        }
-
-        /// <inheritdoc />
-        public override void SendToClient(
-            byte channelId,
+        public override void ClientSend(
             ArraySegment<byte> segment,
-            int connectionId
+            int channelId = Channels.Reliable
         )
         {
             if (!ValidateSend(channelId, segment))
@@ -604,9 +468,82 @@ namespace SignalFish.Client.Adapters.FishNet
                 return;
             }
 
-            if (connectionId == SignalFishPeerRouter.HostClientConnectionId)
+            EnqueueOutbound(MirrorAdapterWire.BroadcastTarget, channelId, connectionId: 0, segment);
+        }
+
+        /// <inheritdoc />
+        public override void ClientDisconnect()
+        {
+            bool teardown;
+            lock (_gate)
             {
-                _loopback?.TryEnqueueServerToClient(channelId, segment);
+                if (_clientState == SessionSideState.Stopped)
+                {
+                    return;
+                }
+
+                _clientState = SessionSideState.Stopped;
+                teardown = _serverState == SessionSideState.Stopped;
+            }
+
+            if (teardown)
+            {
+                Teardown("stopped locally");
+            }
+        }
+
+        /// <inheritdoc />
+        public override void ServerStart()
+        {
+            lock (_gate)
+            {
+                if (_serverActive)
+                {
+                    LogWarning("ServerStart ignored: the server side is already started.");
+                    return;
+                }
+
+                if (_terminal)
+                {
+                    _terminal = false;
+                    _bootstrap = null;
+                    StartupError = null;
+                }
+
+                _serverActive = true;
+                _serverState = SessionSideState.Starting;
+
+                if (_bootstrap == null)
+                {
+                    _pendingRoomCode = _roomCode;
+                    _bootstrap = RunBootstrapAsync();
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public override void ServerSend(
+            int connectionId,
+            ArraySegment<byte> segment,
+            int channelId = Channels.Reliable
+        )
+        {
+            if (!ValidateSend(channelId, segment))
+            {
+                return;
+            }
+
+            if (connectionId == SignalFishPeerRouter.HostConnectionId)
+            {
+                /*
+                    Mirror's local connection never routes through the
+                    transport; a send to id 0 here is Mirror-internal
+                    misuse, and looping it to the relay would echo the
+                    host's own frames back as foreign traffic.
+                */
+                LogWarning(
+                    $"ServerSend to the reserved local connection id {connectionId}; dropped."
+                );
                 return;
             }
 
@@ -620,105 +557,206 @@ namespace SignalFish.Client.Adapters.FishNet
                 return;
             }
 
-            EnqueueOutbound(peerId, channelId, segment);
+            EnqueueOutbound(peerId, channelId, connectionId, segment);
         }
 
         /// <inheritdoc />
-        public override void IterateIncoming(bool asServer)
-        {
-            DrainStagedEvents();
-            DrainLoopback(asServer);
-            DrainRelay(asServer);
-        }
-
-        /// <inheritdoc />
-        public override void IterateOutgoing(bool asServer)
+        public override void ServerDisconnect(int connectionId)
         {
             /*
-                One flush serves both FishNet sides: the outbound queue is
-                the relay's, not a side's, and the Signal Fish client
-                serializes sends internally.
+                The relay owns peer lifecycles: a kick is the room owner's
+                server-side concern, not something this bridge can force.
+                Report the disconnect Mirror-side if the peer is real; the
+                player stays in the room, so their later frames drop as
+                unrouted until they rejoin.
             */
+            if (!_router.TryRemovePeer(connectionId, out _))
+            {
+                return;
+            }
+
+            Stage(StagedKind.PeerStopped, connectionId);
+        }
+
+        /// <inheritdoc />
+        public override string ServerGetClientAddress(int connectionId)
+        {
+            return _router.TryGetPeer(connectionId, out Guid peerId)
+                ? $"signal-fish:{peerId}"
+                : string.Empty;
+        }
+
+        /// <inheritdoc />
+        public override void ServerStop()
+        {
+            lock (_gate)
+            {
+                if (!_serverActive)
+                {
+                    return;
+                }
+
+                _serverActive = false;
+                _serverState = SessionSideState.Stopped;
+            }
+
+            foreach (KeyValuePair<Guid, int> route in _router.SnapshotRoutes())
+            {
+                Stage(StagedKind.PeerStopped, route.Value);
+            }
+
+            _router.Clear();
+
+            bool teardown;
+            lock (_gate)
+            {
+                teardown = _clientState == SessionSideState.Stopped;
+            }
+
+            if (teardown)
+            {
+                Teardown("stopped locally");
+            }
+        }
+
+        /// <inheritdoc />
+        public override int GetMaxPacketSize(int channelId = Channels.Reliable)
+        {
+            return MirrorAdapterMtu.MaxSegmentBytes(_maxFrameBytes);
+        }
+
+        /// <inheritdoc />
+        public override void Shutdown()
+        {
+            ClientDisconnect();
+            ServerStop();
+        }
+
+        /// <inheritdoc />
+        public override void ServerEarlyUpdate()
+        {
+            DrainStaged();
+            DrainRelay(asServer: true);
+        }
+
+        /// <inheritdoc />
+        public override void ClientEarlyUpdate()
+        {
+            DrainStaged();
+            DrainRelay(asServer: false);
+        }
+
+        /// <inheritdoc />
+        public override void ServerLateUpdate()
+        {
             FlushOutbound();
         }
 
-        private static bool ChannelIsKnown(byte channelId)
+        /// <inheritdoc />
+        public override void ClientLateUpdate()
         {
-            return FishNetAdapterWire.IsKnownChannel(channelId);
+            FlushOutbound();
         }
 
         /*
-            FishNet-facing events are staged, never raised directly from
-            the bootstrap thread: FishNet's handlers mutate non-thread-safe
-            collections, so they must run on the tick thread, which is the
-            only place StageState's queues drain.
+            Mirror-facing facts are staged, never raised directly from the
+            bootstrap thread: Mirror's handlers mutate non-thread-safe
+            collections, so they must run on the main thread, which is the
+            only place the staging queue drains.
         */
-        private void StageState(bool server, LocalConnectionState state)
+        private void Stage(
+            StagedKind kind,
+            int connectionId = 0,
+            TransportError error = TransportError.Unexpected,
+            string reason = ""
+        )
         {
-            if (server)
-            {
-                _serverState = state;
-                _pendingServerStates.Enqueue(state);
-            }
-            else
-            {
-                _clientState = state;
-                _pendingClientStates.Enqueue(state);
-            }
-        }
-
-        private void StagePeer(int connectionId, RemoteConnectionState state)
-        {
-            /*
-                The bootstrap thread stages peers too (the join snapshot),
-                so the enqueue shares the gate with the tick thread's drain.
-            */
             lock (_gate)
             {
-                _pendingRemoteStates.Enqueue(
-                    new RemoteConnectionStateArgs(state, connectionId, Index)
-                );
+                _staged.Enqueue(new StagedEvent(kind, connectionId, error, reason));
             }
         }
 
-        private void DrainStagedEvents()
+        private void DrainStaged()
         {
-            List<LocalConnectionState> serverStates;
-            List<LocalConnectionState> clientStates;
-            List<RemoteConnectionStateArgs> remoteStates;
+            StagedEvent[] events;
             lock (_gate)
             {
-                /*
-                    Swap the queues out under the gate and raise outside it:
-                    FishNet's handlers may call back into this transport,
-                    and a callback re-taking the gate would be reentrant-safe
-                    but a slow handler would stall every staging thread.
-                */
-                serverStates = new List<LocalConnectionState>(_pendingServerStates);
-                _pendingServerStates.Clear();
-                clientStates = new List<LocalConnectionState>(_pendingClientStates);
-                _pendingClientStates.Clear();
-                remoteStates = new List<RemoteConnectionStateArgs>(_pendingRemoteStates);
-                _pendingRemoteStates.Clear();
+                if (_staged.Count == 0)
+                {
+                    return;
+                }
+
+                events = _staged.ToArray();
+                _staged.Clear();
             }
 
-            foreach (LocalConnectionState state in serverStates)
+            foreach (StagedEvent staged in events)
             {
-                OnServerConnectionState?.Invoke(new ServerConnectionStateArgs(state, Index));
-            }
+                switch (staged.Kind)
+                {
+                    case StagedKind.PeerStarted:
+                        OnServerConnectedWithAddress?.Invoke(
+                            staged.ConnectionId,
+                            ServerGetClientAddress(staged.ConnectionId)
+                        );
+                        break;
 
-            foreach (LocalConnectionState state in clientStates)
-            {
-                OnClientConnectionState?.Invoke(new ClientConnectionStateArgs(state, Index));
-            }
+                    case StagedKind.PeerStopped:
+                        OnServerDisconnected?.Invoke(staged.ConnectionId);
+                        break;
 
-            foreach (RemoteConnectionStateArgs args in remoteStates)
-            {
-                OnRemoteConnectionState?.Invoke(args);
+                    case StagedKind.ClientConnected:
+                        OnClientConnected?.Invoke();
+                        break;
+
+                    case StagedKind.ClientFailed:
+                        OnClientError?.Invoke(staged.Error, staged.Reason);
+                        OnClientDisconnected?.Invoke();
+                        break;
+
+                    case StagedKind.ClientDropped:
+                        OnClientDisconnected?.Invoke();
+                        break;
+
+                    case StagedKind.ServerError:
+                        OnServerError?.Invoke(staged.ConnectionId, staged.Error, staged.Reason);
+                        break;
+                }
             }
         }
 
-        private void Teardown(string reason)
+        /*
+            Session-fatal failures tear the whole bridge down. Mirror has
+            no "server failed to start" callback, so the server side's
+            active flag drops and the staged peers drain as disconnects;
+            the client side reports the failure through
+            OnClientError/OnClientDisconnected; StartupError carries the
+            reason for the game to surface.
+        */
+        private void FailSession(TransportError error, string reason)
+        {
+            UnityEngine.Debug.LogError($"[SignalFishMirrorTransport] {reason}");
+            bool clientWasStarting;
+            bool clientWasStarted;
+            lock (_gate)
+            {
+                clientWasStarting = _clientState == SessionSideState.Starting;
+                clientWasStarted = _clientState == SessionSideState.Started;
+                Teardown(reason, error);
+            }
+
+            if (clientWasStarting)
+            {
+                Stage(StagedKind.ClientFailed, error: error, reason: reason);
+            }
+            else if (clientWasStarted)
+            {
+                Stage(StagedKind.ClientDropped);
+            }
+        }
+
+        private void Teardown(string reason, TransportError? error = null)
         {
             SignalFishClient? client;
             SignalFishClient? session;
@@ -730,9 +768,10 @@ namespace SignalFish.Client.Adapters.FishNet
                 session = _session;
                 _client = null;
                 _session = null;
-                _loopback = null;
                 _bootstrap = null;
-                _hostClientAnnounced = false;
+                _serverActive = false;
+                _serverState = SessionSideState.Stopped;
+                _clientState = SessionSideState.Stopped;
                 /*
                     Queued work belongs to the dead session: stale outbound
                     frames would flush onto a successor before its v3
@@ -744,6 +783,22 @@ namespace SignalFish.Client.Adapters.FishNet
                 _clientPending.Clear();
                 StartupError = StartupError ?? reason;
             }
+
+            foreach (KeyValuePair<Guid, int> route in _router.SnapshotRoutes())
+            {
+                /*
+                    Mirror's rule: when an error precedes a disconnect,
+                    raise the error first, per connection.
+                */
+                if (error.HasValue)
+                {
+                    Stage(StagedKind.ServerError, route.Value, error.Value, reason);
+                }
+
+                Stage(StagedKind.PeerStopped, route.Value);
+            }
+
+            _router.Clear();
 
             if (client != null)
             {
@@ -773,19 +828,19 @@ namespace SignalFish.Client.Adapters.FishNet
             }
         }
 
-        private bool ValidateSend(byte channelId, ArraySegment<byte> segment)
+        private bool ValidateSend(int channelId, ArraySegment<byte> segment)
         {
             if (!ChannelIsKnown(channelId))
             {
-                LogWarning($"Send on unknown FishNet channel {channelId}; dropped.");
+                LogWarning($"Send on unknown Mirror channel {channelId}; dropped.");
                 return false;
             }
 
-            int mtu = FishNetAdapterMtu.MaxSegmentBytes(_maxFrameBytes);
-            if (segment.Count > mtu)
+            int maxPacketSize = MirrorAdapterMtu.MaxSegmentBytes(_maxFrameBytes);
+            if (segment.Count > maxPacketSize)
             {
                 LogWarning(
-                    $"Send of {segment.Count} bytes exceeds the reported MTU ({mtu}); dropped."
+                    $"Send of {segment.Count} bytes exceeds the reported packet size ({maxPacketSize}); dropped."
                 );
                 return false;
             }
@@ -793,7 +848,18 @@ namespace SignalFish.Client.Adapters.FishNet
             return true;
         }
 
-        private void EnqueueOutbound(Guid target, byte channelId, ArraySegment<byte> segment)
+        private static bool ChannelIsKnown(int channelId)
+        {
+            return channelId == MirrorAdapterWire.ReliableChannel
+                || channelId == MirrorAdapterWire.UnreliableChannel;
+        }
+
+        private void EnqueueOutbound(
+            Guid target,
+            int channelId,
+            int connectionId,
+            ArraySegment<byte> segment
+        )
         {
             if (_client == null)
             {
@@ -811,7 +877,7 @@ namespace SignalFish.Client.Adapters.FishNet
 
                 byte[] copy = new byte[segment.Count];
                 Array.Copy(segment.Array!, segment.Offset, copy, 0, segment.Count);
-                _outbound.Enqueue(new OutboundFrame(target, channelId, copy));
+                _outbound.Enqueue(new OutboundFrame(target, (byte)channelId, connectionId, copy));
             }
         }
 
@@ -836,21 +902,21 @@ namespace SignalFish.Client.Adapters.FishNet
                     frame = _outbound.Peek();
                 }
 
-                int wireLength = FishNetAdapterWire.HeaderLength + frame.Segment.Length;
+                int wireLength = MirrorAdapterWire.HeaderLength + frame.Segment.Length;
                 if (_sendScratch == null || _sendScratch.Length < wireLength)
                 {
                     _sendScratch = new byte[
                         Math.Max(
                             wireLength,
-                            FishNetAdapterMtu.MaxSegmentBytes(_maxFrameBytes)
-                                + FishNetAdapterWire.HeaderLength
+                            MirrorAdapterMtu.MaxSegmentBytes(_maxFrameBytes)
+                                + MirrorAdapterWire.HeaderLength
                         )
                     ];
                 }
 
                 Span<byte> wire = _sendScratch.AsSpan(0, wireLength);
                 if (
-                    !FishNetAdapterWire.TryEncode(
+                    !MirrorAdapterWire.TryEncode(
                         frame.Channel,
                         frame.Target,
                         frame.Segment,
@@ -877,14 +943,17 @@ namespace SignalFish.Client.Adapters.FishNet
                             without it nothing can ever flow — fail loudly
                             instead of queuing forever.
                         */
-                        FailBothSides("the server never negotiated the binary game-data format");
+                        FailSession(
+                            TransportError.Unexpected,
+                            "the server never negotiated the binary game-data format"
+                        );
                         return;
                     }
 
                     /*
                         SendBufferFull: the frame stays at the queue head so
-                        the next iterate retries — relay backpressure reads
-                        as FishNet send backpressure, never silent loss.
+                        the next late update retries — relay backpressure
+                        reads as Mirror send backpressure, never silent loss.
                     */
                     return;
                 }
@@ -893,37 +962,18 @@ namespace SignalFish.Client.Adapters.FishNet
                 {
                     _outbound.Dequeue();
                 }
-            }
-        }
 
-        private void DrainLoopback(bool asServer)
-        {
-            /*
-                Capture the reference: the bootstrap thread can null it
-                (teardown, host retirement) while this iterate runs.
-            */
-            HostLoopback? loopback = _loopback;
-            if (loopback == null)
-            {
-                return;
-            }
-
-            if (asServer)
-            {
-                while (loopback.TryDequeueClientToServer(out HostLoopbackFrame frame))
+                if (frame.Target == MirrorAdapterWire.BroadcastTarget)
                 {
-                    FeedServer(
-                        SignalFishPeerRouter.HostClientConnectionId,
-                        frame.Channel,
-                        frame.Segment.ToArray()
-                    );
+                    OnClientDataSent?.Invoke(new ArraySegment<byte>(frame.Segment), frame.Channel);
                 }
-            }
-            else
-            {
-                while (loopback.TryDequeueServerToClient(out HostLoopbackFrame frame))
+                else
                 {
-                    FeedClient(frame.Channel, frame.Segment.ToArray());
+                    OnServerDataSent?.Invoke(
+                        frame.ConnectionId,
+                        new ArraySegment<byte>(frame.Segment),
+                        frame.Channel
+                    );
                 }
             }
         }
@@ -962,23 +1012,18 @@ namespace SignalFish.Client.Adapters.FishNet
                         break;
 
                     case PollEventKind.AuthorityChanged:
-                        if (
-                            pollEvent.AuthorityChanged.YouAreAuthority
-                            && (
-                                _serverState != LocalConnectionState.Started
-                                && _serverState != LocalConnectionState.Starting
-                            )
-                        )
+                        if (pollEvent.AuthorityChanged.YouAreAuthority && !_serverActive)
                         {
                             /*
                                 The room moved the authority here (e.g. the
-                                old host left) but no FishNet server side is
+                                old host left) but no Mirror server side is
                                 running to serve it. Serving nothing while
                                 everyone routes to us would silently stall
                                 the game — tear down loudly instead.
                             */
-                            FailBothSides(
-                                "this machine became the room authority without a running FishNet server side; re-host and start the server side"
+                            FailSession(
+                                TransportError.Unexpected,
+                                "this machine became the room authority without a running Mirror server side; re-host to become the hub again"
                             );
                             return;
                         }
@@ -987,7 +1032,10 @@ namespace SignalFish.Client.Adapters.FishNet
                         break;
 
                     case PollEventKind.Disconnected:
-                        FailBothSides($"the Signal Fish session closed ({pollEvent.Close.Kind})");
+                        FailSession(
+                            TransportError.ConnectionClosed,
+                            $"the Signal Fish session closed ({pollEvent.Close.Kind})"
+                        );
                         return;
 
                     default:
@@ -1007,11 +1055,18 @@ namespace SignalFish.Client.Adapters.FishNet
                 RelayFrame frame = mine.Dequeue();
                 if (asServer)
                 {
-                    FeedServer(frame.ConnectionId, frame.Channel, frame.Segment);
+                    OnServerDataReceived?.Invoke(
+                        frame.ConnectionId,
+                        new ArraySegment<byte>(frame.Segment),
+                        frame.Channel
+                    );
                 }
                 else
                 {
-                    FeedClient(frame.Channel, frame.Segment);
+                    OnClientDataReceived?.Invoke(
+                        new ArraySegment<byte>(frame.Segment),
+                        frame.Channel
+                    );
                 }
             }
         }
@@ -1024,7 +1079,7 @@ namespace SignalFish.Client.Adapters.FishNet
         )
         {
             if (
-                !FishNetAdapterWire.TryDecode(
+                !MirrorAdapterWire.TryDecode(
                     gameData.Payload.Span,
                     out byte channel,
                     out Guid target,
@@ -1040,7 +1095,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 return;
             }
 
-            FishNetFrameRoute route = SignalFishReceiveRules.Route(
+            MirrorFrameRoute route = SignalFishReceiveRules.Route(
                 _localIsAuthority,
                 _localPlayerId,
                 _authorityPlayerId,
@@ -1052,14 +1107,14 @@ namespace SignalFish.Client.Adapters.FishNet
                 Server-bound frames need a real route before they can go
                 anywhere: presenting an unrouted sender (a peer that left
                 or was kicked while its frames were in flight) as any real
-                connection would misattribute the segment, and the zero
-                fallback reads as the host's own client. Drop and count
+                connection would misattribute the segment, and the reserved
+                id 0 reads as Mirror's local connection. Drop and count
                 here, so neither the direct path nor the cross-side stash
                 can ever carry connection id 0.
             */
-            int connectionId = 0;
+            int connectionId = SignalFishPeerRouter.HostConnectionId;
             if (
-                route == FishNetFrameRoute.ConsumeAsServer
+                route == MirrorFrameRoute.ConsumeAsServer
                 && !_router.TryGetConnection(gameData.FromPlayer, out connectionId)
             )
             {
@@ -1074,39 +1129,20 @@ namespace SignalFish.Client.Adapters.FishNet
             RelayFrame relayed = new RelayFrame(channel, segment.ToArray(), connectionId);
 
             bool feedsThisSide = asServer
-                ? route == FishNetFrameRoute.ConsumeAsServer
-                : route == FishNetFrameRoute.ConsumeAsClient;
+                ? route == MirrorFrameRoute.ConsumeAsServer
+                : route == MirrorFrameRoute.ConsumeAsClient;
             if (feedsThisSide)
             {
                 mine.Enqueue(relayed);
                 FeedPending(mine, asServer);
             }
             else if (
-                route == FishNetFrameRoute.ConsumeAsServer
-                || route == FishNetFrameRoute.ConsumeAsClient
+                route == MirrorFrameRoute.ConsumeAsServer
+                || route == MirrorFrameRoute.ConsumeAsClient
             )
             {
                 theirs.Enqueue(relayed);
             }
-        }
-
-        private void FeedServer(int connectionId, byte channel, byte[] segment)
-        {
-            OnServerReceivedData?.Invoke(
-                new ServerReceivedDataArgs(
-                    new ArraySegment<byte>(segment),
-                    (Channel)channel,
-                    connectionId,
-                    Index
-                )
-            );
-        }
-
-        private void FeedClient(byte channel, byte[] segment)
-        {
-            OnClientReceivedData?.Invoke(
-                new ClientReceivedDataArgs(new ArraySegment<byte>(segment), (Channel)channel, Index)
-            );
         }
 
         private void AddPeer(Guid playerId)
@@ -1118,7 +1154,7 @@ namespace SignalFish.Client.Adapters.FishNet
 
             if (_router.TryAddPeer(playerId, out int connectionId))
             {
-                StagePeer(connectionId, RemoteConnectionState.Started);
+                Stage(StagedKind.PeerStarted, connectionId);
             }
         }
 
@@ -1129,50 +1165,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 return;
             }
 
-            StagePeer(connectionId, RemoteConnectionState.Stopped);
-        }
-
-        private void DropAllPeers()
-        {
-            foreach (KeyValuePair<Guid, int> route in _router.SnapshotRoutes())
-            {
-                StagePeer(route.Value, RemoteConnectionState.Stopped);
-            }
-
-            _router.Clear();
-            RetireHostClientIfGone();
-        }
-
-        private void RetireHostClientIfGone()
-        {
-            lock (_gate)
-            {
-                bool bothSidesLive =
-                    (
-                        _serverState == LocalConnectionState.Started
-                        || _serverState == LocalConnectionState.Starting
-                    )
-                    && (
-                        _clientState == LocalConnectionState.Started
-                        || _clientState == LocalConnectionState.Starting
-                    );
-                if (!_hostClientAnnounced || bothSidesLive)
-                {
-                    return;
-                }
-
-                _hostClientAnnounced = false;
-                /*
-                    The loopback exists for the host client: with it retired,
-                    queued in-process frames would feed a connection FishNet
-                    has already removed.
-                */
-                _loopback = null;
-                StagePeer(
-                    SignalFishPeerRouter.HostClientConnectionId,
-                    RemoteConnectionState.Stopped
-                );
-            }
+            Stage(StagedKind.PeerStopped, connectionId);
         }
 
         private void NoteAuthority(AuthorityChangedMessage changed)
@@ -1181,29 +1174,9 @@ namespace SignalFish.Client.Adapters.FishNet
             _localIsAuthority = changed.YouAreAuthority;
         }
 
-        private void FailBothSides(string reason)
-        {
-            UnityEngine.Debug.LogError($"[SignalFishFishNetTransport] {reason}");
-            Teardown(reason);
-            lock (_gate)
-            {
-                StageState(server: true, LocalConnectionState.Stopped);
-                StageState(server: false, LocalConnectionState.Stopped);
-            }
-
-            DropAllPeers();
-        }
-
         private void LogWarning(string message)
         {
-            if (NetworkManager != null)
-            {
-                NetworkManager.LogWarning($"[SignalFishFishNetTransport] {message}");
-            }
-            else
-            {
-                UnityEngine.Debug.LogWarning($"[SignalFishFishNetTransport] {message}");
-            }
+            UnityEngine.Debug.LogWarning($"[SignalFishMirrorTransport] {message}");
         }
 
         private bool IsStale(int generation)
@@ -1217,9 +1190,11 @@ namespace SignalFish.Client.Adapters.FishNet
         private async Task RunBootstrapAsync()
         {
             int generation;
+            string roomCode;
             lock (_gate)
             {
                 generation = _generation;
+                roomCode = _pendingRoomCode;
             }
 
             SignalFishClient? client = null;
@@ -1241,12 +1216,11 @@ namespace SignalFish.Client.Adapters.FishNet
 
                     /*
                         The session is bootstrap-private until it is live:
-                        publishing it to the tick thread now would let
+                        publishing it to the main thread now would let
                         DrainRelay consume the very events the waits below
                         are polling for.
                     */
                     _session = client;
-                    _loopback = new HostLoopback(_loopbackCapacity);
                 }
 
                 await client.ConnectAsync(new Uri(_endpoint)).ConfigureAwait(false);
@@ -1288,7 +1262,7 @@ namespace SignalFish.Client.Adapters.FishNet
                             new JoinRoomMessage(
                                 _gameName,
                                 _playerName,
-                                NullIfEmpty(_roomCode),
+                                NullIfEmpty(roomCode),
                                 supportsAuthority: true
                             )
                         )
@@ -1319,21 +1293,22 @@ namespace SignalFish.Client.Adapters.FishNet
                     || negotiated < 3
                 )
                 {
-                    FailBothSides(
+                    FailSession(
+                        TransportError.Unexpected,
                         "the server did not negotiate protocol v3 (required for the binary lane)"
                     );
                     return;
                 }
 
                 /*
-                    The host path: the FishNet server side requires the
+                    The host path: the Mirror server side requires the
                     room authority. Non-authority members run client-only
                     and skip the grant round.
                 */
                 bool wantsServer;
                 lock (_gate)
                 {
-                    wantsServer = _serverState == LocalConnectionState.Starting;
+                    wantsServer = _serverActive;
                 }
 
                 if (wantsServer && !client.Snapshot.IsAuthority)
@@ -1356,6 +1331,7 @@ namespace SignalFish.Client.Adapters.FishNet
                     }
                 }
 
+                bool clientWasStarting;
                 lock (_gate)
                 {
                     if (_generation != generation)
@@ -1368,41 +1344,28 @@ namespace SignalFish.Client.Adapters.FishNet
                     _authorityPlayerId = _localIsAuthority
                         ? _localPlayerId
                         : ResolveAuthorityPlayerId(joined.Snapshot);
-                    if (_serverState == LocalConnectionState.Starting)
+                    if (_serverActive)
                     {
-                        StageState(server: true, LocalConnectionState.Started);
+                        _serverState = SessionSideState.Started;
                     }
 
-                    if (_clientState == LocalConnectionState.Starting)
+                    clientWasStarting = _clientState == SessionSideState.Starting;
+                    if (clientWasStarting)
                     {
-                        StageState(server: false, LocalConnectionState.Started);
-                    }
-
-                    /*
-                        Host mode: FishNet needs a NetworkConnection for the
-                        host's own client (its reserved id 0), or nothing
-                        looped to it is ever attributable. Announce it after
-                        the side states so FishNet sees the server come up
-                        first; DropAllPeers retires it with the server.
-                    */
-                    if (
-                        _serverState == LocalConnectionState.Started
-                        && _clientState == LocalConnectionState.Started
-                    )
-                    {
-                        StagePeer(
-                            SignalFishPeerRouter.HostClientConnectionId,
-                            RemoteConnectionState.Started
-                        );
-                        _hostClientAnnounced = true;
+                        _clientState = SessionSideState.Started;
                     }
 
                     /*
-                        The session is live: hand it to the tick thread's
+                        The session is live: hand it to the main thread's
                         drain, which owns the event stream from here on.
                     */
                     _client = client;
                     _session = null;
+                }
+
+                if (clientWasStarting)
+                {
+                    Stage(StagedKind.ClientConnected);
                 }
             }
             catch (Exception ex)
@@ -1421,7 +1384,10 @@ namespace SignalFish.Client.Adapters.FishNet
                     return;
                 }
 
-                FailBothSides($"the Signal Fish session failed to start: {ex.Message}");
+                FailSession(
+                    TransportError.Unexpected,
+                    $"the Signal Fish session failed to start: {ex.Message}"
+                );
             }
         }
 
@@ -1460,7 +1426,10 @@ namespace SignalFish.Client.Adapters.FishNet
                         return false;
                     }
 
-                    FailBothSides($"the session ended while waiting for {what}");
+                    FailSession(
+                        TransportError.ConnectionClosed,
+                        $"the session ended while waiting for {what}"
+                    );
                     return false;
                 }
 
@@ -1472,7 +1441,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 return false;
             }
 
-            FailBothSides($"timed out waiting for {what}");
+            FailSession(TransportError.Timeout, $"timed out waiting for {what}");
             return false;
         }
 
@@ -1507,7 +1476,10 @@ namespace SignalFish.Client.Adapters.FishNet
                         return default;
                     }
 
-                    FailBothSides("the session ended while waiting for the room join");
+                    FailSession(
+                        TransportError.ConnectionClosed,
+                        "the session ended while waiting for the room join"
+                    );
                     return default;
                 }
 
@@ -1519,7 +1491,7 @@ namespace SignalFish.Client.Adapters.FishNet
                 return default;
             }
 
-            FailBothSides("timed out waiting for the room join");
+            FailSession(TransportError.Timeout, "timed out waiting for the room join");
             return default;
         }
 

@@ -1,0 +1,24 @@
+{
+    "name": "com.ambiguous-interactive.signalfish.transport.mirror",
+    "version": "0.1.0",
+    "displayName": "Signal Fish Transport for Mirror",
+    "description": "Mirror transport bridge over a Signal Fish room: the room authority plays the Mirror server, members play clients, and game traffic rides the v3 binary relay lane. Requires the Mirror asset (Asset Store or Assets/ install; detected by the included editor define detector) and com.ambiguous-interactive.signalfish.",
+    "unity": "2021.2",
+    "license": "MIT",
+    "documentationUrl": "https://ambiguous-interactive.github.io/signal-fish-client-dotnet/adapters/mirror/",
+    "licensesUrl": "https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/blob/main/LICENSE",
+    "author": {
+        "name": "Ambiguous Interactive",
+        "url": "https://github.com/Ambiguous-Interactive"
+    },
+    "dependencies": {
+        "com.ambiguous-interactive.signalfish": "0.1.0"
+    },
+    "samples": [
+        {
+            "displayName": "Late Join and Reconnect",
+            "description": "A SignalFishRoomManager bootstrap plus a driver NetworkBehaviour that shows the host/client flows, late joining an existing room by code, and rejoining after a drop.",
+            "path": "Samples~/LateJoinReconnect"
+        }
+    ]
+}

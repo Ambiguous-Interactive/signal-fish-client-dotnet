@@ -8,6 +8,26 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Mirror adapter (M8.2): a new UPM package,
+  `com.ambiguous-interactive.signalfish.transport.mirror`, ships
+  `SignalFishMirrorTransport` — a Mirror `Transport` whose wire is a
+  Signal Fish room's v3 binary game-data lane. The room authority plays
+  the Mirror server, members play clients, and the adapter's receive
+  rules turn the broadcast relay into Mirror's star topology;
+  host mode needs no loopback (Mirror's local connection never touches
+  the transport), and a derived packet size is included. A
+  `SignalFishRoomManager` bootstrap and a late-join/reconnect sample
+  cover the join flows. The pure core (header, routing, receive rules,
+  MTU) runs in the dotnet test suite; the `lint-unity-adapter` CI gate
+  pins the compile-only-with-Mirror guard, the define-ownership and
+  detector contracts, and the bridge's member completeness. Live Unity
+  validation stays the M8.7 runbook item (Unity never runs in CI).
+- FishNet adapter: FishNet installed vendored under `Assets/` (the
+  classic Asset Store layout) is now detected. An editor define detector
+  probes for the compiled `FishNet.Runtime` assembly (or the UPM package
+  marker) and toggles the same `SIGNALFISH_FISHNET` define the
+  `versionDefines` pin produces — previously the bridge stayed inert on
+  vendored installs.
 - FishNet adapter (M8.1): a new UPM package,
   `com.ambiguous-interactive.signalfish.transport.fishnet`, ships
   `SignalFishFishNetTransport` — a FishNet `Transport` whose wire is a
@@ -16,7 +36,7 @@ changes (CI, tests, tooling, docs) are not listed.
   rules turn the broadcast relay into FishNet's star topology; host-mode
   loopback, per-peer fanout, and a derived MTU are included. The pure
   core (header, routing, receive rules, MTU, loopback) runs in the dotnet
-  test suite; the `lint-fishnet-adapter` CI gate pins the compile-only-
+  test suite; the `lint-unity-adapter` CI gate pins the compile-only-
   with-FishNet guard, the `versionDefines` pin, and the bridge's member
   completeness. Live Unity validation stays the M8.7 runbook item (Unity
   never runs in CI).
