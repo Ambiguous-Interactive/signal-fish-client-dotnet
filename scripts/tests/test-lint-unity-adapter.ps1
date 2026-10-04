@@ -114,6 +114,11 @@ try {
         )
         DetectorFile = 'SignalFishFishNetDefineDetector.cs'
         BridgeFile = 'SignalFishFishNetTransport.cs'
+        VendorNamespace = 'FishNet.Transporting'
+        MemberProbe = 'GetMTU'
+        WireFilter = 'AdapterWire\.HeaderLength'
+        WireName = 'AdapterWire'
+        DetectorProbe = 'com.firstgeargames.fishnet'
     }
 
     $mirror = @{
@@ -183,6 +188,84 @@ try {
         )
         DetectorFile = 'SignalFishMirrorDefineDetector.cs'
         BridgeFile = 'SignalFishMirrorTransport.cs'
+        VendorNamespace = 'Mirror.Transporting'
+        MemberProbe = 'GetMaxPacketSize'
+        WireFilter = 'AdapterWire\.HeaderLength'
+        WireName = 'AdapterWire'
+        DetectorProbe = '"Mirror"'
+    }
+
+    $ngo = @{
+        Root = 'unity/Adapters/Ngo'
+        Define = 'SIGNALFISH_NGO'
+        LocalCoreCs = @(
+            '#nullable enable',
+            'namespace SignalFish.Client.Adapters.Ngo',
+            '{',
+            '    public static class ConnectionApprovalPayload',
+            '    {',
+            '        public const int Length = 16;',
+            '        public static bool TryRead(ReadOnlySpan<byte> payload, out Guid playerId) => throw null!;',
+            '    }',
+            '}'
+        )
+        ChannelPin = $null
+        BridgeCs = @(
+            '#if SIGNALFISH_NGO',
+            'namespace SignalFish.Client.Adapters.Ngo',
+            '{',
+            '    public sealed class Bridge',
+            '    {',
+            '        private readonly SignalFishRoomRoster roster = new SignalFishRoomRoster();',
+            '        public void Approve(global::Unity.Netcode.NetworkManager.ConnectionApprovalRequest request,',
+            '            global::Unity.Netcode.NetworkManager.ConnectionApprovalResponse response)',
+            '        {',
+            '            response.Approved = ConnectionApprovalPayload.TryRead(request.Payload, out Guid playerId)',
+            '                && roster.IsMember(playerId);',
+            '            response.Reason = response.Approved ? null : "not a member";',
+            '            response.CreatePlayerObject = false;',
+            '        }',
+            '        public void Start(Unity.Netcode.NetworkManager manager, byte[] connectionData)',
+            '        {',
+            '            manager = global::Unity.Netcode.NetworkManager.Singleton;',
+            '            manager.NetworkConfig.ConnectionData = connectionData;',
+            '            manager.ConnectionApprovalCallback += Approve;',
+            '            if (manager.IsServer && manager.IsClient) { manager.StartHost(); } else { manager.StartClient(); }',
+            '            manager.Shutdown();',
+            '        }',
+            '    }',
+            '}',
+            '#endif'
+        )
+        AsmdefJson = @(
+            '{',
+            '    "name": "SignalFish.Adapters.Ngo",',
+            '    "references": ["SignalFish.Client", "SignalFish.Adapters.Core", "Unity.Netcode.Runtime"],',
+            '    "defineConstraints": ["SIGNALFISH_NGO"],',
+            '    "versionDefines": [',
+            '        { "name": "com.unity.netcode.gameobjects", "expression": "1.2.0", "define": "SIGNALFISH_NGO" }',
+            '    ],',
+            '    "noEngineReferences": false',
+            '}'
+        )
+        DetectorCs = @(
+            'namespace SignalFish.Client.Adapters.Ngo.Editor',
+            '{',
+            '    internal static class SignalFishNgoDefineDetector',
+            '    {',
+            '        private const string Define = "SIGNALFISH_NGO";',
+            '        private const string AssemblyName = "Unity.Netcode.Runtime";',
+            '        private const string PackageName = "com.unity.netcode.gameobjects";',
+            '    }',
+            '}'
+        )
+        DetectorFile = 'SignalFishNgoDefineDetector.cs'
+        BridgeFile = 'SignalFishRoomCoordinator.cs'
+        VendorNamespace = 'Unity.Netcode.Transporting'
+        MemberProbe = 'ConnectionApprovalCallback'
+        WireFilter = 'ConnectionApprovalPayload\.'
+        WireName = 'ConnectionApprovalPayload'
+        DetectorProbe = 'com.unity.netcode.gameobjects'
     }
 
     $editorAsmdefJson = @(
@@ -239,6 +322,7 @@ try {
     Write-CoreFixture
     Write-AdapterFixture -Pin $fishnet
     Write-AdapterFixture -Pin $mirror
+    Write-AdapterFixture -Pin $ngo
 
     # 1. Well-formed packages pass the static lane (-NoBuild; the compile
     #    lane is CI's job and the real repo exercises it).
@@ -251,8 +335,8 @@ try {
     $run = Invoke-Pwsh -ScriptPath $lint -Arguments @('-RepoRoot', $repo, '-NoBuild', '-Adapter', 'Core')
     Assert-Equal 0 $run.ExitCode 'core-only run passes'
 
-    # 3. An SDK reference without the define guard fails (both shapes).
-    foreach ($pin in @($fishnet, $mirror)) {
+    # 3. An SDK reference without the define guard fails (all shapes).
+    foreach ($pin in @($fishnet, $mirror, $ngo)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $unguarded = @($pin.BridgeCs | Where-Object { $_ -notmatch '^#if SIGNALFISH_' -and $_ -ne '#endif' })
         Write-TestFile -Path $bridgePath -Content $unguarded
@@ -263,10 +347,10 @@ try {
     }
 
     # 4. Vendoring the SDK (namespace <SDK>) always fails.
-    foreach ($pin in @($fishnet, $mirror)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $vendorCs = @(
-            "namespace $($pin.Root.Split('/')[-1]).Transporting",
+            "namespace $($pin.VendorNamespace)",
             '{',
             '    public class Stolen { }',
             '}'
@@ -278,12 +362,10 @@ try {
         Write-TestFile -Path $bridgePath -Content $pin.BridgeCs
     }
 
-    # 5. A dropped pinned Transport member fails.
-    foreach ($pin in @($fishnet, $mirror)) {
+    # 5. A dropped pinned engine member fails.
+    foreach ($pin in @($fishnet, $mirror, $ngo)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
-        $probe =
-            if ($pin.Define -eq 'SIGNALFISH_FISHNET') { 'GetMTU' }
-            else { 'GetMaxPacketSize' }
+        $probe = $pin.MemberProbe
         $missingMemberCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $probe })
         Write-TestFile -Path $bridgePath -Content $missingMemberCs
         $run = Invoke-Pwsh -ScriptPath $lint -Arguments @('-RepoRoot', $repo, '-NoBuild')
@@ -292,16 +374,20 @@ try {
         Write-TestFile -Path $bridgePath -Content $pin.BridgeCs
     }
 
-    # 6. A bridge that forks the wire (no shared AdapterWire) or drops the
-    #    engine channel pin fails.
-    foreach ($pin in @($fishnet, $mirror)) {
+    # 6. A bridge that forks the shared wire fails; a transport bridge
+    #    that drops the engine channel pin fails.
+    foreach ($pin in @($fishnet, $mirror, $ngo)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
-        $forkedCs = @($pin.BridgeCs | Where-Object { $_ -notmatch 'AdapterWire\.HeaderLength' })
+        $forkedCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $pin.WireFilter })
         Write-TestFile -Path $bridgePath -Content $forkedCs
         $run = Invoke-Pwsh -ScriptPath $lint -Arguments @('-RepoRoot', $repo, '-NoBuild')
-        Assert-Equal 1 $run.ExitCode "$($pin.Root): bridge without the shared header fails"
-        Assert-OutputContains $run 'AdapterWire' 'wire-fork failure names the shared type'
+        Assert-Equal 1 $run.ExitCode "$($pin.Root): bridge without the shared wire fails"
+        Assert-OutputContains $run $pin.WireName 'wire-fork failure names the shared type'
         Write-TestFile -Path $bridgePath -Content $pin.BridgeCs
+
+        if ($null -eq $pin.ChannelPin) {
+            continue
+        }
 
         $pinlessCs = @($pin.BridgeCs | Where-Object { $_ -notmatch [regex]::Escape($pin.ChannelPin) })
         Write-TestFile -Path $bridgePath -Content $pinlessCs
@@ -385,11 +471,9 @@ try {
 
     # 12. The detector contract: missing file, missing define string,
     #     missing probe, and an ungated editor assembly all fail.
-    foreach ($pin in @($fishnet, $mirror)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo)) {
         $detectorPath = Join-Path $repo "Editor/$($pin.DetectorFile)".Replace('Editor/', "$($pin.Root)/Editor/")
-        $expectedProbe =
-            if ($pin.Define -eq 'SIGNALFISH_FISHNET') { 'com.firstgeargames.fishnet' }
-            else { '"Mirror"' }
+        $expectedProbe = $pin.DetectorProbe
 
         $missingProbe = @($pin.DetectorCs | Where-Object { $_ -notmatch [regex]::Escape($expectedProbe) })
         Write-TestFile -Path $detectorPath -Content $missingProbe

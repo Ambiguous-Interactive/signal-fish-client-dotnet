@@ -39,6 +39,13 @@
             Include="..\..\unity\Adapters\FishNet\Runtime\Core\**\*.cs"
             LinkBase="Adapters\FishNet\Core"
         />
+        <!-- The NGO adapter's pure core (the join-code envelope, the
+             room roster, the approval payload) is engine- and NGO-free
+             C# exercised the same way. -->
+        <Compile
+            Include="..\..\unity\Adapters\Ngo\Runtime\Core\**\*.cs"
+            LinkBase="Adapters\Ngo\Core"
+        />
     </ItemGroup>
 
     <ItemGroup>

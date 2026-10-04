@@ -46,11 +46,22 @@
          where one exists, package name) the asmdef pins - the two
          activation mechanisms can never drift apart.
       7. Bridge completeness: the bridge file must carry every member of
-         the pinned engine Transport surface, route frames through the
-         shared AdapterWire header, and restate the pinned engine
-         channel bytes - a dropped override, a local header copy, or a
-         renumbered engine channel is a runtime miss in the editor,
-         invisible to every compiler here.
+         the pinned engine surface, route frames through the package's
+         pinned shared-wire reference (AdapterWire for a transport
+         bridge, the shared approval payload for the NGO coordinator),
+         and, where the engine has channel ids, restate the pinned
+         channel bytes - a dropped override, a local header or payload
+         copy, or a renumbered engine channel is a runtime miss in the
+         editor, invisible to every compiler here.
+
+      8. Bridge compile (packages with the BridgeCompile pin; skipped
+         with -NoBuild): the engine-gated bridge is type-checked
+         against a checked-in shape stub of the engine surface it
+         pins - no compiler in this repo sees the real SDK, and blind
+         edits have shipped type errors (a void-task await, a missing
+         using) that only the editor would catch. The stub is the
+         pinned member surface, not the engine; a stub drift is a lint
+         failure by design.
 
 .PARAMETER Adapter
     One package name (Core, FishNet, Mirror), or omit to lint all.
@@ -67,7 +78,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Core', 'FishNet', 'Mirror')]
+    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo')]
     [string]$Adapter,
     [string]$RepoRoot,
     [switch]$NoBuild,
@@ -81,11 +92,14 @@ if (-not $RepoRoot) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 
-# The per-package pins. Transport member surfaces are name lists in the
+# The per-package pins. Engine member surfaces are name lists in the
 # engine's own spelling; the compile checks keep the cores honest. The
-# channel pin restates the engine's delivery ids at the pinned engine
-# version - the shared header's channel bytes double as engine channel
-# ids, so a renumber must be re-verified against the engine source.
+# wire pin names the shared-core type the bridge must route frames (or
+# approval payloads) through. The channel pin restates the engine's
+# delivery ids at the pinned engine version - the shared header's
+# channel bytes double as engine channel ids, so a renumber must be
+# re-verified against the engine source; a coordinator with no engine
+# channel mapping (Ngo) carries none.
 $sharedCore = @{
     Root = 'unity/Adapters/Core'
     SharedTypes = @(
@@ -96,14 +110,83 @@ $sharedCore = @{
         'SignalFishReceiveRules'
     )
 }
+# Shape stubs for the Ngo bridge compile lane: the pinned member
+# surface the coordinator's bridge touches, spelled the way the bridge
+# uses it. This is NOT the engine - it is the compile contract the lint
+# enforces, and a stub drift is a lint failure by design (the PinnedMembers
+# table is what guards the real engine's shape).
+$ngoBridgeStubs = @'
+// Shape stubs (UnityEngine / Unity.Netcode surface the coordinator
+// touches). The engine SDK is never vendored or referenced in CI.
+#nullable enable
+namespace UnityEngine
+{
+    public class MonoBehaviour { }
+
+    public sealed class SerializeFieldAttribute : System.Attribute { }
+}
+
+namespace Unity.Netcode
+{
+    public delegate void ConnectionApprovalCallbackDeclaration(
+        NetworkManager.ConnectionApprovalRequest request,
+        NetworkManager.ConnectionApprovalResponse response
+    );
+
+    public sealed class NetworkConfig
+    {
+        public bool ConnectionApproval;
+
+        public byte[] ConnectionData = System.Array.Empty<byte>();
+    }
+
+    public sealed class NetworkManager
+    {
+        public static NetworkManager Singleton => null!;
+
+        public bool IsServer => false;
+
+        public bool IsClient => false;
+
+        public NetworkConfig NetworkConfig => null!;
+
+        public ConnectionApprovalCallbackDeclaration? ConnectionApprovalCallback { get; set; }
+
+        public bool StartHost() => true;
+
+        public bool StartClient() => true;
+
+        public void Shutdown() { }
+
+        public sealed class ConnectionApprovalRequest
+        {
+            public byte[] Payload = System.Array.Empty<byte>();
+
+            public ulong ClientNetworkId;
+        }
+
+        public sealed class ConnectionApprovalResponse
+        {
+            public bool Approved;
+
+            public string? Reason;
+
+            public bool CreatePlayerObject;
+        }
+    }
+}
+'@
+
 $adapters = @{
     FishNet = @{
         Root = 'unity/Adapters/FishNet'
         Define = 'SIGNALFISH_FISHNET'
         SdkNamespace = 'FishNet'
+        SdkReferencePattern = '(^|[^\w.])FishNet\.'
         SdkReference = 'FishNet.Runtime'
         CoreReference = 'SignalFish.Adapters.Core'
         CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+        WirePin = 'AdapterWire.'
         ChannelPin = 'Channel.Reliable = 0, Channel.Unreliable = 1'
         PackagePin = 'com.firstgeargames.fishnet'
         PackageExpression = '4.0.0'
@@ -137,9 +220,11 @@ $adapters = @{
         Root = 'unity/Adapters/Mirror'
         Define = 'SIGNALFISH_MIRROR'
         SdkNamespace = 'Mirror'
+        SdkReferencePattern = '(^|[^\w.])Mirror(\.[A-Za-z_]|;)'
         SdkReference = 'Mirror'
         CoreReference = 'SignalFish.Adapters.Core'
         CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+        WirePin = 'AdapterWire.'
         ChannelPin = 'Channels.Reliable = 0, Channels.Unreliable = 1'
         PackagePin = $null
         PackageExpression = $null
@@ -176,6 +261,47 @@ $adapters = @{
             'OnServerDataSent',
             'OnServerError',
             'OnServerDisconnected'
+        )
+    }
+    Ngo = @{
+        Root = 'unity/Adapters/Ngo'
+        Define = 'SIGNALFISH_NGO'
+        SdkNamespace = 'Unity.Netcode'
+        SdkReferencePattern = '(^|[^\w.])Unity\.Netcode(\.[A-Za-z_]|;)'
+        SdkReference = 'Unity.Netcode.Runtime'
+        CoreReference = 'SignalFish.Adapters.Core'
+        CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+
+        # The coordinator is not a transport bridge: it never frames
+        # engine payloads, so there is no engine channel pin. Its wire
+        # surface is the shared-core approval payload (the relay's
+        # RFC-4122 UUID spelling), which the bridge must go through
+        # rather than hand-rolling.
+        WirePin = 'ConnectionApprovalPayload.'
+        ChannelPin = $null
+        PackagePin = 'com.unity.netcode.gameobjects'
+        PackageExpression = '1.2.0'
+        BridgeFile = 'SignalFishRoomCoordinator.cs'
+        BridgeCompile = $true
+        BridgeStubs = $ngoBridgeStubs
+        DetectorFile = 'SignalFishNgoDefineDetector.cs'
+        DetectorProbes = @('Unity.Netcode.Runtime', 'com.unity.netcode.gameobjects')
+        PinnedMembers = @(
+            'Singleton',
+            'ConnectionApprovalCallback',
+            'ConnectionApprovalRequest',
+            'ConnectionApprovalResponse',
+            'StartHost',
+            'StartClient',
+            'Shutdown',
+            'IsServer',
+            'IsClient',
+            'NetworkConfig',
+            'ConnectionData',
+            'Payload',
+            'Approved',
+            'Reason',
+            'CreatePlayerObject'
         )
     }
 }
@@ -337,6 +463,79 @@ function Invoke-CoreCompile {
     }
 }
 
+function Invoke-BridgeCompile {
+    param(
+        [hashtable]$Pin,
+        [string]$Base,
+        [string[]]$SourcePaths,
+        [string]$Stubs
+    )
+
+    # Type-checks an engine-gated bridge against a shape stub of the
+    # pinned engine surface. No compiler in this repo sees the real
+    # SDK, so a blind edit's type error would otherwise surface only
+    # in the editor. Returns the failure message, if any.
+    $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($null -eq $dotnet) {
+        return 'compile check requested but dotnet was not found on PATH.'
+    }
+
+    $stage = Join-Path ([System.IO.Path]::GetTempPath()) (
+        "bridgecompile-" + [System.Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $stage -Force | Out-Null
+    try {
+        $compileItems = @(
+            foreach ($source in $SourcePaths) {
+                $path = $source -replace '\\', '/'
+                "        <Compile Include=`"$path`" />"
+            }
+        )
+        $clientProject = (Join-Path $Base 'src/SignalFish.Client/SignalFish.Client.csproj') -replace '\\', '/'
+        $projectLines = @(
+            '<Project Sdk="Microsoft.NET.Sdk">',
+            '    <PropertyGroup>',
+            '        <TargetFramework>netstandard2.1</TargetFramework>',
+            '        <LangVersion>9.0</LangVersion>',
+            '        <Nullable>enable</Nullable>',
+            '        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>',
+            '        <ImplicitUsings>disable</ImplicitUsings>',
+            '        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>',
+            "        <DefineConstants>$($Pin.Define)</DefineConstants>",
+            '    </PropertyGroup>',
+            '    <ItemGroup>'
+        ) + $compileItems + @(
+            '        <Compile Include="EngineStubs.cs" />',
+            '    </ItemGroup>',
+            '    <ItemGroup>',
+            "        <ProjectReference Include=`"$clientProject`" />",
+            '    </ItemGroup>',
+            '</Project>',
+            ''
+        )
+        [System.IO.File]::WriteAllText(
+            (Join-Path $stage 'AdapterBridge.csproj'),
+            (@($projectLines) -join "`n"),
+            [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText(
+            (Join-Path $stage 'EngineStubs.cs'),
+            $Stubs,
+            [System.Text.UTF8Encoding]::new($false))
+
+        $buildOutput = & dotnet build (Join-Path $stage 'AdapterBridge.csproj') -c Release --nologo -v q 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            foreach ($line in @($buildOutput | Select-Object -Last 20)) {
+                Write-Host "    $line"
+            }
+            return "$($Pin.BridgeFile) failed to compile against the $($Pin.SdkNamespace) shape stub (netstandard2.1, C# 9, nullable, warnings as errors, $($Pin.Define) defined) - a type error in engine-gated code is invisible to every other compiler in this repo."
+        }
+
+        return $null
+    }
+    finally {
+        Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-CorePackageLint {
     param(
         [hashtable]$Pin,
@@ -472,10 +671,8 @@ function Invoke-AdapterLint {
     #    The guard check is per-line and region-aware: only text outside
     #    `#if <define>` regions can violate, so a file guarded somewhere
     #    but not everywhere still fails.
-    $referencePattern =
-        if ($Pin.SdkNamespace -eq 'FishNet') { '(^|[^\w.])FishNet\.' }
-        else { '(^|[^\w.])Mirror(\.[A-Za-z_]|;)' }
-    $namespacePattern = "namespace\s+$($Pin.SdkNamespace)\b"
+    $referencePattern = $Pin.SdkReferencePattern
+    $namespacePattern = "namespace\s+$([regex]::Escape($Pin.SdkNamespace))\b"
 
     foreach ($source in $sourceFiles) {
         $relative = Get-RelativePath -Base $Base -Path $source
@@ -521,12 +718,12 @@ function Invoke-AdapterLint {
             }
         }
 
-        if ($bridgeText -notmatch 'AdapterWire\.') {
+        if ($bridgeText -notmatch [regex]::Escape($Pin.WirePin)) {
             $violations.Add(
-                "$($Pin.BridgeFile) : routes no frames through the shared AdapterWire header - a local header copy forks the adapter wire format.")
+                "$($Pin.BridgeFile) : does not route frames through the shared wire pin '$($Pin.WirePin)' - a local header or payload copy forks the adapter wire format.")
         }
 
-        if ($bridgeText -notmatch [regex]::Escape($Pin.ChannelPin)) {
+        if ($null -ne $Pin.ChannelPin -and $bridgeText -notmatch [regex]::Escape($Pin.ChannelPin)) {
             $violations.Add(
                 "$($Pin.BridgeFile) : does not restate the engine channel pin '$($Pin.ChannelPin)' - the shared header's channel bytes double as engine channel ids, so a renumber must be re-verified against the pinned engine source.")
         }
@@ -653,6 +850,26 @@ function Invoke-AdapterLint {
             -SourcePaths (@($sharedFiles) + @($coreFiles)) `
             -Base $RepoRoot `
             -Label "the $($Pin.Root) core"
+        if ($null -ne $failure) {
+            $violations.Add($failure)
+        }
+    }
+
+    # 6. Bridge compile: type-check the engine-gated bridge against a
+    #    shape stub of the pinned engine surface. No compiler in this
+    #    repo sees the real SDK - a blind edit's type error (a void-task
+    #    await, a missing using) would otherwise surface only in the
+    #    editor. Skipped with -NoBuild; CI always runs it.
+    if (-not $SkipBuild -and $null -ne $Pin['BridgeCompile']) {
+        $sharedRoot = Join-Path $RepoRoot $sharedCore.Root
+        $sharedFiles = [string[]]@(Get-ChildItem -LiteralPath $sharedRoot -Recurse -File -Filter '*.cs' |
+            ForEach-Object { $_.FullName })
+        $runtimeSources = [string[]]@($sourceFiles | Where-Object { $_ -match '[\\/]Runtime[\\/]' })
+        $failure = Invoke-BridgeCompile `
+            -Pin $Pin `
+            -Base $RepoRoot `
+            -SourcePaths (@($sharedFiles) + @($runtimeSources)) `
+            -Stubs $Pin['BridgeStubs']
         if ($null -ne $failure) {
             $violations.Add($failure)
         }

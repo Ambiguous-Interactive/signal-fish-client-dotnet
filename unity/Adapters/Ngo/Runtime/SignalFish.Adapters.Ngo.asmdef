@@ -1,0 +1,26 @@
+{
+    "name": "SignalFish.Adapters.Ngo",
+    "rootNamespace": "SignalFish.Client.Adapters.Ngo",
+    "references": [
+        "SignalFish.Client",
+        "SignalFish.Adapters.Core",
+        "Unity.Netcode.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "SIGNALFISH_NGO"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.netcode.gameobjects",
+            "expression": "1.2.0",
+            "define": "SIGNALFISH_NGO"
+        }
+    ],
+    "noEngineReferences": false
+}

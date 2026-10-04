@@ -9,31 +9,76 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
-## 2026-10-04 - session 041: #83 adapter-core hoist (PowerShell strict-mode JSON)
+## 2026-10-04 - session 042 PR feedback: Bugbot round on #90 (invisible-to-CI engine-gated code)
 
-- Trigger: the #83 shared-core hoist rewrote `lint-unity-adapter.ps1`'s
-  asmdef handling; the rewritten self-test failed five shapes against a
-  lint that "worked" — then crashed on a malformed asmdef.
-- Evidence: (1) `$Json.PSObject.Properties[$var]` returns the member for
-  a literal key but the raw VALUE for a variable key (overload drift) —
-  a missing `references` key crashed `.Value` under StrictMode instead
-  of failing a check. (2) `return @()` unrolls to nothing at the call
-  site, so `.Count` threw on the empty-`defineConstraints` case (rule 1
-  again, new shape). (3) A local `$property` re-casing parameter
-  `$Property` is the same variable (case-insensitive) and corrupted the
-  streaming `Where-Object` pipeline into a scalar. (4) The rewritten
-  fixture helper wrote `Join-Path $core.Root ...` without the test repo
-  root — it silently polluted the REAL repo (overwriting a new
-  uncommitted file) while all "green" assertions ran against fixtures.
-- Findings: tooling changes need their failure shapes exercised
-  red-first — the malformed-input crash only surfaced because the new
-  self-test hit it; fixture writers must join the fixture root or they
-  write into the working tree.
-- Applied: `Get-JsonArray`/`Get-JsonValue` enumerate member infos and
-  every call site `@()`-wraps; self-test helper joins `$repo`; two new
-  `powershell-tooling` rules (8: indexer overload drift + @() call-site
-  normalization; 9: no re-cased locals).
-- Open: none — knowledge graduated into the skill.
+- Trigger: Cursor Bugbot's three high-severity findings on PR #90,
+  verified against the code, the E2E conformance suite, and the UGS
+  Relay API surface.
+- Evidence: (1) `joinCode = await AwaitHook(...)` awaited a void `Task`
+  — a compile error in the `#if SIGNALFISH_NGO` bridge that no compiler
+  in CI sees; the round-2 refactor that introduced it shipped green.
+  (2) The drain failed on every `AuthorityChanged`, including the
+  server's grant broadcast (`you_are_authority: true` follows a granted
+  `AuthorityResponse` for the grantee, in either order — proven by
+  `AuthorityClaimMovesTheSeatAndGatesStart`), so every healthy host
+  start tore itself down on its first `Update`. (3) The sample returned
+  `allocation.JoinCode`, which Unity Relay's `Allocation` does not
+  carry — the host must call `GetJoinCodeAsync(allocationId)`.
+  Bonus catch by the new stub lane itself: `Environment.TickCount64`
+  does not exist on the netstandard2.1 API floor Unity compiles
+  against, despite the dotnet build passing.
+- Findings: engine-gated sources need a compile contract (shape stubs),
+  not review discipline; event-to-fatal classification must be verified
+  against the conformance suite (the executable spec of server
+  broadcasts), not intuition; external-SDK member names must be checked
+  against the SDK's source or docs, never memory.
+- Applied: generic + void `AwaitHook` overloads; the drain now fails
+  only when `you_are_authority != _isHost`; the sample calls
+  `GetJoinCodeAsync`; waits use `SystemClock` instead of `TickCount64`;
+  `lint-unity-adapter` grew a shape-stub bridge-compile lane
+  (`BridgeCompile`/`BridgeStubs`, NGO first) that type-checks
+  engine-gated bridges at the netstandard2.1 floor on every CI run;
+  knowledge folded into the new `author-engine-adapter` skill and two
+  new sweep rows in `address-pr-feedback`.
+- Open: Mirror/FishNet bridges have no stub-compile lane yet (large
+  engine surfaces); tracked as a follow-up issue.
+
+## 2026-10-04 - session 042: M8.3 NGO coordinator (third-entry lint generalization + floor-portable core)
+
+- Trigger: the reflect-improve loop after authoring the third adapter
+  package (the NGO + Relay coordinator).
+- Evidence: (1) the adapter lint's SDK reference pattern was a
+  FishNet/Mirror if/else — a third adapter would have been silently
+  linted with the Mirror pattern (false negatives, no failure shape);
+  generalized to a pin field before it could misfire. (2) `string.Create`
+  with a span state compiled on net10.0 and failed CS9244 on net8.0 —
+  pure-core sources ride the oldest supported floor, and only the
+  multi-TFM test suite catches newest-framework-only API shapes. (3)
+  Writing the consumer sample exposed a real API race (a synchronous
+  binder hook vs an inherently async Unity Relay join) that the runtime
+  API review had missed; the sample is the cheapest API reviewer for
+  hook-shaped surfaces. (4) the adversarial review pass verified the
+  NGO bridge against NGO's own 1.2.0 source and found the approval gate
+  dead: `NetworkConfig.ConnectionApproval` gates the whole mechanism
+  (without it the host auto-approves everything and the client never
+  sends ConnectionData), the callback setter throws on a two-target
+  delegate (so `+=` breaks every restart), and `StartHost/StartClient`
+  report refusal as `false` + a log, not an exception.
+- Findings: generalize lint pins when the second consumer becomes a
+  third; avoid newest-framework-only API shapes in sources that must
+  compile on older floors; author the sample call sites first when an
+  adapter API is hook-shaped; engine-gated sources need their feature
+  flags verified against the engine's actual source — presence of the
+  callback is not activation, and restart cycles break on engine-side
+  state the adapter never clears.
+- Applied: `SdkReferencePattern`/`WirePin` pin fields + optional
+  channel pin + fixture lane (72 assertions); the envelope decode
+  rewritten to `Encoding.ASCII.GetString`; the client Relay binder
+  contract became `Func<string, Task>`, awaited before the NGO client
+  start stages; the approval flag, host self-payload, callback
+  assignment, and start-result checks all landed with the adversarial
+  round.
+- Open: none.
 
 ## 2026-10-04 - session 040: M8.2 Mirror adapter (blind bridge, two-round review)
 

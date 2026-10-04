@@ -1,0 +1,26 @@
+{
+    "name": "com.ambiguous-interactive.signalfish.adapters.ngo",
+    "version": "0.1.0",
+    "displayName": "Signal Fish Room Coordinator for Netcode for GameObjects",
+    "description": "Runs a Netcode for GameObjects session over a Signal Fish room: the room owns matchmaking and membership, the host allocates a Unity Relay server through a game hook and hands the join code to members over the room's game-data lane, and every NGO connection is approved against live room membership. Requires com.unity.netcode.gameobjects (detected by versionDefines or the included editor define detector), com.ambiguous-interactive.signalfish, and com.ambiguous-interactive.signalfish.adapters.core.",
+    "unity": "2021.2",
+    "license": "MIT",
+    "documentationUrl": "https://ambiguous-interactive.github.io/signal-fish-client-dotnet/adapters/ngo/",
+    "licensesUrl": "https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/blob/main/LICENSE",
+    "author": {
+        "name": "Ambiguous Interactive",
+        "url": "https://github.com/Ambiguous-Interactive"
+    },
+    "dependencies": {
+        "com.ambiguous-interactive.signalfish": "0.1.0",
+        "com.ambiguous-interactive.signalfish.adapters.core": "0.1.0",
+        "com.unity.netcode.gameobjects": "1.2.0"
+    },
+    "samples": [
+        {
+            "displayName": "Relay Room Coordinator",
+            "description": "A host/client bootstrap that wires Unity Gaming Services Relay allocation into the coordinator and shows the scene steps for approval-driven joins.",
+            "path": "Samples~/RelayRoomCoordinator"
+        }
+    ]
+}

@@ -8,6 +8,20 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- NGO adapter (M8.3): a new UPM package,
+  `com.ambiguous-interactive.signalfish.adapters.ngo`, ships
+  `SignalFishRoomCoordinator` — a coordinator that runs a Netcode for
+  GameObjects session over a Signal Fish room. The room owns matchmaking
+  and membership: the host allocates a Unity Relay server through a
+  game hook and hands the join code to members over the room's game-data
+  lane (late joiners get a fresh broadcast), and every NGO connection is
+  approved only when its claimed Signal Fish player id is a live room
+  member. The pure core (join-code envelope, room roster, approval
+  payload) runs in the dotnet test suite; the `lint-unity-adapter` CI
+  gate pins the compile-only-with-NGO guard, the package-pin and
+  detector contracts, and the coordinator's member completeness. A
+  Relay wiring sample covers the Unity Gaming Services setup. Live Unity
+  validation stays the M8.7 runbook item (Unity never runs in CI).
 - Mirror adapter (M8.2): a new UPM package,
   `com.ambiguous-interactive.signalfish.transport.mirror`, ships
   `SignalFishMirrorTransport` — a Mirror `Transport` whose wire is a
