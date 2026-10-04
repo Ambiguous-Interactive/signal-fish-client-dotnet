@@ -312,6 +312,14 @@ namespace SignalFish.Client.Adapters.Mirror
 
         private readonly SignalFishPeerRouter _router = new SignalFishPeerRouter();
 
+        /// <summary>
+        /// Peers announced while no server side was listening: Mirror
+        /// wires the server callbacks in NetworkServer.Listen, so those
+        /// announces drained into nothing and Mirror never learned the
+        /// peers. The late server start re-announces exactly these.
+        /// </summary>
+        private readonly HashSet<int> _needsServerAnnounce = new HashSet<int>();
+
         private SignalFishClient? _client;
 
         /// <summary>
@@ -543,6 +551,13 @@ namespace SignalFish.Client.Adapters.Mirror
                     return;
                 }
 
+                if (_terminal)
+                {
+                    _terminal = false;
+                    _bootstrap = null;
+                    StartupError = null;
+                }
+
                 if (_maxFrameBytes <= MirrorAdapterMtu.WireReserve)
                 {
                     UnityEngine.Debug.LogError(
@@ -551,13 +566,6 @@ namespace SignalFish.Client.Adapters.Mirror
                     StartupError =
                         StartupError ?? "MaxFrameBytes is below the adapter wire reserve";
                     return;
-                }
-
-                if (_terminal)
-                {
-                    _terminal = false;
-                    _bootstrap = null;
-                    StartupError = null;
                 }
 
                 _serverActive = true;
@@ -757,6 +765,14 @@ namespace SignalFish.Client.Adapters.Mirror
                 switch (staged.Kind)
                 {
                     case StagedKind.PeerStarted:
+                        lock (_gate)
+                        {
+                            if (!_serverActive)
+                            {
+                                _needsServerAnnounce.Add(staged.ConnectionId);
+                            }
+                        }
+
                         OnServerConnectedWithAddress?.Invoke(
                             staged.ConnectionId,
                             ServerGetClientAddress(staged.ConnectionId)
@@ -764,6 +780,11 @@ namespace SignalFish.Client.Adapters.Mirror
                         break;
 
                     case StagedKind.PeerStopped:
+                        lock (_gate)
+                        {
+                            _needsServerAnnounce.Remove(staged.ConnectionId);
+                        }
+
                         OnServerDisconnected?.Invoke(staged.ConnectionId);
                         break;
 
@@ -842,6 +863,7 @@ namespace SignalFish.Client.Adapters.Mirror
                 _outbound.Clear();
                 _serverPending.Clear();
                 _clientPending.Clear();
+                _needsServerAnnounce.Clear();
                 StartupError = StartupError ?? reason;
             }
 
@@ -1535,6 +1557,19 @@ namespace SignalFish.Client.Adapters.Mirror
                 }
 
                 _serverState = SessionSideState.Started;
+
+                /*
+                    Mirror wired its server callbacks in Listen (this is the
+                    late start), so the announces drained before now went
+                    nowhere: re-announce exactly the swallowed peers, once,
+                    now that the handler is live.
+                */
+                foreach (int connectionId in _needsServerAnnounce)
+                {
+                    Stage(StagedKind.PeerStarted, connectionId);
+                }
+
+                _needsServerAnnounce.Clear();
             }
         }
 
