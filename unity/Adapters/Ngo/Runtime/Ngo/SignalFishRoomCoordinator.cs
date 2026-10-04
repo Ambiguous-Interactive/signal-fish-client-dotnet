@@ -481,6 +481,12 @@ namespace SignalFish.Client.Adapters.Ngo
             EnsureFresh(generation);
         }
 
+        private async Task<T> AwaitHook<T>(Task<T> hook, int generation, string what)
+        {
+            await AwaitHook((Task)hook, generation, what).ConfigureAwait(false);
+            return await hook.ConfigureAwait(false);
+        }
+
         private async Task<PollEvent> WaitForAsync(
             SignalFishClient client,
             PollEventKind expected,
@@ -488,8 +494,8 @@ namespace SignalFish.Client.Adapters.Ngo
             CancellationToken ct
         )
         {
-            long deadline = Environment.TickCount64 + StartTimeoutMilliseconds;
-            while (Environment.TickCount64 < deadline)
+            long deadline = SystemClock.Instance.ElapsedMilliseconds + StartTimeoutMilliseconds;
+            while (SystemClock.Instance.ElapsedMilliseconds < deadline)
             {
                 ct.ThrowIfCancellationRequested();
                 EnsureFresh(generation);
@@ -518,8 +524,8 @@ namespace SignalFish.Client.Adapters.Ngo
             CancellationToken ct
         )
         {
-            long deadline = Environment.TickCount64 + JoinCodeTimeoutMilliseconds;
-            while (Environment.TickCount64 < deadline)
+            long deadline = SystemClock.Instance.ElapsedMilliseconds + JoinCodeTimeoutMilliseconds;
+            while (SystemClock.Instance.ElapsedMilliseconds < deadline)
             {
                 ct.ThrowIfCancellationRequested();
                 EnsureFresh(generation);
@@ -788,10 +794,24 @@ namespace SignalFish.Client.Adapters.Ngo
 
                 if (pollEvent.Kind == PollEventKind.AuthorityChanged)
                 {
-                    Fail(
-                        "The room's authority moved; an NGO host cannot migrate. Start a new room."
-                    );
-                    return;
+                    /*
+                        The grant broadcast that follows this host's own
+                        successful authority request is benign — the
+                        server answers with AuthorityResponse AND a
+                        room-wide AuthorityChanged whose you_are_authority
+                        is true for us. Only a move away from the NGO host
+                        (or gaining the seat without hosting) is a
+                        migration the engine cannot follow.
+                    */
+                    if (pollEvent.AuthorityChanged.YouAreAuthority != _isHost)
+                    {
+                        Fail(
+                            "The room's authority moved; an NGO host cannot migrate. Start a new room."
+                        );
+                        return;
+                    }
+
+                    continue;
                 }
 
                 string? failure = DescribeFailure(pollEvent);

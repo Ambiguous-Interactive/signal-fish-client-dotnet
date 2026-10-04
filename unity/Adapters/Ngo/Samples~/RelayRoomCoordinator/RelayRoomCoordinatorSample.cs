@@ -107,7 +107,7 @@ namespace SignalFish.Client.Adapters.Ngo.Samples
                     .Singleton.GetComponent<UnityTransport>()
                     .SetRelayServerData(new RelayServerData(allocation, "dtls"))
             );
-            return allocation.JoinCode;
+            return await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
         }
 
         private async Task BindRelayServerAsync(string joinCode)

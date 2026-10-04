@@ -119,6 +119,37 @@ uncoordinated NGO session behind; `JoinCodeTimeoutSeconds`' contract
 (it also bounds the relay hooks) and the ten-second engine-start
 budget are documented on the property and in the docs table.
 
+## PR feedback round (Cursor Bugbot, three findings)
+
+1. **Host grant treated as migration** — confirmed against the E2E
+   conformance suite: a granted `AuthorityResponse` is followed by a
+   room-wide `AuthorityChanged` with `you_are_authority: true` for the
+   grantee (either order), so the unconditional drain failure tore down
+   every healthy host start on its first `Update`. The drain now fails
+   only when `you_are_authority != _isHost` (grant echo benign;
+   migration away from the host, or a client gaining the seat, fatal).
+2. **Allocation hook result dropped** — confirmed: `joinCode = await
+   AwaitHook(...)` awaited a void `Task`, a compile error invisible to
+   every compiler in CI (`#if SIGNALFISH_NGO` keeps the bridge out of
+   dotnet; the lint only compiled the pure core). `AwaitHook` gained a
+   generic `Task<T>` overload. The class-level fix: `lint-unity-adapter`
+   gained a **shape-stub bridge-compile lane** (`BridgeCompile` /
+   `BridgeStubs`) that type-checks engine-gated bridges at the
+   netstandard2.1 floor with the define set on every CI run.
+3. **Sample invented `allocation.JoinCode`** — confirmed: Unity Relay
+   `Allocation` carries no join code; the sample now calls
+   `GetJoinCodeAsync(allocation.AllocationId)`.
+
+The new lane's first own catch: `Environment.TickCount64` does not
+exist on the netstandard2.1 API floor Unity compiles against — the four
+deadline reads now use `SystemClock.Instance.ElapsedMilliseconds` (the
+library's monotonic clock). Sweeps: no other netcore-only APIs in
+`unity/`, no other unconditional event-fatal branches, no other
+invented SDK members. Knowledge folded into the new
+`author-engine-adapter` skill and two new sweep rows in
+`address-pr-feedback`; the Mirror/FishNet stub-compile gap is filed as
+#91.
+
 ## Decisions
 
 - **Coordinator, not a transport bridge**: PLAN's "no relay-transport
