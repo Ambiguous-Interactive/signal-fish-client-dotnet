@@ -122,17 +122,21 @@ namespace SignalFish.Client.Adapters.Mirror
 
             internal string Reason { get; }
 
+            internal Exception? TransportException { get; }
+
             internal StagedEvent(
                 StagedKind kind,
                 int connectionId = 0,
                 TransportError error = TransportError.Unexpected,
-                string reason = ""
+                string reason = "",
+                Exception? transportException = null
             )
             {
                 Kind = kind;
                 ConnectionId = connectionId;
                 Error = error;
                 Reason = reason;
+                TransportException = transportException;
             }
         }
 
@@ -145,6 +149,7 @@ namespace SignalFish.Client.Adapters.Mirror
             ClientFailed = 3,
             ClientDropped = 4,
             ServerError = 5,
+            ClientTransportException = 6,
         }
 
         /// <summary>Per-side Mirror session state.</summary>
@@ -311,14 +316,6 @@ namespace SignalFish.Client.Adapters.Mirror
         private readonly Queue<StagedEvent> _staged = new Queue<StagedEvent>();
 
         private readonly SignalFishPeerRouter _router = new SignalFishPeerRouter();
-
-        /// <summary>
-        /// Peers announced while no server side was listening: Mirror
-        /// wires the server callbacks in NetworkServer.Listen, so those
-        /// announces drained into nothing and Mirror never learned the
-        /// peers. The late server start re-announces exactly these.
-        /// </summary>
-        private readonly HashSet<int> _needsServerAnnounce = new HashSet<int>();
 
         private SignalFishClient? _client;
 
@@ -639,11 +636,12 @@ namespace SignalFish.Client.Adapters.Mirror
                 player stays in the room, so their later frames drop as
                 unrouted until they rejoin.
             */
-            if (!_router.TryRemovePeer(connectionId, out _))
+            if (!_router.TryGetPeer(connectionId, out Guid peerId))
             {
                 return;
             }
 
+            _router.TryRemovePeer(peerId, out _);
             Stage(StagedKind.PeerStopped, connectionId);
         }
 
@@ -674,8 +672,6 @@ namespace SignalFish.Client.Adapters.Mirror
                 Stage(StagedKind.PeerStopped, route.Value);
             }
 
-            _router.Clear();
-
             bool teardown;
             lock (_gate)
             {
@@ -686,6 +682,14 @@ namespace SignalFish.Client.Adapters.Mirror
             {
                 Teardown("stopped locally");
             }
+
+            /*
+                With a live session the routes stay: the room membership is
+                the router's truth, and a later late server start
+                re-announces it (see MarkServerStarted). Mirror already
+                tore its connections down with the server, so these
+                disconnects are bookkeeping, not a session change.
+            */
         }
 
         /// <inheritdoc />
@@ -737,12 +741,15 @@ namespace SignalFish.Client.Adapters.Mirror
             StagedKind kind,
             int connectionId = 0,
             TransportError error = TransportError.Unexpected,
-            string reason = ""
+            string reason = "",
+            Exception? transportException = null
         )
         {
             lock (_gate)
             {
-                _staged.Enqueue(new StagedEvent(kind, connectionId, error, reason));
+                _staged.Enqueue(
+                    new StagedEvent(kind, connectionId, error, reason, transportException)
+                );
             }
         }
 
@@ -765,14 +772,6 @@ namespace SignalFish.Client.Adapters.Mirror
                 switch (staged.Kind)
                 {
                     case StagedKind.PeerStarted:
-                        lock (_gate)
-                        {
-                            if (!_serverActive)
-                            {
-                                _needsServerAnnounce.Add(staged.ConnectionId);
-                            }
-                        }
-
                         OnServerConnectedWithAddress?.Invoke(
                             staged.ConnectionId,
                             ServerGetClientAddress(staged.ConnectionId)
@@ -780,11 +779,6 @@ namespace SignalFish.Client.Adapters.Mirror
                         break;
 
                     case StagedKind.PeerStopped:
-                        lock (_gate)
-                        {
-                            _needsServerAnnounce.Remove(staged.ConnectionId);
-                        }
-
                         OnServerDisconnected?.Invoke(staged.ConnectionId);
                         break;
 
@@ -803,6 +797,10 @@ namespace SignalFish.Client.Adapters.Mirror
 
                     case StagedKind.ServerError:
                         OnServerError?.Invoke(staged.ConnectionId, staged.Error, staged.Reason);
+                        break;
+
+                    case StagedKind.ClientTransportException:
+                        OnClientTransportException?.Invoke(staged.TransportException!);
                         break;
                 }
             }
@@ -863,7 +861,6 @@ namespace SignalFish.Client.Adapters.Mirror
                 _outbound.Clear();
                 _serverPending.Clear();
                 _clientPending.Clear();
-                _needsServerAnnounce.Clear();
                 StartupError = StartupError ?? reason;
             }
 
@@ -908,7 +905,7 @@ namespace SignalFish.Client.Adapters.Mirror
             catch (Exception ex)
             {
                 UnityEngine.Debug.LogException(ex);
-                OnClientTransportException?.Invoke(ex);
+                Stage(StagedKind.ClientTransportException, transportException: ex);
             }
         }
 
@@ -1559,17 +1556,15 @@ namespace SignalFish.Client.Adapters.Mirror
                 _serverState = SessionSideState.Started;
 
                 /*
-                    Mirror wired its server callbacks in Listen (this is the
-                    late start), so the announces drained before now went
-                    nowhere: re-announce exactly the swallowed peers, once,
-                    now that the handler is live.
+                    Mirror wired its server callbacks in Listen (this is
+                    the late start), so every announce before now drained
+                    into nothing: re-announce the router's membership —
+                    the live room's truth — now that the handler is live.
                 */
-                foreach (int connectionId in _needsServerAnnounce)
+                foreach (KeyValuePair<Guid, int> route in _router.SnapshotRoutes())
                 {
-                    Stage(StagedKind.PeerStarted, connectionId);
+                    Stage(StagedKind.PeerStarted, route.Value);
                 }
-
-                _needsServerAnnounce.Clear();
             }
         }
 
