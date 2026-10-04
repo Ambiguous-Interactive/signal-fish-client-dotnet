@@ -13,8 +13,16 @@ namespace SignalFish.Client.Adapters.FishNet
     using System;
     using System.Collections.Generic;
     using System.Threading.Tasks;
-    using FishNet.Managing;
-    using FishNet.Transporting;
+    /*
+        global:: is load-bearing: the adapter namespace
+        (SignalFish.Client.Adapters.FishNet) is a member of the enclosing
+        SignalFish.Client.Adapters namespace, and enclosing-namespace
+        members win over using directives - plain `using FishNet.*;`
+        would resolve to this package and fail to compile (in Unity too;
+        the lint's shape-stub lane caught it).
+    */
+    using global::FishNet.Managing;
+    using global::FishNet.Transporting;
     using SignalFish.Client;
     using SignalFish.Client.Async;
     using SignalFish.Client.Core;
@@ -55,7 +63,7 @@ namespace SignalFish.Client.Adapters.FishNet
     /// licensed Unity seat; Unity never runs in CI).
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class SignalFishFishNetTransport : Transport
+    public sealed class SignalFishFishNetTransport : global::FishNet.Transporting.Transport
     {
         /// <summary>One frame queued for the relay (an owned copy).</summary>
         private readonly struct OutboundFrame
