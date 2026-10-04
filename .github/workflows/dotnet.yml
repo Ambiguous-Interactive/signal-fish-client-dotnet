@@ -122,6 +122,15 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/lint-webgl-plugin.ps1 -VerboseOutput
 
+      # The FishNet adapter's Transport bridge references an SDK no
+      # compiler here sees (never vendored, Unity never in CI): this step
+      # pins the define-guard contract, compiles the engine-free core as
+      # Unity's floor compiles it, and checks the package plumbing.
+      - name: Lint the FishNet adapter contract
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/lint-fishnet-adapter.ps1 -VerboseOutput
+
       # One restore covers both tool invocations below (CSharpier check and
       # the coverage report).
       - name: Restore pinned tools

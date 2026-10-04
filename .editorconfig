@@ -95,6 +95,16 @@ dotnet_diagnostic.CA1711.severity = none
 [src/SignalFish.Client/Core/QueueRead.cs]
 dotnet_diagnostic.CA1815.severity = none
 
+# FishNet adapter conventions (scoped to unity/Adapters/FishNet/Runtime/Core/
+# — the pure adapter logic also compiles inside the dotnet test suite):
+# - CA1028 (enums should be Int32): FishNetFrameRoute is byte-backed to stay
+#   dense inside transport frames (same rationale as the Protocol enums).
+# - CA1815 (override Equals/== on public structs): HostLoopbackFrame is a
+#   transport-queue payload that is never compared.
+[unity/Adapters/FishNet/Runtime/Core/*.cs]
+dotnet_diagnostic.CA1028.severity = none
+dotnet_diagnostic.CA1815.severity = none
+
 # Async-client conventions (scoped to src/SignalFish.Client/Async/):
 # - CA1031: best-effort teardown paths (send failures, receive faults,
 #   disposal) must swallow anything — a dead wire can fault with any

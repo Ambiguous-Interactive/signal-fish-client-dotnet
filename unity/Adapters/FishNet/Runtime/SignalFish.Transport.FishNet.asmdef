@@ -1,0 +1,20 @@
+{
+    "name": "SignalFish.Transport.FishNet",
+    "rootNamespace": "SignalFish.Client.Adapters.FishNet",
+    "references": ["SignalFish.Client", "FishNet.Runtime"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": ["SIGNALFISH_FISHNET"],
+    "versionDefines": [
+        {
+            "name": "com.firstgeargames.fishnet",
+            "expression": "4.0.0",
+            "define": "SIGNALFISH_FISHNET"
+        }
+    ],
+    "noEngineReferences": false
+}

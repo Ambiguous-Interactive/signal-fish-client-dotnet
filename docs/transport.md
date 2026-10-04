@@ -49,3 +49,12 @@ The plugin queues incoming frames on the JavaScript side and the
 transport polls them, because a browser page has no threads; that bounds
 receive throughput at the poll cadence, which is fine for signaling.
 See [WebGL](webgl.md) for usage and limits.
+
+## Engine bridges
+
+Not every engine integration is an `ITransport`: an engine with its own
+netcode wants Signal Fish *under* that netcode, not beside it. The
+[FishNet transport](adapters/fishnet.md) is the first of these bridges —
+a FishNet `Transport` implementation whose wire is the room's v3 binary
+game-data lane — shipped as a separate adapter package rather than part
+of the SDK.

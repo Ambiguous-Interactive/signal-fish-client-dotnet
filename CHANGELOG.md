@@ -8,6 +8,18 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- FishNet adapter (M8.1): a new UPM package,
+  `com.ambiguous-interactive.signalfish.transport.fishnet`, ships
+  `SignalFishFishNetTransport` — a FishNet `Transport` whose wire is a
+  Signal Fish room's v3 binary game-data lane. The room authority plays
+  the FishNet server, members play clients, and the adapter's receive
+  rules turn the broadcast relay into FishNet's star topology; host-mode
+  loopback, per-peer fanout, and a derived MTU are included. The pure
+  core (header, routing, receive rules, MTU, loopback) runs in the dotnet
+  test suite; the `lint-fishnet-adapter` CI gate pins the compile-only-
+  with-FishNet guard, the `versionDefines` pin, and the bridge's member
+  completeness. Live Unity validation stays the M8.7 runbook item (Unity
+  never runs in CI).
 - WebGL reference transport (M7.3): the Unity package now ships a
   browser-WebSocket `ITransport` for WebGL builds in
   `Plugins/SignalFishWebGL/` (`SignalFishWebGLTransport` +
