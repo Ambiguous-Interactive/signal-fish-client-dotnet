@@ -46,11 +46,13 @@
          where one exists, package name) the asmdef pins - the two
          activation mechanisms can never drift apart.
       7. Bridge completeness: the bridge file must carry every member of
-         the pinned engine Transport surface, route frames through the
-         shared AdapterWire header, and restate the pinned engine
-         channel bytes - a dropped override, a local header copy, or a
-         renumbered engine channel is a runtime miss in the editor,
-         invisible to every compiler here.
+         the pinned engine surface, route frames through the package's
+         pinned shared-wire reference (AdapterWire for a transport
+         bridge, the shared approval payload for the NGO coordinator),
+         and, where the engine has channel ids, restate the pinned
+         channel bytes - a dropped override, a local header or payload
+         copy, or a renumbered engine channel is a runtime miss in the
+         editor, invisible to every compiler here.
 
 .PARAMETER Adapter
     One package name (Core, FishNet, Mirror), or omit to lint all.
@@ -67,7 +69,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Core', 'FishNet', 'Mirror')]
+    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo')]
     [string]$Adapter,
     [string]$RepoRoot,
     [switch]$NoBuild,
@@ -81,11 +83,14 @@ if (-not $RepoRoot) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 
-# The per-package pins. Transport member surfaces are name lists in the
+# The per-package pins. Engine member surfaces are name lists in the
 # engine's own spelling; the compile checks keep the cores honest. The
-# channel pin restates the engine's delivery ids at the pinned engine
-# version - the shared header's channel bytes double as engine channel
-# ids, so a renumber must be re-verified against the engine source.
+# wire pin names the shared-core type the bridge must route frames (or
+# approval payloads) through. The channel pin restates the engine's
+# delivery ids at the pinned engine version - the shared header's
+# channel bytes double as engine channel ids, so a renumber must be
+# re-verified against the engine source; a coordinator with no engine
+# channel mapping (Ngo) carries none.
 $sharedCore = @{
     Root = 'unity/Adapters/Core'
     SharedTypes = @(
@@ -101,9 +106,11 @@ $adapters = @{
         Root = 'unity/Adapters/FishNet'
         Define = 'SIGNALFISH_FISHNET'
         SdkNamespace = 'FishNet'
+        SdkReferencePattern = '(^|[^\w.])FishNet\.'
         SdkReference = 'FishNet.Runtime'
         CoreReference = 'SignalFish.Adapters.Core'
         CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+        WirePin = 'AdapterWire.'
         ChannelPin = 'Channel.Reliable = 0, Channel.Unreliable = 1'
         PackagePin = 'com.firstgeargames.fishnet'
         PackageExpression = '4.0.0'
@@ -137,9 +144,11 @@ $adapters = @{
         Root = 'unity/Adapters/Mirror'
         Define = 'SIGNALFISH_MIRROR'
         SdkNamespace = 'Mirror'
+        SdkReferencePattern = '(^|[^\w.])Mirror(\.[A-Za-z_]|;)'
         SdkReference = 'Mirror'
         CoreReference = 'SignalFish.Adapters.Core'
         CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+        WirePin = 'AdapterWire.'
         ChannelPin = 'Channels.Reliable = 0, Channels.Unreliable = 1'
         PackagePin = $null
         PackageExpression = $null
@@ -176,6 +185,45 @@ $adapters = @{
             'OnServerDataSent',
             'OnServerError',
             'OnServerDisconnected'
+        )
+    }
+    Ngo = @{
+        Root = 'unity/Adapters/Ngo'
+        Define = 'SIGNALFISH_NGO'
+        SdkNamespace = 'Unity.Netcode'
+        SdkReferencePattern = '(^|[^\w.])Unity\.Netcode(\.[A-Za-z_]|;)'
+        SdkReference = 'Unity.Netcode.Runtime'
+        CoreReference = 'SignalFish.Adapters.Core'
+        CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+
+        # The coordinator is not a transport bridge: it never frames
+        # engine payloads, so there is no engine channel pin. Its wire
+        # surface is the shared-core approval payload (the relay's
+        # RFC-4122 UUID spelling), which the bridge must go through
+        # rather than hand-rolling.
+        WirePin = 'ConnectionApprovalPayload.'
+        ChannelPin = $null
+        PackagePin = 'com.unity.netcode.gameobjects'
+        PackageExpression = '1.2.0'
+        BridgeFile = 'SignalFishRoomCoordinator.cs'
+        DetectorFile = 'SignalFishNgoDefineDetector.cs'
+        DetectorProbes = @('Unity.Netcode.Runtime', 'com.unity.netcode.gameobjects')
+        PinnedMembers = @(
+            'Singleton',
+            'ConnectionApprovalCallback',
+            'ConnectionApprovalRequest',
+            'ConnectionApprovalResponse',
+            'StartHost',
+            'StartClient',
+            'Shutdown',
+            'IsServer',
+            'IsClient',
+            'NetworkConfig',
+            'ConnectionData',
+            'Payload',
+            'Approved',
+            'Reason',
+            'CreatePlayerObject'
         )
     }
 }
@@ -472,10 +520,8 @@ function Invoke-AdapterLint {
     #    The guard check is per-line and region-aware: only text outside
     #    `#if <define>` regions can violate, so a file guarded somewhere
     #    but not everywhere still fails.
-    $referencePattern =
-        if ($Pin.SdkNamespace -eq 'FishNet') { '(^|[^\w.])FishNet\.' }
-        else { '(^|[^\w.])Mirror(\.[A-Za-z_]|;)' }
-    $namespacePattern = "namespace\s+$($Pin.SdkNamespace)\b"
+    $referencePattern = $Pin.SdkReferencePattern
+    $namespacePattern = "namespace\s+$([regex]::Escape($Pin.SdkNamespace))\b"
 
     foreach ($source in $sourceFiles) {
         $relative = Get-RelativePath -Base $Base -Path $source
@@ -521,12 +567,12 @@ function Invoke-AdapterLint {
             }
         }
 
-        if ($bridgeText -notmatch 'AdapterWire\.') {
+        if ($bridgeText -notmatch [regex]::Escape($Pin.WirePin)) {
             $violations.Add(
-                "$($Pin.BridgeFile) : routes no frames through the shared AdapterWire header - a local header copy forks the adapter wire format.")
+                "$($Pin.BridgeFile) : does not route frames through the shared wire pin '$($Pin.WirePin)' - a local header or payload copy forks the adapter wire format.")
         }
 
-        if ($bridgeText -notmatch [regex]::Escape($Pin.ChannelPin)) {
+        if ($null -ne $Pin.ChannelPin -and $bridgeText -notmatch [regex]::Escape($Pin.ChannelPin)) {
             $violations.Add(
                 "$($Pin.BridgeFile) : does not restate the engine channel pin '$($Pin.ChannelPin)' - the shared header's channel bytes double as engine channel ids, so a renumber must be re-verified against the pinned engine source.")
         }

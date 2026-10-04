@@ -9,6 +9,43 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-04 - session 042: M8.3 NGO coordinator (third-entry lint generalization + floor-portable core)
+
+- Trigger: the reflect-improve loop after authoring the third adapter
+  package (the NGO + Relay coordinator).
+- Evidence: (1) the adapter lint's SDK reference pattern was a
+  FishNet/Mirror if/else — a third adapter would have been silently
+  linted with the Mirror pattern (false negatives, no failure shape);
+  generalized to a pin field before it could misfire. (2) `string.Create`
+  with a span state compiled on net10.0 and failed CS9244 on net8.0 —
+  pure-core sources ride the oldest supported floor, and only the
+  multi-TFM test suite catches newest-framework-only API shapes. (3)
+  Writing the consumer sample exposed a real API race (a synchronous
+  binder hook vs an inherently async Unity Relay join) that the runtime
+  API review had missed; the sample is the cheapest API reviewer for
+  hook-shaped surfaces. (4) the adversarial review pass verified the
+  NGO bridge against NGO's own 1.2.0 source and found the approval gate
+  dead: `NetworkConfig.ConnectionApproval` gates the whole mechanism
+  (without it the host auto-approves everything and the client never
+  sends ConnectionData), the callback setter throws on a two-target
+  delegate (so `+=` breaks every restart), and `StartHost/StartClient`
+  report refusal as `false` + a log, not an exception.
+- Findings: generalize lint pins when the second consumer becomes a
+  third; avoid newest-framework-only API shapes in sources that must
+  compile on older floors; author the sample call sites first when an
+  adapter API is hook-shaped; engine-gated sources need their feature
+  flags verified against the engine's actual source — presence of the
+  callback is not activation, and restart cycles break on engine-side
+  state the adapter never clears.
+- Applied: `SdkReferencePattern`/`WirePin` pin fields + optional
+  channel pin + fixture lane (72 assertions); the envelope decode
+  rewritten to `Encoding.ASCII.GetString`; the client Relay binder
+  contract became `Func<string, Task>`, awaited before the NGO client
+  start stages; the approval flag, host self-payload, callback
+  assignment, and start-result checks all landed with the adversarial
+  round.
+- Open: none.
+
 ## 2026-10-04 - session 041: #83 adapter-core hoist (PowerShell strict-mode JSON)
 
 - Trigger: the #83 shared-core hoist rewrote `lint-unity-adapter.ps1`'s
