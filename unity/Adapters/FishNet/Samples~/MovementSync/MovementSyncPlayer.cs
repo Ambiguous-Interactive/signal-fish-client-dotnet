@@ -14,8 +14,15 @@
 */
 namespace SignalFish.Client.Adapters.FishNet.Samples
 {
-    using FishNet.Object;
-    using FishNet.Transporting;
+    /*
+        global:: is load-bearing: the enclosing SignalFish.Client.Adapters
+        namespace has a member named FishNet (this package), and
+        enclosing-namespace members win over using directives - plain
+        `using FishNet.*;` would resolve to this package and fail to
+        compile (in Unity too; the lint's shape-stub lane caught it).
+    */
+    using global::FishNet.Object;
+    using global::FishNet.Transporting;
     using UnityEngine;
 
     /// <summary>

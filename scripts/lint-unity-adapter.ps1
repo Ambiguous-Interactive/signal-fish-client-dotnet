@@ -177,6 +177,354 @@ namespace Unity.Netcode
 }
 '@
 
+# Shape stubs for the FishNet bridge compile lane: the pinned member
+# surface the transport bridge touches, spelled the way the bridge uses
+# it. This is NOT the engine - it is the compile contract the lint
+# enforces, and a stub drift is a lint failure by design (the
+# PinnedMembers table is what guards the real engine's shape).
+$fishNetBridgeStubs = @'
+// Shape stubs (UnityEngine / FishNet.Managing / FishNet.Transporting
+// surface the bridge touches). The engine SDK is never vendored or
+// referenced in CI.
+#nullable enable
+namespace UnityEngine
+{
+    public class MonoBehaviour { }
+
+    public sealed class SerializeFieldAttribute : System.Attribute { }
+
+    public sealed class HeaderAttribute : System.Attribute
+    {
+        public HeaderAttribute(string header) { }
+    }
+
+    public sealed class TooltipAttribute : System.Attribute
+    {
+        public TooltipAttribute(string tooltip) { }
+    }
+
+    public sealed class DisallowMultipleComponentAttribute : System.Attribute { }
+
+    public static class Debug
+    {
+        public static void LogError(object message) { }
+
+        public static void LogWarning(object message) { }
+
+        public static void LogException(System.Exception exception) { }
+    }
+}
+
+namespace FishNet.Managing
+{
+    public partial class NetworkManager : UnityEngine.MonoBehaviour { }
+
+    // The bridge logs through FishNet's extension spelling.
+    public static class NetworkManagerExtensions
+    {
+        public static void LogWarning(this NetworkManager networkManager, string message) { }
+    }
+}
+
+namespace FishNet.Transporting
+{
+    // Real shapes, pinned against the FishNet 4.x source (the channel
+    // bytes double as the shared header's channel ids: Channel.Reliable
+    // = 0, Channel.Unreliable = 1 - the channel pin restates these
+    // against the pinned engine version).
+    [System.Flags]
+    public enum LocalConnectionState : int
+    {
+        Stopped = 1 << 0,
+        Stopping = 1 << 1,
+        Starting = 1 << 2,
+        Started = 1 << 3,
+    }
+
+    public enum RemoteConnectionState : byte
+    {
+        Stopped = 0,
+        Started = 2,
+    }
+
+    public enum Channel : byte
+    {
+        Reliable = 0,
+        Unreliable = 1,
+    }
+
+    public struct ClientConnectionStateArgs
+    {
+        public ClientConnectionStateArgs(
+            LocalConnectionState connectionState,
+            int transportIndex
+        ) { }
+    }
+
+    public struct ServerConnectionStateArgs
+    {
+        public ServerConnectionStateArgs(
+            LocalConnectionState connectionState,
+            int transportIndex
+        ) { }
+    }
+
+    public struct RemoteConnectionStateArgs
+    {
+        public RemoteConnectionStateArgs(
+            RemoteConnectionState connectionState,
+            int connectionId,
+            int transportIndex
+        ) { }
+    }
+
+    public struct ClientReceivedDataArgs
+    {
+        public ClientReceivedDataArgs(
+            System.ArraySegment<byte> data,
+            Channel channel,
+            int transportIndex
+        ) { }
+    }
+
+    public struct ServerReceivedDataArgs
+    {
+        public ServerReceivedDataArgs(
+            System.ArraySegment<byte> data,
+            Channel channel,
+            int connectionId,
+            int transportIndex
+        ) { }
+    }
+
+    // The real engine declares the events and methods abstract (oblivious
+    // nullability); the nullable annotations match the bridge's overrides
+    // so the lane stays strict. An abstract member the bridge drops is a
+    // compile failure here - the same failure the editor would show.
+    public abstract class Transport : UnityEngine.MonoBehaviour
+    {
+        public global::FishNet.Managing.NetworkManager NetworkManager { get; private set; } =
+            null!;
+
+        public int Index { get; private set; }
+
+        public virtual void Initialize(
+            global::FishNet.Managing.NetworkManager networkManager,
+            int transportIndex
+        )
+        {
+            NetworkManager = networkManager;
+            Index = transportIndex;
+        }
+
+        public abstract event System.Action<ClientConnectionStateArgs>? OnClientConnectionState;
+
+        public abstract event System.Action<ServerConnectionStateArgs>? OnServerConnectionState;
+
+        public abstract event System.Action<RemoteConnectionStateArgs>? OnRemoteConnectionState;
+
+        public abstract event System.Action<ClientReceivedDataArgs>? OnClientReceivedData;
+
+        public abstract event System.Action<ServerReceivedDataArgs>? OnServerReceivedData;
+
+        public abstract void HandleClientConnectionState(
+            ClientConnectionStateArgs connectionStateArgs
+        );
+
+        public abstract void HandleServerConnectionState(
+            ServerConnectionStateArgs connectionStateArgs
+        );
+
+        public abstract void HandleRemoteConnectionState(
+            RemoteConnectionStateArgs connectionStateArgs
+        );
+
+        public abstract void HandleClientReceivedDataArgs(
+            ClientReceivedDataArgs receivedDataArgs
+        );
+
+        public abstract void HandleServerReceivedDataArgs(
+            ServerReceivedDataArgs receivedDataArgs
+        );
+
+        public abstract LocalConnectionState GetConnectionState(bool server);
+
+        public abstract RemoteConnectionState GetConnectionState(int connectionId);
+
+        public abstract string GetConnectionAddress(int connectionId);
+
+        public abstract int GetMTU(byte channel);
+
+        public virtual bool IsLocalTransport(int connectionId) => false;
+
+        public abstract bool StartConnection(bool server);
+
+        public abstract bool StopConnection(bool server);
+
+        public abstract bool StopConnection(int connectionId, bool immediately);
+
+        public abstract void Shutdown();
+
+        public abstract void SendToServer(byte channelId, System.ArraySegment<byte> segment);
+
+        public abstract void SendToClient(
+            byte channelId,
+            System.ArraySegment<byte> segment,
+            int connectionId
+        );
+
+        public abstract void IterateIncoming(bool asServer);
+
+        public abstract void IterateOutgoing(bool asServer);
+    }
+}
+'@
+
+# Shape stubs for the Mirror bridge compile lane: the pinned member
+# surface the transport bridge and the room-manager bootstrap touch.
+# Same contract as the FishNet stubs above.
+$mirrorBridgeStubs = @'
+// Shape stubs (UnityEngine / Mirror surface the bridge and the room
+// manager touch). The engine SDK is never vendored or referenced in CI.
+#nullable enable
+namespace UnityEngine
+{
+    public class MonoBehaviour { }
+
+    public sealed class SerializeFieldAttribute : System.Attribute { }
+
+    public sealed class HeaderAttribute : System.Attribute
+    {
+        public HeaderAttribute(string header) { }
+    }
+
+    public sealed class TooltipAttribute : System.Attribute
+    {
+        public TooltipAttribute(string tooltip) { }
+    }
+
+    public sealed class DisallowMultipleComponentAttribute : System.Attribute { }
+
+    public static class Debug
+    {
+        public static void LogError(object message) { }
+
+        public static void LogWarning(object message) { }
+
+        public static void LogException(System.Exception exception) { }
+    }
+}
+
+namespace Mirror
+{
+    // Real shapes, pinned against the Mirror v96.9.x source (the channel
+    // ids double as the shared header's channel bytes: Channels.Reliable
+    // = 0, Channels.Unreliable = 1 - the channel pin restates these
+    // against the pinned engine version).
+    public static class Channels
+    {
+        public const int Reliable = 0;
+
+        public const int Unreliable = 1;
+    }
+
+    public enum TransportError : byte
+    {
+        DnsResolve,
+        Refused,
+        Timeout,
+        Congestion,
+        InvalidReceive,
+        InvalidSend,
+        ConnectionClosed,
+        Unexpected,
+    }
+
+    public class NetworkManager
+    {
+        public string networkAddress = "localhost";
+
+        public void StartHost() { }
+
+        public void StartClient() { }
+    }
+
+    // The real engine's callbacks are plain public Action fields (not
+    // `event`s - transports raise them directly), and its abstract
+    // methods are oblivious under Unity's default nullable settings; the
+    // nullable annotations here match the bridge's overrides so the lane
+    // stays strict. A member the bridge touches wrongly is a compile
+    // failure here - the same failure the editor would show.
+    public abstract class Transport : UnityEngine.MonoBehaviour
+    {
+        public System.Action? OnClientConnected;
+
+        public System.Action<System.ArraySegment<byte>, int>? OnClientDataReceived;
+
+        public System.Action<System.ArraySegment<byte>, int>? OnClientDataSent;
+
+        public System.Action<TransportError, string>? OnClientError;
+
+        public System.Action? OnClientDisconnected;
+
+        public System.Action<System.Exception>? OnClientTransportException;
+
+        public System.Action<int, string>? OnServerConnectedWithAddress;
+
+        public System.Action<int, System.ArraySegment<byte>, int>? OnServerDataReceived;
+
+        public System.Action<int, System.ArraySegment<byte>, int>? OnServerDataSent;
+
+        public System.Action<int, TransportError, string>? OnServerError;
+
+        public System.Action<int>? OnServerDisconnected;
+
+        public abstract bool Available();
+
+        public abstract System.Uri ServerUri();
+
+        public abstract bool ServerActive();
+
+        public abstract bool ClientConnected();
+
+        public abstract void ClientConnect(string address);
+
+        public abstract void ClientSend(
+            System.ArraySegment<byte> segment,
+            int channelId = Channels.Reliable
+        );
+
+        public abstract void ClientDisconnect();
+
+        public abstract void ServerStart();
+
+        public abstract void ServerSend(
+            int connectionId,
+            System.ArraySegment<byte> segment,
+            int channelId = Channels.Reliable
+        );
+
+        public abstract void ServerDisconnect(int connectionId);
+
+        public abstract string ServerGetClientAddress(int connectionId);
+
+        public abstract void ServerStop();
+
+        public abstract int GetMaxPacketSize(int channelId = Channels.Reliable);
+
+        public abstract void Shutdown();
+
+        public virtual void ClientEarlyUpdate() { }
+
+        public virtual void ServerEarlyUpdate() { }
+
+        public virtual void ClientLateUpdate() { }
+
+        public virtual void ServerLateUpdate() { }
+    }
+}
+'@
+
 $adapters = @{
     FishNet = @{
         Root = 'unity/Adapters/FishNet'
@@ -191,6 +539,8 @@ $adapters = @{
         PackagePin = 'com.firstgeargames.fishnet'
         PackageExpression = '4.0.0'
         BridgeFile = 'SignalFishFishNetTransport.cs'
+        BridgeCompile = $true
+        BridgeStubs = $fishNetBridgeStubs
         DetectorFile = 'SignalFishFishNetDefineDetector.cs'
         DetectorProbes = @('FishNet.Runtime', 'com.firstgeargames.fishnet')
         PinnedMembers = @(
@@ -229,6 +579,8 @@ $adapters = @{
         PackagePin = $null
         PackageExpression = $null
         BridgeFile = 'SignalFishMirrorTransport.cs'
+        BridgeCompile = $true
+        BridgeStubs = $mirrorBridgeStubs
         DetectorFile = 'SignalFishMirrorDefineDetector.cs'
         DetectorProbes = @('"Mirror"')
         PinnedMembers = @(

@@ -304,6 +304,17 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Fixed
 
+- The Mirror and FishNet adapter sources (bridges and samples) now compile:
+  every `using Mirror;` / `using FishNet.*;` and the `Transport` base-class
+  spellings are `global::`-qualified. The adapter namespaces
+  (`SignalFish.Client.Adapters.Mirror` / `.FishNet`) shadowed the engine
+  namespaces for using-directives, and the client's
+  `SignalFish.Client.Transport` namespace shadowed the `Transport` base
+  class — compile blockers that only ever surfaced in a consumer's Unity
+  editor. The new shape-stub bridge-compile lane (`lint-unity-adapter`),
+  which type-checks all three engine-gated adapters at the netstandard2.1
+  floor on every CI run, caught the three Runtime sources on its first
+  run; the same-class sweep fixed the two `Samples~` drivers.
 - Room-snapshot rosters (`PlayerInfo`/`SpectatorInfo.ConnectedAt`) decode
   when the server omits `connected_at` — which it always does on negotiated
   v3 connections. Previously every v3 room join failed to decode and the

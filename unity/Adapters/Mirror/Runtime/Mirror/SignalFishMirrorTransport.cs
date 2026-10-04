@@ -14,7 +14,18 @@ namespace SignalFish.Client.Adapters.Mirror
     using System;
     using System.Collections.Generic;
     using System.Threading.Tasks;
-    using Mirror;
+    /*
+        global:: is load-bearing: the adapter namespace
+        (SignalFish.Client.Adapters.Mirror) is a member of the enclosing
+        SignalFish.Client.Adapters namespace, and enclosing-namespace
+        members win over using directives - plain `using Mirror;` would
+        resolve to this package and fail to compile (in Unity too; the
+        lint's shape-stub lane caught it). The same rule shadows the
+        base class: SignalFish.Client.Transport is a namespace member of
+        SignalFish.Client, so the base must be spelled
+        global::Mirror.Transport.
+    */
+    using global::Mirror;
     using SignalFish.Client;
     using SignalFish.Client.Async;
     using SignalFish.Client.Core;
@@ -58,7 +69,7 @@ namespace SignalFish.Client.Adapters.Mirror
     /// licensed Unity seat; Unity never runs in CI).
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class SignalFishMirrorTransport : Transport
+    public sealed class SignalFishMirrorTransport : global::Mirror.Transport
     {
         /// <summary>One frame queued for the relay (an owned copy).</summary>
         private readonly struct OutboundFrame

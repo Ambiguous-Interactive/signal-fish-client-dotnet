@@ -7,7 +7,14 @@
 namespace SignalFish.Client.Adapters.Mirror
 {
     using System;
-    using Mirror;
+    /*
+        global:: is load-bearing: the adapter namespace
+        (SignalFish.Client.Adapters.Mirror) is a member of the enclosing
+        SignalFish.Client.Adapters namespace, and enclosing-namespace
+        members win over using directives - plain `using Mirror;` would
+        resolve to this package and fail to compile (in Unity too).
+    */
+    using global::Mirror;
     using UnityEngine;
 
     /// <summary>
