@@ -1,0 +1,14 @@
+{
+    "name": "SignalFish.Transport.Mirror.Editor",
+    "rootNamespace": "SignalFish.Client.Adapters.Mirror.Editor",
+    "references": [],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

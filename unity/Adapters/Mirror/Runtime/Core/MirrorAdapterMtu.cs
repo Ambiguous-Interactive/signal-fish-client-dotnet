@@ -1,20 +1,20 @@
 #nullable enable
-namespace SignalFish.Client.Adapters.FishNet
+namespace SignalFish.Client.Adapters.Mirror
 {
     using System;
 
     /// <summary>
-    /// The FishNet-visible MTU the adapter reports. The binding constraint
+    /// The Mirror-visible MTU the adapter reports. The binding constraint
     /// is the adapter's own inbound contract: <c>maxFrameBytes</c> (the
     /// client's inbound physical-frame bound, 64 KiB by default) must hold
     /// for the relayed frame whose payload is the adapter header plus the
-    /// FishNet segment. The reserve covers the strict MessagePack map the
+    /// Mirror segment. The reserve covers the strict MessagePack map the
     /// server wraps around every relayed payload — <c>from_player</c>,
     /// <c>encoding</c>, <c>seq</c>, <c>epoch</c>, and the payload bin
     /// headers — with margin, so a segment at the reported MTU can never
     /// produce an inbound frame above the bound on any recipient.
     /// </summary>
-    public static class FishNetAdapterMtu
+    public static class MirrorAdapterMtu
     {
         /// <summary>
         /// The per-frame bytes held back from the client's inbound frame
@@ -23,7 +23,7 @@ namespace SignalFish.Client.Adapters.FishNet
         public const int WireReserve = 256;
 
         /// <summary>
-        /// Computes the largest FishNet segment the adapter can carry for
+        /// Computes the largest Mirror segment the adapter can carry for
         /// one frame. Throws <see cref="ArgumentOutOfRangeException"/> when
         /// the frame bound cannot even fit the reserve — the caller's
         /// start path validates the bound first so a misconfigured client

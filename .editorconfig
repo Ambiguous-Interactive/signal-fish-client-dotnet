@@ -105,6 +105,14 @@ dotnet_diagnostic.CA1815.severity = none
 dotnet_diagnostic.CA1028.severity = none
 dotnet_diagnostic.CA1815.severity = none
 
+# Mirror adapter conventions (scoped to unity/Adapters/Mirror/Runtime/Core/
+# — the pure adapter logic also compiles inside the dotnet test suite):
+# - CA1028 (enums should be Int32): MirrorFrameRoute is byte-backed, the
+#   mechanical twin of FishNetFrameRoute (same rationale as the Protocol
+#   enums).
+[unity/Adapters/Mirror/Runtime/Core/*.cs]
+dotnet_diagnostic.CA1028.severity = none
+
 # Async-client conventions (scoped to src/SignalFish.Client/Async/):
 # - CA1031: best-effort teardown paths (send failures, receive faults,
 #   disposal) must swallow anything — a dead wire can fault with any

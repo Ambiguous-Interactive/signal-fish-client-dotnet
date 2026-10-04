@@ -2,7 +2,7 @@
     "name": "com.ambiguous-interactive.signalfish.transport.fishnet",
     "version": "0.1.0",
     "displayName": "Signal Fish Transport for FishNet",
-    "description": "FishNet transport bridge over a Signal Fish room: the room authority plays the FishNet server, members play clients, and game traffic rides the v3 binary relay lane. Requires the FishNet package (git URL install) and com.ambiguous-interactive.signalfish.",
+    "description": "FishNet transport bridge over a Signal Fish room: the room authority plays the FishNet server, members play clients, and game traffic rides the v3 binary relay lane. Requires the FishNet asset (git URL install or vendored under Assets/; detected by versionDefines or the included editor define detector) and com.ambiguous-interactive.signalfish.",
     "unity": "2021.2",
     "license": "MIT",
     "documentationUrl": "https://ambiguous-interactive.github.io/signal-fish-client-dotnet/adapters/fishnet/",

@@ -38,6 +38,17 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- The Mirror adapter's pure core (unity/Adapters/Mirror/
+             Runtime/Core) is engine- and Mirror-free C#, so the dotnet
+             test suite compiles and exercises it directly; the contract
+             lint pins the same sources against the Unity compile shape. -->
+        <Compile
+            Include="..\..\unity\Adapters\Mirror\Runtime\Core\**\*.cs"
+            LinkBase="Adapters\Mirror\Core"
+        />
+    </ItemGroup>
+
+    <ItemGroup>
         <!-- Golden protocol fixtures (tests/Golden, vendored by
              scripts/sync-protocol-fixtures.ps1) travel with the test output. -->
         <Content
