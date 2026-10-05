@@ -96,12 +96,16 @@ namespace SignalFish.Client.Tests.Async
                 "the fresh connection starts from a clean machine"
             );
 
-            await WaitForAsync(
-                () =>
-                    second.SentText.Count >= 1
-                    && second.SentText[0]
-                        == "{\"type\": \"Authenticate\", \"data\": {\"sdk_version\": \"0.1.0\", \"platform\": \"dotnet\"}}",
+            await WaitForSentTextAsync(
+                second,
+                1,
                 "the driver re-authenticates the fresh connection"
+            );
+            Assert.That(
+                second.SentText[0],
+                Is.EqualTo(
+                    "{\"type\": \"Authenticate\", \"data\": {\"sdk_version\": \"0.1.0\", \"platform\": \"dotnet\"}}"
+                )
             );
             EnqueueGolden(second, "Authenticated");
             Assert.That(
@@ -109,10 +113,7 @@ namespace SignalFish.Client.Tests.Async
                 Is.EqualTo(PollEventKind.Authenticated)
             );
 
-            await WaitForAsync(
-                () => second.SentText.Count >= 2,
-                "the retained seat is reclaimed automatically"
-            );
+            await WaitForSentTextAsync(second, 2, "the retained seat is reclaimed automatically");
             Assert.That(
                 second.SentText[1],
                 Is.EqualTo(ExpectedReconnectFrame("seat-token-1")),
@@ -233,7 +234,7 @@ namespace SignalFish.Client.Tests.Async
                 (await NextEventAsync(client)).Kind,
                 Is.EqualTo(PollEventKind.TransportReady)
             );
-            await WaitForAsync(() => second.SentText.Count >= 1, "auto-authenticate on the wire");
+            await WaitForSentTextAsync(second, 1, "auto-authenticate on the wire");
             EnqueueGolden(second, "Authenticated");
             Assert.That(
                 (await NextEventAsync(client)).Kind,
@@ -348,7 +349,7 @@ namespace SignalFish.Client.Tests.Async
             TaskCompletionSource<bool> wire = new TaskCompletionSource<bool>();
             first.HoldSendsUntil(wire);
             Assert.That(client.SendGameData(Payload(0)).Accepted, Is.True);
-            await WaitForAsync(() => first.SentText.Count >= 3, "first relay parks mid-send");
+            await WaitForSentTextAsync(first, 3, "first relay parks mid-send");
             Assert.That(
                 client.SendGameData(Payload(1)).Accepted,
                 Is.True,
@@ -671,10 +672,7 @@ namespace SignalFish.Client.Tests.Async
             FakeTransport second = factory.Last!;
             await NextEventAsync(client); // TransportReady
 
-            await WaitForAsync(
-                () => second.SentText.Count >= 1,
-                "the fresh round re-authenticates"
-            );
+            await WaitForSentTextAsync(second, 1, "the fresh round re-authenticates");
             Assert.That(
                 second.SentText[0],
                 Is.EqualTo(
@@ -721,10 +719,7 @@ namespace SignalFish.Client.Tests.Async
             FakeTransport second = factory.Last!;
             await NextEventAsync(client); // TransportReady
 
-            await WaitForAsync(
-                () => second.SentText.Count >= 1,
-                "the fresh round re-authenticates"
-            );
+            await WaitForSentTextAsync(second, 1, "the fresh round re-authenticates");
             Assert.That(
                 second.SentText[0],
                 Is.EqualTo(
@@ -764,10 +759,7 @@ namespace SignalFish.Client.Tests.Async
             FakeTransport second = factory.Last!;
             await NextEventAsync(client); // TransportReady
 
-            await WaitForAsync(
-                () => second.SentText.Count >= 1,
-                "the fresh round re-authenticates"
-            );
+            await WaitForSentTextAsync(second, 1, "the fresh round re-authenticates");
             Assert.That(second.SentText[0], Does.Contain("\"game_data_format\": \"message_pack\""));
             await client.DisposeAsync();
         }
@@ -915,8 +907,9 @@ namespace SignalFish.Client.Tests.Async
                 (await NextEventAsync(client)).Kind,
                 Is.EqualTo(PollEventKind.TransportReady)
             );
-            await WaitForAsync(
-                () => second.SentText.Count >= 1,
+            await WaitForSentTextAsync(
+                second,
+                1,
                 "auto-authenticate occupies the capacity-1 queue"
             );
 
@@ -933,8 +926,9 @@ namespace SignalFish.Client.Tests.Async
                 Is.EqualTo(PollEventKind.Authenticated)
             );
 
-            await WaitForAsync(
-                () => second.SentText.Count >= 3,
+            await WaitForSentTextAsync(
+                second,
+                3,
                 "the reclaim retries after the queue drains and reaches the wire"
             );
             Assert.That(
@@ -1009,10 +1003,7 @@ namespace SignalFish.Client.Tests.Async
                 (await NextEventAsync(client)).Kind,
                 Is.EqualTo(PollEventKind.TransportReady)
             );
-            await WaitForAsync(
-                () => second.SentText.Count >= 1,
-                "auto-authenticate on the round-2 wire"
-            );
+            await WaitForSentTextAsync(second, 1, "auto-authenticate on the round-2 wire");
 
             second.EnqueueClose(4003);
             second.Abort();
@@ -1029,14 +1020,15 @@ namespace SignalFish.Client.Tests.Async
                 (await NextEventAsync(client)).Kind,
                 Is.EqualTo(PollEventKind.TransportReady)
             );
-            await WaitForAsync(() => third.SentText.Count >= 1, "round 3 auto-authenticates");
+            await WaitForSentTextAsync(third, 1, "round 3 auto-authenticates");
             EnqueueGolden(third, "Authenticated");
             Assert.That(
                 (await NextEventAsync(client)).Kind,
                 Is.EqualTo(PollEventKind.Authenticated)
             );
-            await WaitForAsync(
-                () => third.SentText.Count >= 2,
+            await WaitForSentTextAsync(
+                third,
+                2,
                 "round 3 reclaims the retained seat once authenticated"
             );
             Assert.That(
@@ -1102,10 +1094,7 @@ namespace SignalFish.Client.Tests.Async
                 if (delivered.GetValueOrDefault().Kind == PollEventKind.TransportReady)
                 {
                     wire = factory.Last!;
-                    await WaitForAsync(
-                        () => wire.SentText.Count >= 1,
-                        "auto-authenticate on the round wire"
-                    );
+                    await WaitForSentTextAsync(wire, 1, "auto-authenticate on the round wire");
                     EnqueueGolden(wire, "Authenticated");
                 }
                 else if (
@@ -1228,15 +1217,49 @@ namespace SignalFish.Client.Tests.Async
             return default;
         }
 
+        /*
+            Readiness polls, not timing asserts: the real 1 ms sleep exists
+            only to release the thread-pool thread so the driver loop's
+            continuation can run (a Task.Yield hot-spin here starves the
+            very task we are waiting for). All protocol timing under test
+            moves on the virtual clock. The budget is an anti-hang backstop,
+            generous enough that a saturated CI runner cannot starve it.
+        */
         private static async Task WaitForAsync(Func<bool> done, string because)
         {
             Stopwatch deadline = Stopwatch.StartNew();
-            while (!done() && deadline.ElapsedMilliseconds < 10_000)
+            while (!done() && deadline.ElapsedMilliseconds < 60_000)
             {
                 await Task.Delay(1);
             }
 
             Assert.That(done, Is.True, because);
+        }
+
+        /*
+            The event-based wire wait: the fake completes a task the moment
+            the driver loop records the frame, so the awaiting test parks
+            instead of polling and a saturated CI runner cannot starve the
+            wait past its budget (issue #93). The deadline is the anti-hang
+            backstop only.
+        */
+        private static async Task WaitForSentTextAsync(
+            FakeTransport transport,
+            int count,
+            string because
+        )
+        {
+            using CancellationTokenSource deadline = new CancellationTokenSource(
+                TimeSpan.FromSeconds(60)
+            );
+            try
+            {
+                await transport.WaitSentTextAsync(count, deadline.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                Assert.Fail($"{because} (the wire never carried send #{count} within 60 s)");
+            }
         }
 
         private static async Task ConnectSettledAsync(

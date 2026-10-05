@@ -422,10 +422,18 @@ namespace SignalFish.Client.Tests.Async
             return pollEvent.GetValueOrDefault();
         }
 
+        /*
+            Readiness polls, not timing asserts: the real 1 ms sleep exists
+            only to release the thread-pool thread so the driver loop's
+            continuation can run (a Task.Yield hot-spin here starves the
+            very task we are waiting for). All protocol timing under test
+            moves on the virtual clock. The budget is an anti-hang backstop,
+            generous enough that a saturated CI runner cannot starve it.
+        */
         private static async Task WaitForAsync(Func<bool> done, string because)
         {
             Stopwatch deadline = Stopwatch.StartNew();
-            while (!done() && deadline.ElapsedMilliseconds < 10_000)
+            while (!done() && deadline.ElapsedMilliseconds < 60_000)
             {
                 await Task.Delay(1);
             }

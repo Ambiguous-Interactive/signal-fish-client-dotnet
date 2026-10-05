@@ -78,7 +78,7 @@ namespace SignalFish.Client.Tests.Async
             await client.ConnectAsync(Endpoint());
 
             Assert.That(client.SendAuthenticate(new AuthenticateMessage()).Accepted, Is.True);
-            await WaitForAsync(() => transport.SentText.Count >= 1, "handshake on the wire");
+            await WaitForSentTextAsync(transport, 1, "handshake on the wire");
 
             /*
                 The v2 floor handshake is payload-less; the vendored
@@ -170,7 +170,7 @@ namespace SignalFish.Client.Tests.Async
 
             byte[] payload = { 0x81, 0xa1, (byte)'n', 0x01 };
             Assert.That(client.SendBinaryGameData(payload).Accepted, Is.True);
-            await WaitForAsync(() => transport.SentBinary.Count >= 1, "binary relay on the wire");
+            await WaitForSentBinaryAsync(transport, 1, "binary relay on the wire");
             Assert.That(transport.SentBinary[0], Is.EqualTo(payload));
 
             await client.DisposeAsync();
@@ -250,7 +250,7 @@ namespace SignalFish.Client.Tests.Async
             */
             transport.HoldSendsUntil(wire);
             Assert.That(client.SendGameData(Payload(0)).Accepted, Is.True);
-            await WaitForAsync(() => transport.SentText.Count >= 3, "first relay on the wire");
+            await WaitForSentTextAsync(transport, 3, "first relay on the wire");
             Assert.That(client.SendGameData(Payload(1)).Accepted, Is.True);
 
             CommandSend refused = client.SendGameData(Payload(2));
@@ -258,7 +258,7 @@ namespace SignalFish.Client.Tests.Async
             Assert.That(refused.Refusal, Is.EqualTo(AdmissionError.SendBufferFull));
 
             wire.TrySetResult(true);
-            await WaitForAsync(() => transport.SentText.Count >= 4, "queue drains after recovery");
+            await WaitForSentTextAsync(transport, 4, "queue drains after recovery");
             Assert.That(client.SendCapacity, Is.EqualTo(client.MaxSendCapacity));
 
             await client.DisposeAsync();
@@ -275,7 +275,7 @@ namespace SignalFish.Client.Tests.Async
 
             transport.HoldSendsUntil(wire);
             Assert.That(client.SendGameData(Payload(0)).Accepted, Is.True);
-            await WaitForAsync(() => transport.SentText.Count >= 3, "first relay on the wire");
+            await WaitForSentTextAsync(transport, 3, "first relay on the wire");
             Assert.That(client.SendGameData(Payload(1)).Accepted, Is.True);
 
             Task<CommandSend> reliable = client.SendGameDataReliableAsync(Payload(2));
@@ -284,7 +284,7 @@ namespace SignalFish.Client.Tests.Async
             wire.TrySetResult(true);
             CommandSend verdict = await reliable;
             Assert.That(verdict.Accepted, Is.True);
-            await WaitForAsync(() => transport.SentText.Count >= 5, "all three relays delivered");
+            await WaitForSentTextAsync(transport, 5, "all three relays delivered");
 
             await client.DisposeAsync();
         }
@@ -382,10 +382,7 @@ namespace SignalFish.Client.Tests.Async
                 new GameDataMessage(payload, GameDataClass.Latest, key: 7)
             );
             Assert.That(negotiated.Accepted, Is.True);
-            await WaitForAsync(
-                () => transport.SentText.Count >= sentBefore + 1,
-                "classified relay on the wire"
-            );
+            await WaitForSentTextAsync(transport, sentBefore + 1, "classified relay on the wire");
             Assert.That(
                 transport.SentText[^1],
                 Is.EqualTo(
@@ -692,7 +689,7 @@ namespace SignalFish.Client.Tests.Async
 
             transport.HoldSendsUntil(wire);
             Assert.That(client.SendGameData(Payload(0)).Accepted, Is.True);
-            await WaitForAsync(() => transport.SentText.Count >= 3, "first relay on the wire");
+            await WaitForSentTextAsync(transport, 3, "first relay on the wire");
             Assert.That(client.SendGameData(Payload(1)).Accepted, Is.True);
 
             Task<CommandSend> reliable = client.SendGameDataReliableAsync(Payload(2));
@@ -779,7 +776,7 @@ namespace SignalFish.Client.Tests.Async
                 Assert.That(client.SendGameData(Payload(index)).Accepted, Is.True);
             }
 
-            await WaitForAsync(() => transport.SentText.Count >= 2 + 5, "all relays on the wire");
+            await WaitForSentTextAsync(transport, 2 + 5, "all relays on the wire");
 
             for (int index = 0; index < 5; index++)
             {
@@ -818,8 +815,9 @@ namespace SignalFish.Client.Tests.Async
             });
 
             await Task.WhenAll(first, second);
-            await WaitForAsync(
-                () => transport.SentText.Count >= 2 + perThread * 2,
+            await WaitForSentTextAsync(
+                transport,
+                2 + perThread * 2,
                 "every accepted relay reaches the wire"
             );
 
@@ -1104,17 +1102,63 @@ namespace SignalFish.Client.Tests.Async
             only to release the thread-pool thread so the driver loop's
             continuation can run (a Task.Yield hot-spin here starves the
             very task we are waiting for). All protocol timing under test
-            moves on the virtual clock.
+            moves on the virtual clock. The budget is an anti-hang backstop,
+            generous enough that a saturated CI runner cannot starve it.
         */
         private static async Task WaitForAsync(Func<bool> done, string because)
         {
             Stopwatch deadline = Stopwatch.StartNew();
-            while (!done() && deadline.ElapsedMilliseconds < 10_000)
+            while (!done() && deadline.ElapsedMilliseconds < 60_000)
             {
                 await Task.Delay(1);
             }
 
             Assert.That(done, Is.True, because);
+        }
+
+        /*
+            The event-based wire wait: the fake completes a task the moment
+            the driver loop records the frame, so the awaiting test parks
+            instead of polling and a saturated CI runner cannot starve the
+            wait past its budget (issue #93). The deadline is the anti-hang
+            backstop only.
+        */
+        private static async Task WaitForSentTextAsync(
+            FakeTransport transport,
+            int count,
+            string because
+        )
+        {
+            using CancellationTokenSource deadline = new CancellationTokenSource(
+                TimeSpan.FromSeconds(60)
+            );
+            try
+            {
+                await transport.WaitSentTextAsync(count, deadline.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                Assert.Fail($"{because} (the wire never carried send #{count} within 60 s)");
+            }
+        }
+
+        private static async Task WaitForSentBinaryAsync(
+            FakeTransport transport,
+            int count,
+            string because
+        )
+        {
+            using CancellationTokenSource deadline = new CancellationTokenSource(
+                TimeSpan.FromSeconds(60)
+            );
+            try
+            {
+                await transport.WaitSentBinaryAsync(count, deadline.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                Assert.Fail($"{because} (the wire never carried binary send #{count} within 60 s)");
+            }
         }
 
         private static async Task AdvanceUntilAsync(
