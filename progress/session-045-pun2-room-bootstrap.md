@@ -50,6 +50,27 @@ see (`RoomMembership.RoomCode` flowing into a non-nullable parameter).
 - lint-conventions, CSharpier, pre-commit hooks green; docs page
   (`docs/adapters/pun2.md`) + nav entry added; CHANGELOG entry added.
 
+## Adversarial review round
+
+The review loop found one real regression against the NGO skeleton the
+bootstrap was modeled on, and the fixes landed in the same PR:
+
+- Teardown settles the staged/active start tasks — `Shutdown` or a
+  room-side failure mid-PUN-phase used to hang the awaited start
+  forever (NGO settles its staged completion; the PUN2 port had
+  dropped it).
+- `AwaitStaged` grew the NGO-shaped watchdog for a stopped `Update`
+  (a disabled component receives neither ticks nor PUN callbacks).
+- `ProtocolViolation` / `DecodeFailed` are fatal in the start waits and
+  the live drain, matching NGO's fail-closed classification.
+- A client now only *joins* the PUN room (`JoinRoom`, verified against
+  the PUN 2.31 source): a host/client settings mismatch surfaces as a
+  join failure instead of a silent lone room (split-brain).
+- Re-publish refusals fail the session instead of throwing out of
+  `Update`; configuration is validated up front; `QuietDisconnect`
+  only touches a PUN connection this bootstrap opened; the lint now
+  pins the `PhotonRealtime` assembly reference too.
+
 ## Not carried (deliberate)
 
 - The Fusion half of M8.5 is the next surface (PLAN.md): same
