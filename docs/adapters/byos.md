@@ -24,7 +24,7 @@ negotiation.
 
 ## The flow
 
-```
+```text
 host                                  client
 ----                                  ------
 join room ──────────────────────────► join room (by code)
