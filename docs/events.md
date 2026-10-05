@@ -139,7 +139,7 @@ types themselves:
 | `ReconnectStatus` | `Attempt`, `BackoffMilliseconds`, `LastReason?` | `Reconnecting`, `ReconnectAbandoned` |
 | `LobbyStateChangedMessage` | `LobbyState`, `ReadyPlayers`, `AllReady` | `LobbyStateChanged` |
 | `PlayerJoinedMessage` | `Player` (`PlayerInfo`: `Id`, `Name`, `IsAuthority`, `IsReady`, `ConnectedAt?`, `Epoch?`, `Seq?`) | `PlayerJoined` |
-| `GameStartingMessage` | `PeerConnections` (`PeerConnection`: `PlayerId`, `PlayerName`, `IsAuthority`, `RelayType`) | `GameStarting` |
+| `GameStartingMessage` | `PeerConnections` (`PeerConnection`: `PlayerId`, `PlayerName`, `IsAuthority`, `RelayType`, `ConnectionInfo?`) | `GameStarting` |
 | `AuthorityResponseMessage` | `Granted`, `Reason?` | `AuthorityResponse` |
 | `AuthorityChangedMessage` | `AuthorityPlayer?`, `YouAreAuthority` | `AuthorityChanged` |
 | `IncomingGameData` | `FromPlayer`, `Payload` (verbatim, as UTF-8 bytes), `Class`, `Key`, `Seq?`, `Epoch?` | `GameData` |

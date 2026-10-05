@@ -1090,10 +1090,10 @@ namespace SignalFish.Client.Tests.Async
         private static async Task<PollEvent> NextEventAsync(SignalFishClient client)
         {
             using CancellationTokenSource timeout = new CancellationTokenSource(
-                TimeSpan.FromSeconds(10)
+                TimeSpan.FromSeconds(60)
             );
             PollEvent? pollEvent = await client.DequeueEventAsync(timeout.Token);
-            Assert.That(pollEvent, Is.Not.Null, "expected an event before the 10 s timeout");
+            Assert.That(pollEvent, Is.Not.Null, "expected an event before the 60 s timeout");
             return pollEvent.GetValueOrDefault();
         }
 
@@ -1103,7 +1103,7 @@ namespace SignalFish.Client.Tests.Async
             continuation can run (a Task.Yield hot-spin here starves the
             very task we are waiting for). All protocol timing under test
             moves on the virtual clock. The budget is an anti-hang backstop,
-            generous enough that a saturated CI runner cannot starve it.
+            sized to ride out a saturated CI runner.
         */
         private static async Task WaitForAsync(Func<bool> done, string because)
         {
@@ -1134,7 +1134,12 @@ namespace SignalFish.Client.Tests.Async
             );
             try
             {
-                await transport.WaitSentTextAsync(count, deadline.Token);
+                bool delivered = await transport.WaitSentTextAsync(count, deadline.Token);
+                Assert.That(
+                    delivered,
+                    Is.True,
+                    $"{because} (the transport was disposed while waiting for send #{count})"
+                );
             }
             catch (OperationCanceledException)
             {
@@ -1153,7 +1158,12 @@ namespace SignalFish.Client.Tests.Async
             );
             try
             {
-                await transport.WaitSentBinaryAsync(count, deadline.Token);
+                bool delivered = await transport.WaitSentBinaryAsync(count, deadline.Token);
+                Assert.That(
+                    delivered,
+                    Is.True,
+                    $"{because} (the transport was disposed while waiting for binary send #{count})"
+                );
             }
             catch (OperationCanceledException)
             {

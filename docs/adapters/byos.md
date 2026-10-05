@@ -46,9 +46,12 @@ connecting, and an echo from a player who left is stale.
 ## The join-code echo envelope
 
 One JSON property, matched by its exact quoted name, so the game's own
-game-data traffic passes through untouched. Room codes are
-`[A-Za-z0-9_-]`, which lets the scan stay a byte scan — no JSON parser,
-Unity-safe:
+game-data traffic passes through untouched. The envelope accepts room
+codes in `[A-Za-z0-9_-]` (≤ 128 chars) — the template's own constraint,
+not a server promise — which lets the scan stay a byte scan, no JSON
+parser, Unity-safe. If a deployment hands out codes outside that
+charset, the host validates its code at start and fails loudly rather
+than running a gate that can never open:
 
 ```csharp
 using System;
@@ -103,8 +106,8 @@ public static class RoomJoinCodeEnvelope
     public static bool TryRead(ReadOnlySpan<byte> data, out string roomCode)
     {
         roomCode = string.Empty;
-        string key = "\"" + PropertyName + "\"";
-        int keyStart = IndexOf(data, Encoding.ASCII.GetBytes(key));
+        byte[] key = Encoding.ASCII.GetBytes("\"" + PropertyName + "\"");
+        int keyStart = data.IndexOf(key);
         while (keyStart >= 0)
         {
             int scanner = keyStart + key.Length;
@@ -114,7 +117,7 @@ public static class RoomJoinCodeEnvelope
                 return true;
             }
 
-            keyStart = IndexOf(data.Slice(scanner), Encoding.ASCII.GetBytes(key));
+            keyStart = data.Slice(scanner).IndexOf(key);
         }
 
         return false;
@@ -140,11 +143,6 @@ public static class RoomJoinCodeEnvelope
 
         value = Encoding.ASCII.GetString(data.Slice(start, scanner - start));
         return IsValidRoomCode(value);
-    }
-
-    private static int IndexOf(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needle)
-    {
-        return haystack.IndexOf(needle);
     }
 
     private static bool IsSpace(byte b)
@@ -193,6 +191,11 @@ public sealed class ByosHost : MonoBehaviour
 
     private SignalFishClient? room;
 
+    // The bootstrap owns the event queue until it finishes: Update() must
+    // not drain while StartAsync is awaiting room events, or the two
+    // consumers steal each other's frames.
+    private volatile bool ready;
+
     private readonly HashSet<Guid> roster = new HashSet<Guid>();
 
     private readonly HashSet<Guid> cleared = new HashSet<Guid>();
@@ -227,6 +230,18 @@ public sealed class ByosHost : MonoBehaviour
         );
         PollEvent joined = await ExpectAsync(room, PollEventKind.RoomJoined, ct);
         JoinedRoomCode = joined.Membership.RoomCode;
+        if (!RoomJoinCodeEnvelope.IsValidRoomCode(JoinedRoomCode))
+        {
+            /*
+                The echo can never encode this code; fail now rather than
+                run a gate that can never open.
+            */
+            TearDown(reason: null);
+            throw new InvalidOperationException(
+                "The server's room code does not fit the echo envelope's charset."
+            );
+        }
+
         ThrowIfRefused(room.SendAuthorityRequest(becomeAuthority: true));
         PollEvent granted = await ExpectAsync(room, PollEventKind.AuthorityResponse, ct);
         if (!granted.AuthorityResponse.Granted)
@@ -245,12 +260,13 @@ public sealed class ByosHost : MonoBehaviour
         // StartYourListener(listenHost, listenPort);
 
         PublishEndpoint();
+        ready = true;
     }
 
     private void Update()
     {
         SignalFishClient? live = room;
-        if (live is null)
+        if (live is null || !ready)
         {
             return;
         }
@@ -305,8 +321,10 @@ public sealed class ByosHost : MonoBehaviour
     }
 
     /// <summary>
-    /// Re-publishes on joins too: a late joiner gets the address without
-    /// depending on when the server repeats it.
+    /// Re-publishes on joins too: the server's stored info stays fresh
+    /// for every member the server next fan-outs to. Delivery itself
+    /// rides the server's GameStarting emission — the client-side wait
+    /// is where that timing lives.
     /// </summary>
     private void PublishEndpoint()
     {
@@ -337,7 +355,18 @@ public sealed class ByosHost : MonoBehaviour
                     return current;
                 }
 
+                /*
+                    A dead session must fail the wait now, not at the
+                    deadline: Disconnected and the failure events all
+                    throw here.
+                */
                 ThrowForFailure(current);
+                if (current.Kind == PollEventKind.Disconnected)
+                {
+                    throw new InvalidOperationException(
+                        "The room connection closed while waiting for " + expected + "."
+                    );
+                }
             }
 
             await Task.Delay(10).ConfigureAwait(false);
@@ -350,6 +379,7 @@ public sealed class ByosHost : MonoBehaviour
     {
         SignalFishClient? live = room;
         room = null;
+        ready = false;
         roster.Clear();
         cleared.Clear();
         JoinedRoomCode = null;
@@ -427,6 +457,11 @@ public sealed class ByosClient : MonoBehaviour
 
     private SignalFishClient? room;
 
+    // The bootstrap owns the event queue until it finishes: Update() must
+    // not drain while StartAsync is awaiting room events, or the two
+    // consumers steal each other's frames.
+    private volatile bool ready;
+
     public Guid LocalPlayerId { get; private set; }
 
     public async Task StartAsync(string roomCode, CancellationToken ct = default)
@@ -448,8 +483,13 @@ public sealed class ByosClient : MonoBehaviour
         // The authority's published endpoint arrives with the game start.
         ConnectionEndpoint where = await ExpectAuthorityEndpointAsync(room, ct);
 
-        // The echo is the membership proof the host's gate reads.
-        if (RoomJoinCodeEnvelope.TryWrite(roomCode, out byte[] echo))
+        /*
+            The echo is the membership proof the host's gate reads. Echo
+            the server's canonical code (this client's membership), not
+            the requested string: servers match codes case-insensitively,
+            and the host compares ordinally.
+        */
+        if (RoomJoinCodeEnvelope.TryWrite(joined.Membership.RoomCode, out byte[] echo))
         {
             ThrowIfRefused(room.SendGameData(new GameDataMessage(echo)));
         }
@@ -460,12 +500,13 @@ public sealed class ByosClient : MonoBehaviour
             connection it cannot match to a cleared member.
         */
         // ConnectYourStack(where.Host, where.Port, LocalPlayerId);
+        ready = true;
     }
 
     private void Update()
     {
         SignalFishClient? live = room;
-        if (live is null)
+        if (live is null || !ready)
         {
             return;
         }
@@ -496,6 +537,13 @@ public sealed class ByosClient : MonoBehaviour
             ct.ThrowIfCancellationRequested();
             while (client.TryDequeueEvent(out PollEvent current))
             {
+                if (current.Kind == PollEventKind.Disconnected)
+                {
+                    throw new InvalidOperationException(
+                        "The room connection closed before the host's connection info arrived."
+                    );
+                }
+
                 if (current.Kind != PollEventKind.GameStarting)
                 {
                     continue;
@@ -517,8 +565,9 @@ public sealed class ByosClient : MonoBehaviour
     }
 
     /* ExpectAsync, TearDown, ThrowIfRefused, ThrowForFailure and
-       DisposeQuietlyAsync match the host component — share them in a
-       small base class when you paste both in. */
+       DisposeQuietlyAsync match the host component (TearDown clears
+       ready with room) — share them in a small base class when you
+       paste both in. */
 }
 ```
 
@@ -538,9 +587,15 @@ public sealed class ByosClient : MonoBehaviour
   checking reachability. Publish what your listener actually binds, and
   keep NAT/port-forwarding reality in mind — that part is unchanged
   from any hand-rolled direct connect.
-- The host's re-publish on `PlayerJoined` is deliberate belt-and-braces:
-  `GameStarting` is when the server surfaces connection info, and the
-  extra publish makes late joiners independent of that timing.
+- The host's re-publish on `PlayerJoined` keeps the server's stored
+  connection info fresh for whoever the server fan-outs to next.
+  Delivery itself rides the server's `GameStarting` emission — that
+  timing belongs to the server, and the client's wait is where it shows
+  up.
+- A member that drops and reconnects re-enters the roster but not the
+  cleared set: its echo died with the old connection. The template's
+  client has no re-echo path yet — a real game should echo again on
+  reconnect (the host's gate reopens on the fresh echo).
 - The `playerHint` mapping in `IsConnectionCleared` is the one
   stack-specific seam: your stack must tell you which Signal Fish
   player is at the engine door. Passing the player id as your stack's

@@ -113,17 +113,18 @@ namespace SignalFish.Client.Tests.Transport
         /// recorded — the event-based wire wait. The awaiting test wakes the
         /// moment the driver loop flushes the frame, with no poll cadence
         /// and no wall-clock deadline to lose against a saturated CI runner
-        /// (issue #93). Disposal releases every unmet wait so a test whose
-        /// session died mid-wait asserts on the real count instead of
-        /// hanging.
+        /// (issue #93). Returns <see langword="true"/> when the count was
+        /// reached; disposal releases unmet waits with
+        /// <see langword="false"/> so a test whose session died mid-wait
+        /// asserts on the real state instead of hanging.
         /// </summary>
-        public Task WaitSentTextAsync(int count, CancellationToken ct = default)
+        public Task<bool> WaitSentTextAsync(int count, CancellationToken ct = default)
         {
             lock (_gate)
             {
                 if (_textSends >= count)
                 {
-                    return Task.CompletedTask;
+                    return Task.FromResult(true);
                 }
 
                 return RegisterSendWaiterLocked(_textSendWaiters, count, ct);
@@ -134,13 +135,13 @@ namespace SignalFish.Client.Tests.Transport
         /// Awaits until at least <paramref name="count"/> binary sends are
         /// recorded — the binary twin of <see cref="WaitSentTextAsync"/>.
         /// </summary>
-        public Task WaitSentBinaryAsync(int count, CancellationToken ct = default)
+        public Task<bool> WaitSentBinaryAsync(int count, CancellationToken ct = default)
         {
             lock (_gate)
             {
                 if (_binarySends >= count)
                 {
-                    return Task.CompletedTask;
+                    return Task.FromResult(true);
                 }
 
                 return RegisterSendWaiterLocked(_binarySendWaiters, count, ct);
@@ -404,7 +405,7 @@ namespace SignalFish.Client.Tests.Transport
             same lock, so a wake always observes the count it waited for.
         */
 
-        private static Task RegisterSendWaiterLocked(
+        private static Task<bool> RegisterSendWaiterLocked(
             List<SendWaiter> waiters,
             int count,
             CancellationToken ct
@@ -437,7 +438,7 @@ namespace SignalFish.Client.Tests.Transport
             waiters.Clear();
         }
 
-        private static async Task WaitWithCancelAsync(
+        private static async Task<bool> WaitWithCancelAsync(
             TaskCompletionSource<bool> completion,
             CancellationToken ct
         )
@@ -448,7 +449,7 @@ namespace SignalFish.Client.Tests.Transport
             );
             try
             {
-                await completion.Task.ConfigureAwait(false);
+                return await completion.Task.ConfigureAwait(false);
             }
             finally
             {
