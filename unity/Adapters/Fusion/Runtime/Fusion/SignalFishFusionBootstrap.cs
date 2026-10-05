@@ -253,27 +253,33 @@ namespace SignalFish.Client.Adapters.Fusion
 
         private bool _published;
 
+        private NetworkRunner? _runner;
+
+        private bool _runnerOwned;
+
+        private NetworkRunner? _shutdownPending;
+
+        /*
+            _mainContext is Unity's main-thread synchronization context,
+            captured at the first kick and never cleared: the context is
+            stable for the app's lifetime (a domain reload rebuilds the
+            component with it), and every teardown after a background
+            one must still be able to recognize the main thread to
+            perform the parked runner shutdown.
+        */
         private SynchronizationContext? _mainContext;
 
         /*
             Main-thread state: the staged start's Unity half and the
             runner it started. Fusion raises its callbacks on the main
             thread and Update() kicks the staging, so none of this needs
-            the lock. _shutdownPending is the one cross-thread hand-off:
-            a background Teardown parks the exact runner it wants shut
-            down here, and Update (main thread) performs the shutdown.
+            the lock.
         */
         private StagedStart? _active;
 
         private TaskCompletionSource<bool>? _activeCompletion;
 
         private long _activeDeadline;
-
-        private NetworkRunner? _runner;
-
-        private bool _runnerOwned;
-
-        private NetworkRunner? _shutdownPending;
 
         /// <summary>
         /// Starts the host side: join (or create) the Signal Fish room,
@@ -935,10 +941,8 @@ namespace SignalFish.Client.Adapters.Fusion
                 The start task settles on a Fusion worker thread as often
                 as not, but _active is main-thread state: the settle is
                 marshaled onto the context the kick was captured on, so
-                every active-start transition happens on one thread. A
-                null context means Teardown already ran: it settled (and
-                failed) the completion itself, so there is nothing left
-                to settle. The generation rides along: a superseded
+                every active-start transition happens on one thread. The
+                generation rides along: a torn-down or superseded
                 start's settle finds no matching active start and is a
                 no-op.
             */
@@ -1252,7 +1256,6 @@ namespace SignalFish.Client.Adapters.Fusion
             _active = null;
             _activeCompletion = null;
             _published = false;
-            _mainContext = null;
             if (onMain)
             {
                 QuietShutdownRunner();
