@@ -896,6 +896,26 @@ namespace SignalFish.Client.Adapters.Fusion
 
         private void SettleStaged(Task<StartGameResult> started)
         {
+            /*
+                The start task settles on a Fusion worker thread as often
+                as not, but _active is main-thread state: the settle is
+                marshalled onto the context the kick was captured on, so
+                every active-start transition happens on one thread. A
+                torn-down session's posted settle finds no pending start
+                and becomes a no-op.
+            */
+            SynchronizationContext? main = _mainContext;
+            if (main is null || main == SynchronizationContext.Current)
+            {
+                SettleStagedOnMain(started);
+                return;
+            }
+
+            main.Post(_ => SettleStagedOnMain(started), null);
+        }
+
+        private void SettleStagedOnMain(Task<StartGameResult> started)
+        {
             TaskCompletionSource<bool>? completion = _activeCompletion;
             if (completion is null)
             {
@@ -905,25 +925,19 @@ namespace SignalFish.Client.Adapters.Fusion
             string? failure = DescribeStagedOutcome(started);
             if (failure is null)
             {
+                /*
+                    Clear the active start before settling: the deadline,
+                    the Fusion callbacks, and this settle all run on the
+                    main thread, so a later tick can never tear a session
+                    whose start already succeeded down.
+                */
+                _active = null;
+                _activeCompletion = null;
                 completion.TrySetResult(true);
                 return;
             }
 
-            /*
-                The start task settles on a Fusion worker thread as often
-                as not; the teardown it triggers shuts Unity objects
-                down, so the failure is marshalled onto the context the
-                kick was captured on. After a teardown the posted failure
-                finds no active start and becomes a no-op.
-            */
-            SynchronizationContext? main = _mainContext;
-            if (main is null || main == SynchronizationContext.Current)
-            {
-                FailStaged(new InvalidOperationException(failure));
-                return;
-            }
-
-            main.Post(_ => FailStaged(new InvalidOperationException(failure)), null);
+            FailStaged(new InvalidOperationException(failure));
         }
 
         private static string? DescribeStagedOutcome(Task<StartGameResult> started)
@@ -961,19 +975,29 @@ namespace SignalFish.Client.Adapters.Fusion
 
         private void FailStaged(Exception failure)
         {
-            StagedStart? start = _active;
+            /*
+                The pending completion is the start's liveness marker: a
+                start that already settled (success or failure) makes
+                every later FailStaged a no-op, so a healthy session is
+                never torn down by a stale verdict.
+            */
             TaskCompletionSource<bool>? completion = _activeCompletion;
-            if (start is null)
+            if (completion is null)
             {
                 return;
             }
 
+            StagedStart? start = _active;
             _active = null;
             _activeCompletion = null;
             QuietShutdownRunner();
-            _ = DisposeQuietlyAsync(start.GetValueOrDefault().Client);
+            if (start is not null)
+            {
+                _ = DisposeQuietlyAsync(start.GetValueOrDefault().Client);
+            }
+
             Teardown();
-            completion?.TrySetException(failure);
+            completion.TrySetException(failure);
         }
 
         private bool TryPublishSessionName(SignalFishClient client, string sessionName)

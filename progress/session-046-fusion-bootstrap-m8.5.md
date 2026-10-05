@@ -62,13 +62,30 @@ shaped the adapter:
 
 - `dotnet test`: 12 new envelope contract tests (round-trip, byte-exact
   shape, foreign payloads decode as absent, charset bounds, Fusion GUID
-  session names); full suite green locally on net8.0.
+  session names); full suite green locally on net8.0 and net10.0 (899
+  tests).
 - `lint-unity-adapter`: all six packages green, including the new
   Fusion bridge-compile lane; `test-lint-unity-adapter` self-tests
   extended with the Fusion fixture across all negative loops (100
   assertions).
 - lint-conventions and the remaining self-test suites green; docs page
   (`docs/adapters/fusion.md`) + nav entry added; CHANGELOG entry added.
+
+## Adversarial review round
+
+The review loop found one blocker and the fix landed in this branch:
+
+- `SettleStaged`'s success path never cleared the active start, so
+  `EnforceFusionDeadline` tore every healthy session down
+  `FusionStartTimeoutSeconds` after its start succeeded. The settle is
+  now marshalled onto the captured main context (the start task
+  settles on a Fusion worker thread as often as not), success clears
+  the active start before completing the awaited task, and `FailStaged`
+  guards on the pending completion — a settled start is never torn
+  down by a stale verdict.
+- The pinned `INetworkRunnerCallbacks` surface (all 19 members),
+  `AddCallbacks`, `StartGame`, and `Shutdown` were re-verified against
+  the Fusion 2 decompiled runtime source before the fix.
 
 ## Open issues triage
 
