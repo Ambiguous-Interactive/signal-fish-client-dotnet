@@ -83,7 +83,39 @@ claim was verified against the `20.0.0` tag tree
 
 ## Adversarial review round
 
-(findings recorded here after the review loop)
+The adversarial review pass (against the real Steamworks.NET sources
+and the PUN2 sibling) found one blocker and two majors; all landed in
+this branch:
+
+- **Blocker — the client closed its own dial.** `ConnectP2P` posts a
+  `Connecting` status callback for the connection it just created
+  ("callbacks will be posted when connections are created ... by your
+  own API calls"), and the stranger-refusal branch was closing exactly
+  that, so every `StartClientAsync` failed within a frame of dialing.
+  The client branch now early-returns for its own `_hostConnection`
+  and only refuses genuinely foreign connections; the host branch is
+  scoped to the session's own listen socket.
+- **Major — ended connections leaked.** The SDK requires an explicit
+  `CloseConnection` after a `ClosedByPeer`/`ProblemDetectedLocally`
+  dispatch to free local resources; the host handler now issues it
+  (idempotent for the client path, where the fail teardown closes
+  first).
+- **Major — `_isHost` survived teardown.** A stale drain event racing
+  a teardown could feed the *next* session's accept fence with the old
+  session's advertised peers; the role now resets with the session.
+- Two minors taken in the same pass: teardown's Steam closes are
+  guarded (the game's `SteamManager.OnDestroy` can beat this
+  component's, where every interface call throws — the start tasks
+  now always settle), and the host's listen socket opens before any
+  observable side effect (a socket refusal no longer leaves a
+  published id pointing at a socket that never existed).
+
+The reviewer verified every pinned Steamworks member against the
+2025.165.0 sources, the envelope's byte arithmetic (29 + id length;
+both keys are 22 chars), the scan/rescan logic, the Signal Fish
+protocol surface against `src/SignalFish.Client`, the generation/
+completion machinery, and the packaging claims (UPM-since-20.0.0,
+detector probe names, sample paths) — all confirmed.
 
 ## Open issues triage
 

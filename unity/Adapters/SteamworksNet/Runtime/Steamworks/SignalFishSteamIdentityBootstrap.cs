@@ -727,6 +727,24 @@ namespace SignalFish.Client.Adapters.SteamworksNet
             StagedStart start = _active.GetValueOrDefault();
             ulong localSteamId = ReadLocalSteamId();
             _localSteamId = localSteamId;
+
+            /*
+                The listen socket opens before anything observable
+                happens: a socket refusal fails the start before the
+                room saw a published id, a ready flag, or a started
+                game that would have pointed peers at a socket that
+                never existed.
+            */
+            _listenSocket = SteamNetworkingSockets.CreateListenSocketP2P(
+                _listenVirtualPort,
+                0,
+                null!
+            );
+            if (_listenSocket == HSteamListenSocket.Invalid)
+            {
+                throw new InvalidOperationException("Steam refused the P2P listen socket.");
+            }
+
             if (!TryPublishIdentity(SteamIdentityEnvelope.HostPropertyName, localSteamId))
             {
                 throw new InvalidOperationException(
@@ -738,16 +756,6 @@ namespace SignalFish.Client.Adapters.SteamworksNet
             _published = true;
             SendOrThrow(start.Client.SendPlayerReady(), "PlayerReady");
             SendOrThrow(start.Client.SendStartGame(), "StartGame");
-            _listenSocket = SteamNetworkingSockets.CreateListenSocketP2P(
-                _listenVirtualPort,
-                0,
-                null!
-            );
-            if (_listenSocket == HSteamListenSocket.Invalid)
-            {
-                throw new InvalidOperationException("Steam refused the P2P listen socket.");
-            }
-
             CompleteStaged();
         }
 
@@ -859,17 +867,38 @@ namespace SignalFish.Client.Adapters.SteamworksNet
             SteamNetConnectionInfo_t info
         )
         {
+            if (!_isHost)
+            {
+                if (connection == _hostConnection)
+                {
+                    /*
+                        Our own ConnectP2P posts a Connecting state for its
+                        own connection (callbacks are posted for
+                        connections created by our own API calls); the
+                        Connecting phase waits for that dial's Connected
+                        state, so there is nothing to fence here.
+                    */
+                    return;
+                }
+
+                SteamNetworkingSockets.CloseConnection(
+                    connection,
+                    FenceRefusalEndReason,
+                    "Signal Fish: not accepting connections here.",
+                    false
+                );
+                return;
+            }
+
             if (
-                !_isHost
-                || _listenSocket == HSteamListenSocket.Invalid
+                _listenSocket == HSteamListenSocket.Invalid
                 || info.m_hListenSocket != _listenSocket
             )
             {
                 /*
-                    Not hosting this session's socket, or the state
-                    change belongs to this bootstrap's own outgoing
-                    connection; there is nothing to fence, so refuse the
-                    stranger politely.
+                    An incoming connection on a socket this session never
+                    opened; there is nothing to fence, so refuse it
+                    politely.
                 */
                 SteamNetworkingSockets.CloseConnection(
                     connection,
@@ -999,6 +1028,14 @@ namespace SignalFish.Client.Adapters.SteamworksNet
             {
                 SteamPeerDisconnected?.Invoke(remoteSteamId);
             }
+
+            /*
+                The SDK requires an explicit CloseConnection after a
+                ClosedByPeer/ProblemDetectedLocally dispatch to free the
+                connection's local resources; closing an already-ended
+                connection is exactly that free.
+            */
+            SteamNetworkingSockets.CloseConnection(connection, 0, null!, false);
         }
 
         private void ProcessPendingAccepts()
@@ -1346,40 +1383,70 @@ namespace SignalFish.Client.Adapters.SteamworksNet
                 _published = false;
 
                 /*
+                    Reset the role with the session: a stale drain event
+                    landing after this teardown must not be able to feed
+                    the next session's accept fence with the old
+                    session's advertised peers.
+                */
+                _isHost = false;
+
+                /*
                     Only bootstrap-created Steam state closes here; the
                     game's own sockets, connections, and callbacks are
-                    not in any of these fields.
+                    not in any of these fields. The Steam API may already
+                    be shut down (the game's SteamManager.OnDestroy can
+                    beat this component's), where every interface call
+                    throws — a dead Steam leaves nothing to free, so the
+                    closes are guarded and the bookkeeping resets win.
                 */
-                _statusCallback?.Dispose();
-                _statusCallback = null;
-                if (_hostConnection != HSteamNetConnection.Invalid)
+                try
                 {
-                    SteamNetworkingSockets.CloseConnection(_hostConnection, 0, null!, false);
+                    _statusCallback?.Dispose();
+                    _statusCallback = null;
+                    if (_hostConnection != HSteamNetConnection.Invalid)
+                    {
+                        SteamNetworkingSockets.CloseConnection(_hostConnection, 0, null!, false);
+                        _hostConnection = HSteamNetConnection.Invalid;
+                    }
+
+                    foreach (PendingAccept pending in _pendingIncoming)
+                    {
+                        SteamNetworkingSockets.CloseConnection(pending.Connection, 0, null!, false);
+                    }
+
+                    _pendingIncoming.Clear();
+                    foreach (uint handle in _trackedPeers.Keys)
+                    {
+                        SteamNetworkingSockets.CloseConnection(
+                            new HSteamNetConnection(handle),
+                            0,
+                            null!,
+                            false
+                        );
+                    }
+
+                    _trackedPeers.Clear();
+                    _acceptedHandles.Clear();
+                    _advertisedPeers.Clear();
+                    if (_listenSocket != HSteamListenSocket.Invalid)
+                    {
+                        SteamNetworkingSockets.CloseListenSocket(_listenSocket);
+                        _listenSocket = HSteamListenSocket.Invalid;
+                    }
+                }
+                catch (Exception)
+                {
+                    /*
+                        Steam is gone; its resources went with it. The
+                        bookkeeping resets below still run so the next
+                        session starts from a clean slate.
+                    */
+                    _pendingIncoming.Clear();
+                    _trackedPeers.Clear();
+                    _acceptedHandles.Clear();
+                    _advertisedPeers.Clear();
+                    _statusCallback = null;
                     _hostConnection = HSteamNetConnection.Invalid;
-                }
-
-                foreach (PendingAccept pending in _pendingIncoming)
-                {
-                    SteamNetworkingSockets.CloseConnection(pending.Connection, 0, null!, false);
-                }
-
-                _pendingIncoming.Clear();
-                foreach (uint handle in _trackedPeers.Keys)
-                {
-                    SteamNetworkingSockets.CloseConnection(
-                        new HSteamNetConnection(handle),
-                        0,
-                        null!,
-                        false
-                    );
-                }
-
-                _trackedPeers.Clear();
-                _acceptedHandles.Clear();
-                _advertisedPeers.Clear();
-                if (_listenSocket != HSteamListenSocket.Invalid)
-                {
-                    SteamNetworkingSockets.CloseListenSocket(_listenSocket);
                     _listenSocket = HSteamListenSocket.Invalid;
                 }
             }
