@@ -1,0 +1,21 @@
+{
+    "name": "SignalFish.Adapters.Fusion",
+    "rootNamespace": "SignalFish.Client.Adapters.Fusion",
+    "references": [
+        "SignalFish.Client",
+        "SignalFish.Adapters.Core",
+        "Fusion.Runtime",
+        "Fusion.Sockets"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "SIGNALFISH_FUSION"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -341,6 +341,113 @@ try {
         DetectorProbe = 'PhotonUnityNetworking'
     }
 
+    $fusion = @{
+        Root = 'unity/Adapters/Fusion'
+        Define = 'SIGNALFISH_FUSION'
+        LocalCoreCs = @(
+            '#nullable enable',
+            'namespace SignalFish.Client.Adapters.Fusion',
+            '{',
+            '    public static class FusionSessionEnvelope',
+            '    {',
+            '        public const int MaxSessionNameLength = 128;',
+            '        public static bool IsValidSessionName(string? sessionName) => throw null!;',
+            '    }',
+            '}'
+        )
+        ChannelPin = $null
+        BridgeCs = @(
+            '#if SIGNALFISH_FUSION',
+            'namespace SignalFish.Client.Adapters.Fusion',
+            '{',
+            '    public sealed class Bridge : global::Fusion.INetworkRunnerCallbacks',
+            '    {',
+            '        private readonly System.Collections.Generic.List<string> names = new();',
+            '        public void Exchange()',
+            '        {',
+            '            global::Fusion.NetworkRunner runner = new UnityEngine.GameObject("runner").AddComponent<global::Fusion.NetworkRunner>();',
+            '            runner.AddCallbacks(this);',
+            '            global::Fusion.StartGameResult host = runner.StartGame(new global::Fusion.StartGameArgs',
+            '            {',
+            '                GameMode = global::Fusion.GameMode.Host,',
+            '                SessionName = "room",',
+            '                PlayerCount = 4,',
+            '            }).Result;',
+            '            global::Fusion.StartGameResult client = runner.StartGame(new global::Fusion.StartGameArgs',
+            '            {',
+            '                GameMode = global::Fusion.GameMode.Client,',
+            '                SessionName = "room",',
+            '                EnableClientSessionCreation = false,',
+            '            }).Result;',
+            '            if (host.Ok && FusionSessionEnvelope.IsValidSessionName(host.ErrorMessage))',
+            '            {',
+            '                names.Add(host.ErrorMessage);',
+            '            }',
+            '            runner.Shutdown();',
+            '        }',
+            '        public void OnConnectFailed(global::Fusion.NetworkRunner runner, global::Fusion.Sockets.NetAddress address,',
+            '            global::Fusion.Sockets.NetConnectFailedReason reason) { }',
+            '        public void OnDisconnectedFromServer(global::Fusion.NetworkRunner runner,',
+            '            global::Fusion.Sockets.NetDisconnectReason reason) { }',
+            '        public void OnShutdown(global::Fusion.NetworkRunner runner, global::Fusion.ShutdownReason reason) { }',
+            '        public void OnHostMigration(global::Fusion.NetworkRunner runner,',
+            '            global::Fusion.HostMigrationToken token) { }',
+            '        public void OnObjectExitAOI(global::Fusion.NetworkRunner runner, global::Fusion.NetworkObject obj,',
+            '            global::Fusion.PlayerRef player) { }',
+            '        public void OnObjectEnterAOI(global::Fusion.NetworkRunner runner, global::Fusion.NetworkObject obj,',
+            '            global::Fusion.PlayerRef player) { }',
+            '        public void OnPlayerJoined(global::Fusion.NetworkRunner runner, global::Fusion.PlayerRef player) { }',
+            '        public void OnPlayerLeft(global::Fusion.NetworkRunner runner, global::Fusion.PlayerRef player) { }',
+            '        public void OnConnectRequest(global::Fusion.NetworkRunner runner,',
+            '            global::Fusion.NetworkRunnerCallbackArgs.ConnectRequest request, byte[] token) { }',
+            '        public void OnUserSimulationMessage(global::Fusion.NetworkRunner runner,',
+            '            global::Fusion.SimulationMessagePtr message) { }',
+            '        public void OnReliableDataReceived(global::Fusion.NetworkRunner runner, global::Fusion.PlayerRef player,',
+            '            global::Fusion.ReliableKey key, System.ArraySegment<byte> data) { }',
+            '        public void OnReliableDataProgress(global::Fusion.NetworkRunner runner, global::Fusion.PlayerRef player,',
+            '            global::Fusion.ReliableKey key, float progress) { }',
+            '        public void OnInput(global::Fusion.NetworkRunner runner, global::Fusion.NetworkInput input) { }',
+            '        public void OnInputMissing(global::Fusion.NetworkRunner runner, global::Fusion.PlayerRef player,',
+            '            global::Fusion.NetworkInput input) { }',
+            '        public void OnConnectedToServer(global::Fusion.NetworkRunner runner) { }',
+            '        public void OnSessionListUpdated(global::Fusion.NetworkRunner runner,',
+            '            System.Collections.Generic.List<global::Fusion.SessionInfo> sessionList) { }',
+            '        public void OnCustomAuthenticationResponse(global::Fusion.NetworkRunner runner,',
+            '            System.Collections.Generic.Dictionary<string, object> data) { }',
+            '        public void OnSceneLoadDone(global::Fusion.NetworkRunner runner) { }',
+            '        public void OnSceneLoadStart(global::Fusion.NetworkRunner runner) { }',
+            '    }',
+            '}',
+            '#endif'
+        )
+        AsmdefJson = @(
+            '{',
+            '    "name": "SignalFish.Adapters.Fusion",',
+            '    "references": ["SignalFish.Client", "SignalFish.Adapters.Core", "Fusion.Runtime", "Fusion.Sockets"],',
+            '    "defineConstraints": ["SIGNALFISH_FUSION"],',
+            '    "versionDefines": [],',
+            '    "noEngineReferences": false',
+            '}'
+        )
+        DetectorCs = @(
+            'namespace SignalFish.Client.Adapters.Fusion.Editor',
+            '{',
+            '    internal static class SignalFishFusionDefineDetector',
+            '    {',
+            '        private const string Define = "SIGNALFISH_FUSION";',
+            '        private const string AssemblyName = "Fusion.Runtime";',
+            '    }',
+            '}'
+        )
+        DetectorFile = 'SignalFishFusionDefineDetector.cs'
+        BridgeFile = 'SignalFishFusionBootstrap.cs'
+        VendorNamespace = 'Fusion.Transporting'
+        MemberProbe = 'EnableClientSessionCreation'
+        WireFilter = 'FusionSessionEnvelope\.'
+        WireName = 'FusionSessionEnvelope'
+        DetectorProbe = 'Fusion.Runtime'
+    }
+
     $editorAsmdefJson = @(
         '{',
         '    "name": "Adapter.Editor",',
@@ -397,6 +504,7 @@ try {
     Write-AdapterFixture -Pin $mirror
     Write-AdapterFixture -Pin $ngo
     Write-AdapterFixture -Pin $pun2
+    Write-AdapterFixture -Pin $fusion
 
     # 1. Well-formed packages pass the static lane (-NoBuild; the compile
     #    lane is CI's job and the real repo exercises it).
@@ -410,7 +518,7 @@ try {
     Assert-Equal 0 $run.ExitCode 'core-only run passes'
 
     # 3. An SDK reference without the define guard fails (all shapes).
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $unguarded = @($pin.BridgeCs | Where-Object { $_ -notmatch '^#if SIGNALFISH_' -and $_ -ne '#endif' })
         Write-TestFile -Path $bridgePath -Content $unguarded
@@ -421,7 +529,7 @@ try {
     }
 
     # 4. Vendoring the SDK (namespace <SDK>) always fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $vendorCs = @(
             "namespace $($pin.VendorNamespace)",
@@ -437,7 +545,7 @@ try {
     }
 
     # 5. A dropped pinned engine member fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $probe = $pin.MemberProbe
         $missingMemberCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $probe })
@@ -450,7 +558,7 @@ try {
 
     # 6. A bridge that forks the shared wire fails; a transport bridge
     #    that drops the engine channel pin fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $forkedCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $pin.WireFilter })
         Write-TestFile -Path $bridgePath -Content $forkedCs
@@ -545,7 +653,7 @@ try {
 
     # 12. The detector contract: missing file, missing define string,
     #     missing probe, and an ungated editor assembly all fail.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
         $detectorPath = Join-Path $repo "Editor/$($pin.DetectorFile)".Replace('Editor/', "$($pin.Root)/Editor/")
         $expectedProbe = $pin.DetectorProbe
 
