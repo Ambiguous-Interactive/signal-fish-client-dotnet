@@ -64,7 +64,7 @@
          failure by design.
 
 .PARAMETER Adapter
-    One package name (Core, FishNet, Mirror), or omit to lint all.
+    One package name (Core, FishNet, Mirror, Ngo, Pun2), or omit to lint all.
 
 .PARAMETER RepoRoot
     Repository root. Defaults to the parent of the scripts directory.
@@ -547,8 +547,9 @@ namespace UnityEngine
 
 namespace Photon.Realtime
 {
-    // Real member names, pinned against the PUN 2.31 source; the bridge
-    // only formats this enum into messages, so no values are pinned.
+    // Real member names, pinned against the PUN 2.31 source. The bridge
+    // only formats this enum into messages (it never switches on a
+    // value), so the member list is the pin, not the numeric values.
     public enum DisconnectCause
     {
         None,
@@ -620,6 +621,8 @@ namespace Photon.Pun
             global::Photon.Realtime.RoomOptions roomOptions,
             global::Photon.Realtime.TypedLobby typedLobby
         ) => false;
+
+        public static bool JoinRoom(string roomName) => false;
 
         public static void Disconnect() { }
     }
@@ -762,7 +765,7 @@ $adapters = @{
         Define = 'SIGNALFISH_PUN2'
         SdkNamespace = 'Photon'
         SdkReferencePattern = '(^|[^\w.])Photon\.'
-        SdkReference = 'PhotonUnityNetworking'
+        SdkReference = @('PhotonUnityNetworking', 'PhotonRealtime')
         CoreReference = 'SignalFish.Adapters.Core'
         CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
 
@@ -784,6 +787,7 @@ $adapters = @{
         PinnedMembers = @(
             'ConnectUsingSettings',
             'JoinOrCreateRoom',
+            'JoinRoom',
             'CurrentRoom',
             'Disconnect',
             'RoomOptions',
@@ -1250,9 +1254,15 @@ function Invoke-AdapterLint {
                     "$([System.IO.Path]::GetFileName($asmdef)) : defineConstraints does not gate on $($Pin.Define) - without the gate the $($Pin.SdkReference) reference dangles whenever the SDK is absent.")
             }
 
-            if (@(Get-JsonArray -Json $json -Property 'references') -notcontains $Pin.SdkReference) {
-                $violations.Add(
-                    "$([System.IO.Path]::GetFileName($asmdef)) : references $($Pin.SdkNamespace) types but does not reference the $($Pin.SdkReference) assembly.")
+            # SdkReference may be one assembly or a list: a bootstrap that
+            # touches two SDK assemblies (Pun2: PhotonUnityNetworking +
+            # PhotonRealtime) pins both, so dropping either passes only
+            # the lint's absence, never the editor's.
+            foreach ($sdkReference in @($Pin.SdkReference)) {
+                if (@(Get-JsonArray -Json $json -Property 'references') -notcontains $sdkReference) {
+                    $violations.Add(
+                        "$([System.IO.Path]::GetFileName($asmdef)) : references $($Pin.SdkNamespace) types but does not reference the $sdkReference assembly.")
+                }
             }
 
             if (@(Get-JsonArray -Json $json -Property 'references') -notcontains $Pin.CoreReference) {

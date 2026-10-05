@@ -89,6 +89,8 @@ namespace SignalFish.Client.Adapters.Pun2
 
         private const long MillisecondsPerSecond = 1000;
 
+        private const int StagedStartTimeoutMilliseconds = 10_000;
+
         /// <summary>Carries a live-session failure after the start completed.</summary>
         public event Action<string>? CoordinationFailed;
 
@@ -264,6 +266,8 @@ namespace SignalFish.Client.Adapters.Pun2
 
         private bool _published;
 
+        private bool _punConnected;
+
         /// <summary>
         /// Starts the host side: join (or create) the Signal Fish room,
         /// take the authority, create the PUN room, publish its name
@@ -309,11 +313,21 @@ namespace SignalFish.Client.Adapters.Pun2
                 return;
             }
 
-            bool queued = PhotonNetwork.JoinOrCreateRoom(
-                start.GetValueOrDefault().PunRoomName,
-                new RoomOptions { MaxPlayers = _maxPlayers },
-                TypedLobby.Default
-            );
+            /*
+                The host creates the room; a client only joins it. A
+                client that created the same-named room instead (the
+                host unreachable or on another region) would sit in a
+                lone room reporting success — the split-brain this
+                split avoids.
+            */
+            bool queued =
+                start.GetValueOrDefault().Kind == StagedStartKind.Host
+                    ? PhotonNetwork.JoinOrCreateRoom(
+                        start.GetValueOrDefault().PunRoomName,
+                        new RoomOptions { MaxPlayers = _maxPlayers },
+                        TypedLobby.Default
+                    )
+                    : PhotonNetwork.JoinRoom(start.GetValueOrDefault().PunRoomName);
             if (!queued)
             {
                 FailStaged(new InvalidOperationException("PUN2 refused the room join operation."));
@@ -343,7 +357,14 @@ namespace SignalFish.Client.Adapters.Pun2
             {
                 if (staged.Kind == StagedStartKind.Host)
                 {
-                    PublishRoomName(staged.Client, staged.PunRoomName);
+                    if (!TryPublishRoomName(staged.Client, staged.PunRoomName))
+                    {
+                        throw new InvalidOperationException(
+                            "The PUN room name could not be published "
+                                + "(envelope bound or refused send)."
+                        );
+                    }
+
                     SendOrThrow(staged.Client.SendPlayerReady(), "PlayerReady");
                     SendOrThrow(staged.Client.SendStartGame(), "StartGame");
                 }
@@ -418,6 +439,7 @@ namespace SignalFish.Client.Adapters.Pun2
             CancellationToken ct
         )
         {
+            ValidateConfigured();
             int generation = BeginSession();
             SignalFishClient client = CreateClient();
             TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>(
@@ -511,6 +533,37 @@ namespace SignalFish.Client.Adapters.Pun2
             }
         }
 
+        private void ValidateConfigured()
+        {
+            if (
+                string.IsNullOrEmpty(_endpoint)
+                || !Uri.IsWellFormedUriString(_endpoint, UriKind.Absolute)
+            )
+            {
+                throw new InvalidOperationException("Endpoint is not a well-formed absolute URI.");
+            }
+
+            if (string.IsNullOrEmpty(_gameName))
+            {
+                throw new InvalidOperationException("GameName cannot be empty.");
+            }
+
+            if (string.IsNullOrEmpty(_playerName))
+            {
+                throw new InvalidOperationException("PlayerName cannot be empty.");
+            }
+
+            if (StartTimeoutMilliseconds < 1)
+            {
+                throw new InvalidOperationException("StartTimeoutSeconds must be positive.");
+            }
+
+            if (PunStartTimeoutMilliseconds < 1)
+            {
+                throw new InvalidOperationException("PunStartTimeoutSeconds must be positive.");
+            }
+        }
+
         private async Task<PollEvent> WaitForAsync(
             SignalFishClient client,
             PollEventKind expected,
@@ -579,6 +632,36 @@ namespace SignalFish.Client.Adapters.Pun2
 
         private async Task AwaitStaged(TaskCompletionSource<bool> completion, int generation)
         {
+            /*
+                The staged start is driven by Update() and the PUN
+                callbacks; a disabled component stops receiving both.
+                The watchdog's margin keeps that world bounded too — in a
+                ticking world EnforcePunDeadline fires first with the
+                sharper message, so the watchdog only speaks when Update
+                really stopped.
+            */
+            Task settled = await Task.WhenAny(
+                    completion.Task,
+                    Task.Delay(PunStartTimeoutMilliseconds + StagedStartTimeoutMilliseconds)
+                )
+                .ConfigureAwait(false);
+            if (settled != completion.Task && !completion.Task.IsCompleted)
+            {
+                Teardown();
+                try
+                {
+                    await completion.Task.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Teardown's own verdict; the timeout is the caller-facing reason.
+                }
+
+                throw new TimeoutException(
+                    "The staged PUN start never settled; the bootstrap's Update stopped ticking."
+                );
+            }
+
             await completion.Task.ConfigureAwait(false);
             EnsureFresh(generation);
         }
@@ -659,6 +742,7 @@ namespace SignalFish.Client.Adapters.Pun2
             }
             else
             {
+                _punConnected = true;
                 _phase = PunPhase.Connecting;
             }
         }
@@ -714,20 +798,23 @@ namespace SignalFish.Client.Adapters.Pun2
             completion?.TrySetException(failure);
         }
 
-        private void PublishRoomName(SignalFishClient client, string roomName)
+        private bool TryPublishRoomName(SignalFishClient client, string roomName)
         {
             Span<byte> scratch = stackalloc byte[Pun2RoomEnvelope.MaxEnvelopeLength];
             if (!Pun2RoomEnvelope.TryWrite(roomName, scratch, out int written))
             {
-                throw new InvalidOperationException(
-                    "The PUN room name no longer fits the envelope's charset or length bound."
-                );
+                return false;
             }
 
             byte[] payload = new byte[written];
             scratch.Slice(0, written).CopyTo(payload);
-            SendOrThrow(client.SendGameData(new GameDataMessage(payload)), "GameData");
+            if (!client.SendGameData(new GameDataMessage(payload)).Accepted)
+            {
+                return false;
+            }
+
             _published = true;
+            return true;
         }
 
         private string ResolveHostRoomName(string? roomCode)
@@ -783,12 +870,15 @@ namespace SignalFish.Client.Adapters.Pun2
                     /*
                         The game-data lane replays nothing: a member that
                         joins after the first publication misses it, so
-                        the host re-publishes on every join.
+                        the host re-publishes on every join. A refusal
+                        here (the room socket died under us) fails the
+                        session instead of throwing out of Update.
                     */
                     string? roomName = _photonRoomName;
-                    if (roomName is not null)
+                    if (roomName is not null && !TryPublishRoomName(client, roomName))
                     {
-                        PublishRoomName(client, roomName);
+                        Fail("The host could not re-publish the PUN room name.");
+                        return;
                     }
 
                     continue;
@@ -838,6 +928,21 @@ namespace SignalFish.Client.Adapters.Pun2
                 return "The room connection closed.";
             }
 
+            /*
+                Both kinds mean the wire just proved broken (a malformed
+                frame, a protocol rule the server rejected); the client
+                surfaces them fail-closed and so does the coordination.
+            */
+            if (pollEvent.Kind == PollEventKind.ProtocolViolation)
+            {
+                return "The room connection broke the protocol: " + pollEvent.Failure.Reason + ".";
+            }
+
+            if (pollEvent.Kind == PollEventKind.DecodeFailed)
+            {
+                return "The room connection carried an undecodable frame.";
+            }
+
             return null;
         }
 
@@ -850,6 +955,8 @@ namespace SignalFish.Client.Adapters.Pun2
 
         private void Teardown()
         {
+            TaskCompletionSource<bool>? stagedCompletion;
+            TaskCompletionSource<bool>? activeCompletion;
             SignalFishClient? live;
             lock (_lock)
             {
@@ -858,12 +965,20 @@ namespace SignalFish.Client.Adapters.Pun2
                 _client = null;
                 _session = null;
                 _staged = null;
+                stagedCompletion = _stagedCompletion;
                 _stagedCompletion = null;
                 _joinedRoomCode = null;
                 _photonRoomName = null;
                 _localPlayerId = null;
             }
 
+            /*
+                The start tasks are public awaited APIs: a teardown must
+                settle them, or Shutdown/OnDestroy (or any room-side
+                failure) while a start is staged or in flight hangs the
+                awaiter forever.
+            */
+            activeCompletion = _activeCompletion;
             _active = null;
             _activeCompletion = null;
             _phase = default(PunPhase);
@@ -873,15 +988,26 @@ namespace SignalFish.Client.Adapters.Pun2
             {
                 _ = DisposeQuietlyAsync(live);
             }
+
+            OperationCanceledException canceled = new("The coordination session was torn down.");
+            stagedCompletion?.TrySetException(canceled);
+            activeCompletion?.TrySetException(canceled);
         }
 
         private void QuietDisconnect()
         {
             /*
-                Best-effort: Disconnect on a client that never connected
-                is a no-op in PUN2, and the room session is the source of
-                truth for whether coordination continues.
+                PUN2's client is a process-wide singleton: only a
+                connection this bootstrap opened through
+                ConnectUsingSettings may be disconnected here, or a
+                Shutdown would tear down a connection the game owns.
             */
+            if (!_punConnected)
+            {
+                return;
+            }
+
+            _punConnected = false;
             try
             {
                 PhotonNetwork.Disconnect();
@@ -965,6 +1091,20 @@ namespace SignalFish.Client.Adapters.Pun2
             {
                 throw new InvalidOperationException(
                     "The room connection closed while the start was running."
+                );
+            }
+
+            if (pollEvent.Kind == PollEventKind.ProtocolViolation)
+            {
+                throw new InvalidOperationException(
+                    "The room connection broke the protocol: " + pollEvent.Failure.Reason + "."
+                );
+            }
+
+            if (pollEvent.Kind == PollEventKind.DecodeFailed)
+            {
+                throw new InvalidOperationException(
+                    "The room connection carried an undecodable frame."
                 );
             }
         }

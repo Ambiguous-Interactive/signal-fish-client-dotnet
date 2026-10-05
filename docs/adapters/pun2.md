@@ -116,5 +116,8 @@ Known, deliberate limitations in this version: authority moves that
 leave the host tear the coordination down (the published name would
 have no one to honor it — start a new room), the host's `StartGame`
 refusal when a member has not readied yet surfaces as a failure rather
-than a retry, and a fresh import needs one editor compile before the
-detector can light the adapter up (above).
+than a retry, a fresh import needs one editor compile before the
+detector can light the adapter up (above), and both sides must run the
+**same PhotonServerSettings** (AppId and region): the client only
+*joins* the host's room, so a settings mismatch surfaces as the
+client's join failure rather than a silent split-brain room.
