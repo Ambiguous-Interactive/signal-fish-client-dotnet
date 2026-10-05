@@ -253,6 +253,8 @@ namespace SignalFish.Client.Adapters.Fusion
 
         private bool _published;
 
+        private bool _shutdownRequested;
+
         private SynchronizationContext? _mainContext;
 
         /*
@@ -515,6 +517,7 @@ namespace SignalFish.Client.Adapters.Fusion
         {
             RunStagedStart();
             EnforceFusionDeadline();
+            ShutdownRunnerIfRequested();
             DrainSession();
         }
 
@@ -863,7 +866,10 @@ namespace SignalFish.Client.Adapters.Fusion
             _runnerOwned = true;
             runner.AddCallbacks(this);
             Task<StartGameResult> started = runner.StartGame(BuildStartArgs(start));
-            _ = started.ContinueWith(SettleStaged, TaskContinuationOptions.ExecuteSynchronously);
+            _ = started.ContinueWith(
+                task => SettleStaged(task, start.Generation),
+                TaskContinuationOptions.ExecuteSynchronously
+            );
         }
 
         private StartGameArgs BuildStartArgs(StagedStart start)
@@ -894,35 +900,36 @@ namespace SignalFish.Client.Adapters.Fusion
             };
         }
 
-        private void SettleStaged(Task<StartGameResult> started)
+        private void SettleStaged(Task<StartGameResult> started, int generation)
         {
             /*
                 The start task settles on a Fusion worker thread as often
                 as not, but _active is main-thread state: the settle is
                 marshaled onto the context the kick was captured on, so
-                every active-start transition happens on one thread. A
-                torn-down session's posted settle finds no pending start
-                and becomes a no-op.
+                every active-start transition happens on one thread. The
+                generation rides along: a torn-down or superseded start's
+                settle finds no matching active start and is a no-op.
             */
             SynchronizationContext? main = _mainContext;
             if (main is null || main == SynchronizationContext.Current)
             {
-                SettleStagedOnMain(started);
+                SettleStagedOnMain(started, generation);
                 return;
             }
 
-            main.Post(_ => SettleStagedOnMain(started), null);
+            main.Post(_ => SettleStagedOnMain(started, generation), null);
         }
 
-        private void SettleStagedOnMain(Task<StartGameResult> started)
+        private void SettleStagedOnMain(Task<StartGameResult> started, int generation)
         {
-            TaskCompletionSource<bool>? completion = _activeCompletion;
-            if (completion is null)
+            StagedStart? active = _active;
+            if (active is null || active.GetValueOrDefault().Generation != generation)
             {
                 return;
             }
 
             string? failure = DescribeStagedOutcome(started);
+            TaskCompletionSource<bool>? completion = _activeCompletion;
             if (failure is null)
             {
                 /*
@@ -933,7 +940,7 @@ namespace SignalFish.Client.Adapters.Fusion
                 */
                 _active = null;
                 _activeCompletion = null;
-                completion.TrySetResult(true);
+                completion?.TrySetResult(true);
                 return;
             }
 
@@ -1151,6 +1158,16 @@ namespace SignalFish.Client.Adapters.Fusion
 
         private void Teardown()
         {
+            /*
+                The runner is a Unity object: its shutdown belongs on the
+                main thread. A caller on the captured main context shuts
+                it down now; a background caller (a start failure on a
+                room-side continuation) leaves the request for the next
+                tick — ShutdownRunnerIfRequested performs it there.
+            */
+            bool onMain =
+                SynchronizationContext.Current != null
+                && SynchronizationContext.Current == _mainContext;
             TaskCompletionSource<bool>? stagedCompletion;
             TaskCompletionSource<bool>? activeCompletion;
             SignalFishClient? live;
@@ -1179,7 +1196,15 @@ namespace SignalFish.Client.Adapters.Fusion
             _activeCompletion = null;
             _published = false;
             _mainContext = null;
-            QuietShutdownRunner();
+            if (onMain)
+            {
+                QuietShutdownRunner();
+            }
+            else
+            {
+                _shutdownRequested = true;
+            }
+
             if (live is not null)
             {
                 _ = DisposeQuietlyAsync(live);
@@ -1212,6 +1237,25 @@ namespace SignalFish.Client.Adapters.Fusion
             }
 
             _ = ShutdownRunnerQuietlyAsync(runner);
+        }
+
+        private void ShutdownRunnerIfRequested()
+        {
+            /*
+                The deferred half of Teardown: a background caller cannot
+                touch the runner (Unity object APIs throw off the main
+                thread), so it leaves the request and this tick performs
+                the shutdown. A destroyed component never ticks again —
+                fine, because a destroyed runner shuts its own session
+                down.
+            */
+            if (!_shutdownRequested)
+            {
+                return;
+            }
+
+            _shutdownRequested = false;
+            QuietShutdownRunner();
         }
 
         private int BeginSession()
