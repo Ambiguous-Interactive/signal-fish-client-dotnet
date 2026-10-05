@@ -28,9 +28,10 @@ negotiation.
 host                                  client
 ----                                  ------
 join room ──────────────────────────► join room (by code)
-take authority
+take authority                        mark ready
 start your listener
 publish endpoint (ProvideConnectionInfo)
+mark ready + StartGame
                                       GameStarting: read the authority's endpoint
                                       echo the join code (GameData)
 echo seen from a member ─────────────► your connect call goes out
@@ -207,7 +208,10 @@ public sealed class ByosHost : MonoBehaviour
     /// The connection gate. Ask this from your listener's accept path;
     /// <paramref name="playerHint"/> is whatever your stack passes at
     /// connect time — pass the peer's Signal Fish player id and the gate
-    /// closes on the room's truth.
+    /// closes on the room's truth. A <see langword="false"/> can mean
+    /// "not yet": the member's echo rides the room's reliable lane and
+    /// may still be in flight, so an accept path that lands before it
+    /// re-asks (your stack's retry), never hard-refuses.
     /// </summary>
     public bool IsConnectionCleared(Guid playerHint)
     {
@@ -269,6 +273,16 @@ public sealed class ByosHost : MonoBehaviour
             // StartYourListener(listenHost, listenPort);
 
             PublishEndpoint();
+
+            /*
+                GameStarting is the StartGame fan-out on the v2 floor:
+                readiness never auto-starts, so the authority readies and
+                starts the game once the endpoint is out. A refusal
+                (the lobby is not all-ready yet) arrives as a ServerError
+                event, which the drain below surfaces loudly.
+            */
+            ThrowIfRefused(room.SendPlayerReady());
+            ThrowIfRefused(room.SendStartGame());
             ready = true;
         }
         catch
@@ -291,16 +305,12 @@ public sealed class ByosHost : MonoBehaviour
             switch (pollEvent.Kind)
             {
                 case PollEventKind.PlayerJoined:
-                    roster.Add(pollEvent.PlayerJoined.Player.Id);
-                    PublishEndpoint();
-                    break;
                 case PollEventKind.PlayerReconnected:
-                    roster.Add(pollEvent.LeftPlayerId);
+                    ApplyRoster(pollEvent);
                     PublishEndpoint();
                     break;
                 case PollEventKind.PlayerLeft:
-                    roster.Remove(pollEvent.LeftPlayerId);
-                    cleared.Remove(pollEvent.LeftPlayerId);
+                    ApplyRoster(pollEvent);
                     break;
                 case PollEventKind.GameData:
                     if (
@@ -317,16 +327,51 @@ public sealed class ByosHost : MonoBehaviour
                     break;
                 case PollEventKind.AuthorityChanged:
                     /*
-                        An authority loss orphans the published endpoint:
-                        the room now speaks with another host. Fail loudly
-                        rather than serving a stale address.
+                        The grant broadcast that follows this host's own
+                        authority request is benign — the room answers
+                        with AuthorityResponse AND a room-wide
+                        AuthorityChanged whose you_are_authority is true
+                        for us. Only a move away from this host orphans
+                        the published endpoint: fail loudly rather than
+                        serving a stale address.
                     */
-                    TearDown("The room's authority moved; re-host the room.");
-                    return;
+                    if (!pollEvent.AuthorityChanged.YouAreAuthority)
+                    {
+                        TearDown("The room's authority moved; re-host the room.");
+                        return;
+                    }
+
+                    break;
                 case PollEventKind.Disconnected:
                     TearDown("The room connection closed.");
                     return;
             }
+        }
+    }
+
+    /// <summary>
+    /// Applies one membership event to the gate's inputs. Shared with the
+    /// bootstrap's wait, so roster events that land while it hunts for
+    /// its own keep the gate truthful.
+    /// </summary>
+    private void ApplyRoster(in PollEvent pollEvent)
+    {
+        if (pollEvent.Kind == PollEventKind.PlayerJoined)
+        {
+            roster.Add(pollEvent.PlayerJoined.Player.Id);
+            return;
+        }
+
+        if (pollEvent.Kind == PollEventKind.PlayerReconnected)
+        {
+            roster.Add(pollEvent.LeftPlayerId);
+            return;
+        }
+
+        if (pollEvent.Kind == PollEventKind.PlayerLeft)
+        {
+            roster.Remove(pollEvent.LeftPlayerId);
+            cleared.Remove(pollEvent.LeftPlayerId);
         }
     }
 
@@ -373,7 +418,8 @@ public sealed class ByosHost : MonoBehaviour
                 /*
                     A dead session must fail the wait now, not at the
                     deadline: Disconnected and the failure events all
-                    throw here.
+                    throw here. Roster events apply as they pass, so
+                    members that arrive mid-bootstrap are gated on truth.
                 */
                 ThrowForFailure(current);
                 if (current.Kind == PollEventKind.Disconnected)
@@ -382,6 +428,8 @@ public sealed class ByosHost : MonoBehaviour
                         "The room connection closed while waiting for " + expected + "."
                     );
                 }
+
+                ApplyRoster(current);
             }
 
             await Task.Delay(10).ConfigureAwait(false);
@@ -503,6 +551,12 @@ public sealed class ByosClient : MonoBehaviour
             PollEvent joined = await ExpectAsync(room, PollEventKind.RoomJoined, ct);
             LocalPlayerId = joined.Membership.PlayerId;
 
+            /*
+                Ready is lobby etiquette: the host's StartGame waits for
+                an all-ready lobby, and this client joins before it.
+            */
+            ThrowIfRefused(room.SendPlayerReady());
+
             // The authority's published endpoint arrives with the game start.
             ConnectionEndpoint where = await ExpectAuthorityEndpointAsync(room, ct);
 
@@ -526,9 +580,11 @@ public sealed class ByosClient : MonoBehaviour
             }
 
             /*
-                Your connect call goes here, after the echo is queued: the
-                host may see the echo first, and the gate refuses an engine
-                connection it cannot match to a cleared member.
+                Your connect call goes here, after the echo is queued.
+                The echo must cross the room before the host's gate
+                clears this member, so connect with your stack's normal
+                retry — an accept refused before the echo lands succeeds
+                on the retry.
             */
             // ConnectYourStack(where.Host, where.Port, LocalPlayerId);
             ready = true;
@@ -613,9 +669,9 @@ public sealed class ByosClient : MonoBehaviour
 | Fact | Value |
 | --- | --- |
 | Endpoint publication | `SendProvideConnectionInfo` with `{"type": "direct", "host": ..., "port": ...}` (v2-compatible, player role). |
-| Where clients read it | `GameStarting` → `PeerConnections[IsAuthority].ConnectionInfo`. |
+| Where clients read it | `GameStarting` → `PeerConnections[IsAuthority].ConnectionInfo` — the `StartGame` fan-out, so the authority readies and starts the game (readiness never auto-starts). |
 | Membership echo | `GameData` JSON `{"signal_fish_room_join_code": "<room code>"}`, charset `[A-Za-z0-9_-]`, ≤ 128 chars. |
-| Gate inputs | Live roster (player events) **and** a matching echo from that player id. |
+| Gate inputs | Live roster (player events) **and** a matching echo from that player id; a miss can mean "not yet" — the accept path retries. |
 | Roles | Players only; spectators have no game-data lane in the v2 floor. |
 
 ## Notes and limits
@@ -633,6 +689,15 @@ public sealed class ByosClient : MonoBehaviour
   cleared set: its echo died with the old connection. The template's
   client has no re-echo path yet — a real game should echo again on
   reconnect (the host's gate reopens on the fresh echo).
+- The gate refuses nothing permanently: an accept that lands before the
+  member's echo simply reads as "not yet", and your stack's connect
+  retry clears on the echo's arrival. A hard one-shot accept would race
+  the room's reliable lane and lose.
+- `StartGame` is authority-gated and the lobby must be all-ready: the
+  host marks itself ready and starts; if a real deployment keeps
+  players waiting in the lobby, the start refusal arrives as a
+  `ServerError` (`GAME_START_NOT_READY`) and the host retries the start
+  as its lobby fills.
 - The `playerHint` mapping in `IsConnectionCleared` is the one
   stack-specific seam: your stack must tell you which Signal Fish
   player is at the engine door. Passing the player id as your stack's
