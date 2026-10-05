@@ -30,7 +30,7 @@ session-name exchange, shipped as the UPM source package
   exchange — membership enforcement stays the game's job.
 - The runner lives on a bootstrap-owned `SignalFishFusionRunner`
   GameObject; teardown shuts down only what the bootstrap created.
-  Start failures settle on Fusion worker threads and are marshalled to
+  Start failures settle on Fusion worker threads and are marshaled to
   the captured `SynchronizationContext` before any Unity teardown.
 
 ## How the surface was pinned
@@ -78,7 +78,7 @@ The review loop found one blocker and the fix landed in this branch:
 - `SettleStaged`'s success path never cleared the active start, so
   `EnforceFusionDeadline` tore every healthy session down
   `FusionStartTimeoutSeconds` after its start succeeded. The settle is
-  now marshalled onto the captured main context (the start task
+  now marshaled onto the captured main context (the start task
   settles on a Fusion worker thread as often as not), success clears
   the active start before completing the awaited task, and `FailStaged`
   guards on the pending completion — a settled start is never torn

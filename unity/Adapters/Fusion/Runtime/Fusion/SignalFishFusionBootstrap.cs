@@ -899,7 +899,7 @@ namespace SignalFish.Client.Adapters.Fusion
             /*
                 The start task settles on a Fusion worker thread as often
                 as not, but _active is main-thread state: the settle is
-                marshalled onto the context the kick was captured on, so
+                marshaled onto the context the kick was captured on, so
                 every active-start transition happens on one thread. A
                 torn-down session's posted settle finds no pending start
                 and becomes a no-op.
