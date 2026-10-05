@@ -118,6 +118,7 @@ nav:
       - NGO + Unity Relay: adapters/ngo.md
       - Photon PUN2: adapters/pun2.md
       - Photon Fusion: adapters/fusion.md
+      - Steamworks.NET: adapters/steamworksnet.md
       - Bring Your Own Stack: adapters/byos.md
   - Project:
       - Server Conformance: conformance.md

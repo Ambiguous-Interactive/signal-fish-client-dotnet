@@ -58,6 +58,13 @@
             Include="..\..\unity\Adapters\Fusion\Runtime\Core\**\*.cs"
             LinkBase="Adapters\Fusion\Core"
         />
+        <!-- The Steamworks.NET adapter's pure core (the SteamId64
+             identity envelope) is engine- and Steamworks-free C#
+             exercised the same way. -->
+        <Compile
+            Include="..\..\unity\Adapters\SteamworksNet\Runtime\Core\**\*.cs"
+            LinkBase="Adapters\SteamworksNet\Core"
+        />
     </ItemGroup>
 
     <ItemGroup>
