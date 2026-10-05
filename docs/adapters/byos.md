@@ -117,7 +117,8 @@ public static class RoomJoinCodeEnvelope
                 return true;
             }
 
-            keyStart = data.Slice(scanner).IndexOf(key);
+            int next = data.Slice(scanner).IndexOf(key);
+            keyStart = next < 0 ? -1 : scanner + next;
         }
 
         return false;
@@ -220,47 +221,61 @@ public sealed class ByosHost : MonoBehaviour
             SystemClock.Instance,
             new SignalFishClientOptions()
         );
-        await room.ConnectAsync(new Uri(endpoint), ct);
-        ThrowIfRefused(room.SendAuthenticate(new AuthenticateMessage()));
-        await ExpectAsync(room, PollEventKind.Authenticated, ct);
-        ThrowIfRefused(
-            room.SendJoinRoom(
-                new JoinRoomMessage(gameName, playerName, roomCode, supportsAuthority: true)
-            )
-        );
-        PollEvent joined = await ExpectAsync(room, PollEventKind.RoomJoined, ct);
-        JoinedRoomCode = joined.Membership.RoomCode;
-        if (!RoomJoinCodeEnvelope.IsValidRoomCode(JoinedRoomCode))
-        {
-            /*
-                The echo can never encode this code; fail now rather than
-                run a gate that can never open.
-            */
-            TearDown(reason: null);
-            throw new InvalidOperationException(
-                "The server's room code does not fit the echo envelope's charset."
-            );
-        }
-
-        ThrowIfRefused(room.SendAuthorityRequest(becomeAuthority: true));
-        PollEvent granted = await ExpectAsync(room, PollEventKind.AuthorityResponse, ct);
-        if (!granted.AuthorityResponse.Granted)
-        {
-            throw new InvalidOperationException(
-                "The room denied the authority request: "
-                    + (granted.AuthorityResponse.Reason ?? "unspecified")
-                    + "."
-            );
-        }
 
         /*
-            Your listener starts here, before the endpoint is published:
-            a client that reads the endpoint must find a live listener.
+            A bootstrap that throws must not leave a live room session
+            nobody drains: Update() stays gated off until ready, so the
+            failure path tears the session down itself.
         */
-        // StartYourListener(listenHost, listenPort);
+        try
+        {
+            await room.ConnectAsync(new Uri(endpoint), ct);
+            ThrowIfRefused(room.SendAuthenticate(new AuthenticateMessage()));
+            await ExpectAsync(room, PollEventKind.Authenticated, ct);
+            ThrowIfRefused(
+                room.SendJoinRoom(
+                    new JoinRoomMessage(gameName, playerName, roomCode, supportsAuthority: true)
+                )
+            );
+            PollEvent joined = await ExpectAsync(room, PollEventKind.RoomJoined, ct);
+            JoinedRoomCode = joined.Membership.RoomCode;
+            if (!RoomJoinCodeEnvelope.IsValidRoomCode(JoinedRoomCode))
+            {
+                /*
+                    The echo can never encode this code; fail now rather
+                    than run a gate that can never open.
+                */
+                throw new InvalidOperationException(
+                    "The server's room code does not fit the echo envelope's charset."
+                );
+            }
 
-        PublishEndpoint();
-        ready = true;
+            ThrowIfRefused(room.SendAuthorityRequest(becomeAuthority: true));
+            PollEvent granted = await ExpectAsync(room, PollEventKind.AuthorityResponse, ct);
+            if (!granted.AuthorityResponse.Granted)
+            {
+                throw new InvalidOperationException(
+                    "The room denied the authority request: "
+                        + (granted.AuthorityResponse.Reason ?? "unspecified")
+                        + "."
+                );
+            }
+
+            /*
+                Your listener starts here, before the endpoint is
+                published: a client that reads the endpoint must find a
+                live listener.
+            */
+            // StartYourListener(listenHost, listenPort);
+
+            PublishEndpoint();
+            ready = true;
+        }
+        catch
+        {
+            TearDown(reason: null);
+            throw;
+        }
     }
 
     private void Update()
@@ -471,36 +486,58 @@ public sealed class ByosClient : MonoBehaviour
             SystemClock.Instance,
             new SignalFishClientOptions()
         );
-        await room.ConnectAsync(new Uri(endpoint), ct);
-        ThrowIfRefused(room.SendAuthenticate(new AuthenticateMessage()));
-        await ExpectAsync(room, PollEventKind.Authenticated, ct);
-        ThrowIfRefused(
-            room.SendJoinRoom(new JoinRoomMessage(gameName, playerName, roomCode))
-        );
-        PollEvent joined = await ExpectAsync(room, PollEventKind.RoomJoined, ct);
-        LocalPlayerId = joined.Membership.PlayerId;
-
-        // The authority's published endpoint arrives with the game start.
-        ConnectionEndpoint where = await ExpectAuthorityEndpointAsync(room, ct);
 
         /*
-            The echo is the membership proof the host's gate reads. Echo
-            the server's canonical code (this client's membership), not
-            the requested string: servers match codes case-insensitively,
-            and the host compares ordinally.
+            A bootstrap that throws must not leave a live room session
+            nobody drains: Update() stays gated off until ready, so the
+            failure path tears the session down itself.
         */
-        if (RoomJoinCodeEnvelope.TryWrite(joined.Membership.RoomCode, out byte[] echo))
+        try
         {
-            ThrowIfRefused(room.SendGameData(new GameDataMessage(echo)));
-        }
+            await room.ConnectAsync(new Uri(endpoint), ct);
+            ThrowIfRefused(room.SendAuthenticate(new AuthenticateMessage()));
+            await ExpectAsync(room, PollEventKind.Authenticated, ct);
+            ThrowIfRefused(
+                room.SendJoinRoom(new JoinRoomMessage(gameName, playerName, roomCode))
+            );
+            PollEvent joined = await ExpectAsync(room, PollEventKind.RoomJoined, ct);
+            LocalPlayerId = joined.Membership.PlayerId;
 
-        /*
-            Your connect call goes here, after the echo is queued: the
-            host may see the echo first, and the gate refuses an engine
-            connection it cannot match to a cleared member.
-        */
-        // ConnectYourStack(where.Host, where.Port, LocalPlayerId);
-        ready = true;
+            // The authority's published endpoint arrives with the game start.
+            ConnectionEndpoint where = await ExpectAuthorityEndpointAsync(room, ct);
+
+            /*
+                The echo is the membership proof the host's gate reads.
+                Echo the server's canonical code (this client's
+                membership), not the requested string: servers match
+                codes case-insensitively, and the host compares
+                ordinally.
+            */
+            if (RoomJoinCodeEnvelope.TryWrite(joined.Membership.RoomCode, out byte[] echo))
+            {
+                ThrowIfRefused(room.SendGameData(new GameDataMessage(echo)));
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "[ByosClient] The room code does not fit the echo envelope; "
+                        + "the host's gate will refuse this member."
+                );
+            }
+
+            /*
+                Your connect call goes here, after the echo is queued: the
+                host may see the echo first, and the gate refuses an engine
+                connection it cannot match to a cleared member.
+            */
+            // ConnectYourStack(where.Host, where.Port, LocalPlayerId);
+            ready = true;
+        }
+        catch
+        {
+            TearDown(reason: null);
+            throw;
+        }
     }
 
     private void Update()
