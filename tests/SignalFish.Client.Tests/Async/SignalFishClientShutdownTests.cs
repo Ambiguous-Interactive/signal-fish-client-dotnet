@@ -121,8 +121,8 @@ namespace SignalFish.Client.Tests.Async
                 budget back each other up; this pins the loop side alone.
                 The heartbeat park would fire at 60 s, so with a 30 s
                 budget only the capped park can wake the loop when the
-                clock advances 30 s — and the 30 s REAL fallback cannot
-                fire inside the 10 s event timeout either.
+                clock advances 30 s; the measured wall time staying under
+                5 s is what rules out the real-time fallback.
             */
             (SignalFishClient client, FakeTransport transport, VirtualClock clock) = BuildTimed(
                 new SignalFishClientOptions(
@@ -220,7 +220,7 @@ namespace SignalFish.Client.Tests.Async
             TaskCompletionSource<bool> wire = new TaskCompletionSource<bool>();
             transport.HoldSendsUntil(wire);
             Assert.That(client.SendGameData(Payload(0)).Accepted, Is.True);
-            await WaitForAsync(() => transport.SentText.Count >= 3, "the relay is parked mid-send");
+            await WaitForSentTextAsync(transport, 3, "the relay is parked mid-send");
             Assert.That(client.SendGameData(Payload(1)).Accepted, Is.True);
 
             await client.DisposeAsync();
@@ -415,22 +415,61 @@ namespace SignalFish.Client.Tests.Async
         private static async Task<PollEvent> NextEventAsync(SignalFishClient client)
         {
             using CancellationTokenSource timeout = new CancellationTokenSource(
-                TimeSpan.FromSeconds(10)
+                TimeSpan.FromSeconds(60)
             );
             PollEvent? pollEvent = await client.DequeueEventAsync(timeout.Token);
-            Assert.That(pollEvent, Is.Not.Null, "expected an event before the 10 s timeout");
+            Assert.That(pollEvent, Is.Not.Null, "expected an event before the 60 s timeout");
             return pollEvent.GetValueOrDefault();
         }
 
+        /*
+            Readiness polls, not timing asserts: the real 1 ms sleep exists
+            only to release the thread-pool thread so the driver loop's
+            continuation can run (a Task.Yield hot-spin here starves the
+            very task we are waiting for). All protocol timing under test
+            moves on the virtual clock. The budget is an anti-hang backstop,
+            sized to ride out a saturated CI runner.
+        */
         private static async Task WaitForAsync(Func<bool> done, string because)
         {
             Stopwatch deadline = Stopwatch.StartNew();
-            while (!done() && deadline.ElapsedMilliseconds < 10_000)
+            while (!done() && deadline.ElapsedMilliseconds < 60_000)
             {
                 await Task.Delay(1);
             }
 
             Assert.That(done, Is.True, because);
+        }
+
+        /*
+            The event-based wire wait: the fake completes a task the moment
+            the driver loop records the frame, so the awaiting test parks
+            instead of polling and a saturated CI runner cannot starve the
+            wait past its budget (issue #93). The deadline is the anti-hang
+            backstop only.
+        */
+        private static async Task WaitForSentTextAsync(
+            FakeTransport transport,
+            int count,
+            string because
+        )
+        {
+            using CancellationTokenSource deadline = new CancellationTokenSource(
+                TimeSpan.FromSeconds(60)
+            );
+            try
+            {
+                bool delivered = await transport.WaitSentTextAsync(count, deadline.Token);
+                Assert.That(
+                    delivered,
+                    Is.True,
+                    $"{because} (the transport was disposed while waiting for send #{count})"
+                );
+            }
+            catch (OperationCanceledException)
+            {
+                Assert.Fail($"{because} (the wire never carried send #{count} within 60 s)");
+            }
         }
 
         private static (

@@ -15,6 +15,20 @@ namespace SignalFish.Client.Tests.Transport
     /// </summary>
     internal sealed class FakeTransport : ITransport
     {
+        /// <summary>A wire wait parked until its send count is recorded.</summary>
+        private sealed class SendWaiter
+        {
+            internal int Threshold { get; }
+
+            internal TaskCompletionSource<bool> Completion { get; } =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            internal SendWaiter(int threshold)
+            {
+                Threshold = threshold;
+            }
+        }
+
         private const int StateNew = 0;
         private const int StateConnected = 1;
         private const int StateClosed = 2;
@@ -69,11 +83,15 @@ namespace SignalFish.Client.Tests.Transport
         private readonly Queue<TransportFrame> _incoming = new Queue<TransportFrame>();
         private readonly List<byte[]> _sent = new List<byte[]>();
         private readonly List<bool> _sentKinds = new List<bool>();
+        private readonly List<SendWaiter> _textSendWaiters = new List<SendWaiter>();
+        private readonly List<SendWaiter> _binarySendWaiters = new List<SendWaiter>();
         private TaskCompletionSource<TransportFrame>? _pendingReceive;
         private TaskCompletionSource<bool>? _sendGate;
         private int _state = StateNew;
         private int _connectCount;
         private int _doomedCloseCode;
+        private int _textSends;
+        private int _binarySends;
         private bool _closeDelivered;
         private int _closeCode;
 
@@ -87,6 +105,46 @@ namespace SignalFish.Client.Tests.Transport
             lock (_gate)
             {
                 _sendGate = sendGate;
+            }
+        }
+
+        /// <summary>
+        /// Awaits until at least <paramref name="count"/> text sends are
+        /// recorded — the event-based wire wait. The awaiting test wakes the
+        /// moment the driver loop flushes the frame, with no poll cadence
+        /// and no wall-clock deadline to lose against a saturated CI runner
+        /// (issue #93). Returns <see langword="true"/> when the count was
+        /// reached; disposal releases unmet waits with
+        /// <see langword="false"/> so a test whose session died mid-wait
+        /// asserts on the real state instead of hanging.
+        /// </summary>
+        public Task<bool> WaitSentTextAsync(int count, CancellationToken ct = default)
+        {
+            lock (_gate)
+            {
+                if (_textSends >= count)
+                {
+                    return Task.FromResult(true);
+                }
+
+                return RegisterSendWaiterLocked(_textSendWaiters, count, ct);
+            }
+        }
+
+        /// <summary>
+        /// Awaits until at least <paramref name="count"/> binary sends are
+        /// recorded — the binary twin of <see cref="WaitSentTextAsync"/>.
+        /// </summary>
+        public Task<bool> WaitSentBinaryAsync(int count, CancellationToken ct = default)
+        {
+            lock (_gate)
+            {
+                if (_binarySends >= count)
+                {
+                    return Task.FromResult(true);
+                }
+
+                return RegisterSendWaiterLocked(_binarySendWaiters, count, ct);
             }
         }
 
@@ -278,6 +336,14 @@ namespace SignalFish.Client.Tests.Transport
             {
                 sendGate = _sendGate;
                 _sendGate = null;
+
+                /*
+                    The wire is gone: sends can never reach an unmet count,
+                    so parkers wake and assert on the real state instead of
+                    riding the test's deadline.
+                */
+                ReleaseSendWaitersLocked(_textSendWaiters);
+                ReleaseSendWaitersLocked(_binarySendWaiters);
             }
 
             /*
@@ -311,6 +377,17 @@ namespace SignalFish.Client.Tests.Transport
             {
                 _sent.Add(frame.ToArray());
                 _sentKinds.Add(isText);
+                if (isText)
+                {
+                    _textSends++;
+                    CompleteSendWaitersLocked(_textSendWaiters, _textSends);
+                }
+                else
+                {
+                    _binarySends++;
+                    CompleteSendWaitersLocked(_binarySendWaiters, _binarySends);
+                }
+
                 sendGate = _sendGate;
             }
 
@@ -320,6 +397,64 @@ namespace SignalFish.Client.Tests.Transport
             }
 
             return frame.Length;
+        }
+
+        /*
+            Wire-wait plumbing. All of it requires _gate on entry: a waiter
+            joins the list and a send completes satisfied waiters under the
+            same lock, so a wake always observes the count it waited for.
+        */
+
+        private static Task<bool> RegisterSendWaiterLocked(
+            List<SendWaiter> waiters,
+            int count,
+            CancellationToken ct
+        )
+        {
+            SendWaiter waiter = new SendWaiter(count);
+            waiters.Add(waiter);
+            return WaitWithCancelAsync(waiter.Completion, ct);
+        }
+
+        private static void CompleteSendWaitersLocked(List<SendWaiter> waiters, int recorded)
+        {
+            for (int i = waiters.Count - 1; i >= 0; i--)
+            {
+                if (waiters[i].Threshold <= recorded)
+                {
+                    waiters[i].Completion.TrySetResult(true);
+                    waiters.RemoveAt(i);
+                }
+            }
+        }
+
+        private static void ReleaseSendWaitersLocked(List<SendWaiter> waiters)
+        {
+            foreach (SendWaiter waiter in waiters)
+            {
+                waiter.Completion.TrySetResult(false);
+            }
+
+            waiters.Clear();
+        }
+
+        private static async Task<bool> WaitWithCancelAsync(
+            TaskCompletionSource<bool> completion,
+            CancellationToken ct
+        )
+        {
+            CancellationTokenRegistration registration = ct.Register(
+                static state => ((TaskCompletionSource<bool>)state!).TrySetCanceled(),
+                completion
+            );
+            try
+            {
+                return await completion.Task.ConfigureAwait(false);
+            }
+            finally
+            {
+                await registration.DisposeAsync().ConfigureAwait(false);
+            }
         }
 
         private TransportFrame TakeCloseFrame()
