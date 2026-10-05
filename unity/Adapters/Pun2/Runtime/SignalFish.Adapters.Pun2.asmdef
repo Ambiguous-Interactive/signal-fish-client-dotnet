@@ -1,0 +1,21 @@
+{
+    "name": "SignalFish.Adapters.Pun2",
+    "rootNamespace": "SignalFish.Client.Adapters.Pun2",
+    "references": [
+        "SignalFish.Client",
+        "SignalFish.Adapters.Core",
+        "PhotonUnityNetworking",
+        "PhotonRealtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "SIGNALFISH_PUN2"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

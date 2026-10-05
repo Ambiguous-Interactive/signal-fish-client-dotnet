@@ -1,0 +1,25 @@
+{
+    "name": "com.ambiguous-interactive.signalfish.adapters.pun2",
+    "version": "0.1.0",
+    "displayName": "Signal Fish Room Bootstrap for Photon PUN2",
+    "description": "Exchanges a Photon PUN2 room name over a Signal Fish room: the room owns matchmaking and membership, the host creates the PUN room and publishes its name over the room's game-data lane (re-published on every join), and clients join the PUN room whose name arrives on that lane. Requires Photon PUN 2 (detected by the included editor define detector), com.ambiguous-interactive.signalfish, and com.ambiguous-interactive.signalfish.adapters.core.",
+    "unity": "2021.2",
+    "license": "MIT",
+    "documentationUrl": "https://ambiguous-interactive.github.io/signal-fish-client-dotnet/adapters/pun2/",
+    "licensesUrl": "https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/blob/main/LICENSE",
+    "author": {
+        "name": "Ambiguous Interactive",
+        "url": "https://github.com/Ambiguous-Interactive"
+    },
+    "dependencies": {
+        "com.ambiguous-interactive.signalfish": "0.1.0",
+        "com.ambiguous-interactive.signalfish.adapters.core": "0.1.0"
+    },
+    "samples": [
+        {
+            "displayName": "PUN2 Room Name Exchange",
+            "description": "A host/client bootstrap that wires the room-name exchange to PUN2's connect and matchmaking calls and logs the exchange as the session comes up.",
+            "path": "Samples~/RoomNameExchange"
+        }
+    ]
+}

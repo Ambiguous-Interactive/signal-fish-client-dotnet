@@ -268,6 +268,79 @@ try {
         DetectorProbe = 'com.unity.netcode.gameobjects'
     }
 
+    $pun2 = @{
+        Root = 'unity/Adapters/Pun2'
+        Define = 'SIGNALFISH_PUN2'
+        LocalCoreCs = @(
+            '#nullable enable',
+            'namespace SignalFish.Client.Adapters.Pun2',
+            '{',
+            '    public static class Pun2RoomEnvelope',
+            '    {',
+            '        public const int MaxRoomNameLength = 128;',
+            '        public static bool IsValidRoomName(string? roomName) => throw null!;',
+            '    }',
+            '}'
+        )
+        ChannelPin = $null
+        BridgeCs = @(
+            '#if SIGNALFISH_PUN2',
+            'namespace SignalFish.Client.Adapters.Pun2',
+            '{',
+            '    public sealed class Bridge : global::Photon.Pun.MonoBehaviourPunCallbacks',
+            '    {',
+            '        private readonly System.Collections.Generic.List<string> names = new();',
+            '        public void Exchange()',
+            '        {',
+            '            bool connected = global::Photon.Pun.PhotonNetwork.ConnectUsingSettings();',
+            '            bool queued = global::Photon.Pun.PhotonNetwork.JoinOrCreateRoom(',
+            '                "room", new global::Photon.Realtime.RoomOptions { MaxPlayers = 4 },',
+            '                global::Photon.Realtime.TypedLobby.Default);',
+            '            string? name = global::Photon.Pun.PhotonNetwork.CurrentRoom?.Name;',
+            '            if (name is not null && Pun2RoomEnvelope.IsValidRoomName(name))',
+            '            {',
+            '                names.Add(name);',
+            '            }',
+            '            if (!connected || !queued) { global::Photon.Pun.PhotonNetwork.Disconnect(); }',
+            '        }',
+            '        public override void OnConnectedToMaster() { }',
+            '        public override void OnJoinedRoom() { }',
+            '        public override void OnLeftRoom() { }',
+            '        public override void OnCreateRoomFailed(short returnCode, string message) { }',
+            '        public override void OnJoinRoomFailed(short returnCode, string message) { }',
+            '        public override void OnDisconnected(global::Photon.Realtime.DisconnectCause cause) { }',
+            '    }',
+            '}',
+            '#endif'
+        )
+        AsmdefJson = @(
+            '{',
+            '    "name": "SignalFish.Adapters.Pun2",',
+            '    "references": ["SignalFish.Client", "SignalFish.Adapters.Core", "PhotonUnityNetworking", "PhotonRealtime"],',
+            '    "defineConstraints": ["SIGNALFISH_PUN2"],',
+            '    "versionDefines": [],',
+            '    "noEngineReferences": false',
+            '}'
+        )
+        DetectorCs = @(
+            'namespace SignalFish.Client.Adapters.Pun2.Editor',
+            '{',
+            '    internal static class SignalFishPun2DefineDetector',
+            '    {',
+            '        private const string Define = "SIGNALFISH_PUN2";',
+            '        private const string AssemblyName = "PhotonUnityNetworking";',
+            '    }',
+            '}'
+        )
+        DetectorFile = 'SignalFishPun2DefineDetector.cs'
+        BridgeFile = 'SignalFishPun2Bootstrap.cs'
+        VendorNamespace = 'Photon.Transporting'
+        MemberProbe = 'ConnectUsingSettings'
+        WireFilter = 'Pun2RoomEnvelope\.'
+        WireName = 'Pun2RoomEnvelope'
+        DetectorProbe = 'PhotonUnityNetworking'
+    }
+
     $editorAsmdefJson = @(
         '{',
         '    "name": "Adapter.Editor",',
@@ -323,6 +396,7 @@ try {
     Write-AdapterFixture -Pin $fishnet
     Write-AdapterFixture -Pin $mirror
     Write-AdapterFixture -Pin $ngo
+    Write-AdapterFixture -Pin $pun2
 
     # 1. Well-formed packages pass the static lane (-NoBuild; the compile
     #    lane is CI's job and the real repo exercises it).
@@ -336,7 +410,7 @@ try {
     Assert-Equal 0 $run.ExitCode 'core-only run passes'
 
     # 3. An SDK reference without the define guard fails (all shapes).
-    foreach ($pin in @($fishnet, $mirror, $ngo)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $unguarded = @($pin.BridgeCs | Where-Object { $_ -notmatch '^#if SIGNALFISH_' -and $_ -ne '#endif' })
         Write-TestFile -Path $bridgePath -Content $unguarded
@@ -347,7 +421,7 @@ try {
     }
 
     # 4. Vendoring the SDK (namespace <SDK>) always fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $vendorCs = @(
             "namespace $($pin.VendorNamespace)",
@@ -363,7 +437,7 @@ try {
     }
 
     # 5. A dropped pinned engine member fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $probe = $pin.MemberProbe
         $missingMemberCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $probe })
@@ -376,7 +450,7 @@ try {
 
     # 6. A bridge that forks the shared wire fails; a transport bridge
     #    that drops the engine channel pin fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $forkedCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $pin.WireFilter })
         Write-TestFile -Path $bridgePath -Content $forkedCs
@@ -471,7 +545,7 @@ try {
 
     # 12. The detector contract: missing file, missing define string,
     #     missing probe, and an ungated editor assembly all fail.
-    foreach ($pin in @($fishnet, $mirror, $ngo)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2)) {
         $detectorPath = Join-Path $repo "Editor/$($pin.DetectorFile)".Replace('Editor/', "$($pin.Root)/Editor/")
         $expectedProbe = $pin.DetectorProbe
 
