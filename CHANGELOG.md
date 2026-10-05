@@ -8,6 +8,20 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- PUN2 adapter (M8.5): a new UPM package,
+  `com.ambiguous-interactive.signalfish.adapters.pun2`, ships
+  `SignalFishPun2Bootstrap` — a bootstrap that puts a Photon PUN2 room
+  on a Signal Fish room by exchanging the PUN room name over the room's
+  game-data lane. The host creates the PUN room and publishes its name
+  (re-published on every join, so late joiners never depend on timing);
+  clients join by room code and enter the PUN room whose name arrives.
+  The pure core (room-name envelope) runs in the dotnet test suite; the
+  `lint-unity-adapter` CI gate pins the compile-only-with-PUN2 guard,
+  the detector contract (PUN2 ships as an asset, so the detector owns
+  the define), and the bootstrap's member completeness against the
+  pinned PUN 2 surface. A room-name exchange sample covers the scene
+  wiring. Live Unity validation stays the M8.7 runbook item (Unity
+  never runs in CI).
 - NGO adapter (M8.3): a new UPM package,
   `com.ambiguous-interactive.signalfish.adapters.ngo`, ships
   `SignalFishRoomCoordinator` — a coordinator that runs a Netcode for

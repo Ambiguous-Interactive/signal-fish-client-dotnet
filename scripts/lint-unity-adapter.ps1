@@ -64,7 +64,7 @@
          failure by design.
 
 .PARAMETER Adapter
-    One package name (Core, FishNet, Mirror), or omit to lint all.
+    One package name (Core, FishNet, Mirror, Ngo, Pun2), or omit to lint all.
 
 .PARAMETER RepoRoot
     Repository root. Defaults to the parent of the scripts directory.
@@ -78,7 +78,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo')]
+    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo', 'Pun2')]
     [string]$Adapter,
     [string]$RepoRoot,
     [switch]$NoBuild,
@@ -525,6 +525,110 @@ namespace Mirror
 }
 '@
 
+# Shape stubs for the PUN2 bridge compile lane: the pinned member
+# surface the bootstrap touches, spelled the way the bootstrap uses it.
+# Same contract as the stubs above; members pinned against the PUN 2.31
+# source (PhotonNetwork.JoinOrCreateRoom returns bool, RoomOptions.
+# MaxPlayers is a byte field, TypedLobby.Default is a static readonly
+# reference, the PUN callbacks are virtual on MonoBehaviourPunCallbacks).
+$pun2BridgeStubs = @'
+// Shape stubs (UnityEngine / Photon.Pun / Photon.Realtime surface the
+// bootstrap touches). The engine SDK is never vendored or referenced in CI.
+#nullable enable
+namespace UnityEngine
+{
+    public class MonoBehaviour { }
+
+    public static class Debug
+    {
+        public static void LogWarning(object message) { }
+    }
+}
+
+namespace Photon.Realtime
+{
+    // Real member names, pinned against the PUN 2.31 source. The bridge
+    // only formats this enum into messages (it never switches on a
+    // value), so the member list is the pin, not the numeric values.
+    public enum DisconnectCause
+    {
+        None,
+        ExceptionOnConnect,
+        DnsExceptionOnConnect,
+        ServerAddressInvalid,
+        Exception,
+        ServerTimeout,
+        ClientTimeout,
+        DisconnectByServerLogic,
+        DisconnectByServerReasonUnknown,
+        InvalidAuthentication,
+        CustomAuthenticationFailed,
+        AuthenticationTicketExpired,
+        MaxCcuReached,
+        InvalidRegion,
+        OperationNotAllowedInCurrentState,
+        DisconnectByClientLogic,
+        DisconnectByOperationLimit,
+        DisconnectByDisconnectMessage,
+    }
+
+    public class Room
+    {
+        public string Name => string.Empty;
+    }
+
+    public class RoomOptions
+    {
+        public byte MaxPlayers;
+    }
+
+    public class TypedLobby
+    {
+        public static readonly TypedLobby Default = new TypedLobby();
+    }
+}
+
+namespace Photon.Pun
+{
+    public class MonoBehaviourPun : UnityEngine.MonoBehaviour { }
+
+    // The real callbacks are public virtual on MonoBehaviourPunCallbacks;
+    // an override the bootstrap drops is a silent runtime miss in the
+    // editor, so the pinned surface is what the lane type-checks.
+    public class MonoBehaviourPunCallbacks : MonoBehaviourPun
+    {
+        public virtual void OnConnectedToMaster() { }
+
+        public virtual void OnDisconnected(global::Photon.Realtime.DisconnectCause cause) { }
+
+        public virtual void OnJoinedRoom() { }
+
+        public virtual void OnLeftRoom() { }
+
+        public virtual void OnCreateRoomFailed(short returnCode, string message) { }
+
+        public virtual void OnJoinRoomFailed(short returnCode, string message) { }
+    }
+
+    public static class PhotonNetwork
+    {
+        public static global::Photon.Realtime.Room? CurrentRoom => null;
+
+        public static bool ConnectUsingSettings() => false;
+
+        public static bool JoinOrCreateRoom(
+            string roomName,
+            global::Photon.Realtime.RoomOptions roomOptions,
+            global::Photon.Realtime.TypedLobby typedLobby
+        ) => false;
+
+        public static bool JoinRoom(string roomName) => false;
+
+        public static void Disconnect() { }
+    }
+}
+'@
+
 $adapters = @{
     FishNet = @{
         Root = 'unity/Adapters/FishNet'
@@ -654,6 +758,47 @@ $adapters = @{
             'Approved',
             'Reason',
             'CreatePlayerObject'
+        )
+    }
+    Pun2 = @{
+        Root = 'unity/Adapters/Pun2'
+        Define = 'SIGNALFISH_PUN2'
+        SdkNamespace = 'Photon'
+        SdkReferencePattern = '(^|[^\w.])Photon\.'
+        SdkReference = @('PhotonUnityNetworking', 'PhotonRealtime')
+        CoreReference = 'SignalFish.Adapters.Core'
+        CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+
+        # The bootstrap is not a transport bridge: it never frames engine
+        # payloads, so there is no engine channel pin. Its wire surface
+        # is the package's own room-name envelope, which the bridge must
+        # go through rather than hand-rolling. PUN2 ships as an asset
+        # (no UPM package), so the editor define detector owns the
+        # define and a package pin would be a lie.
+        WirePin = 'Pun2RoomEnvelope.'
+        ChannelPin = $null
+        PackagePin = $null
+        PackageExpression = $null
+        BridgeFile = 'SignalFishPun2Bootstrap.cs'
+        BridgeCompile = $true
+        BridgeStubs = $pun2BridgeStubs
+        DetectorFile = 'SignalFishPun2DefineDetector.cs'
+        DetectorProbes = @('PhotonUnityNetworking')
+        PinnedMembers = @(
+            'ConnectUsingSettings',
+            'JoinOrCreateRoom',
+            'JoinRoom',
+            'CurrentRoom',
+            'Disconnect',
+            'RoomOptions',
+            'MaxPlayers',
+            'TypedLobby',
+            'OnConnectedToMaster',
+            'OnJoinedRoom',
+            'OnLeftRoom',
+            'OnCreateRoomFailed',
+            'OnJoinRoomFailed',
+            'OnDisconnected'
         )
     }
 }
@@ -1109,9 +1254,15 @@ function Invoke-AdapterLint {
                     "$([System.IO.Path]::GetFileName($asmdef)) : defineConstraints does not gate on $($Pin.Define) - without the gate the $($Pin.SdkReference) reference dangles whenever the SDK is absent.")
             }
 
-            if (@(Get-JsonArray -Json $json -Property 'references') -notcontains $Pin.SdkReference) {
-                $violations.Add(
-                    "$([System.IO.Path]::GetFileName($asmdef)) : references $($Pin.SdkNamespace) types but does not reference the $($Pin.SdkReference) assembly.")
+            # SdkReference may be one assembly or a list: a bootstrap that
+            # touches two SDK assemblies (Pun2: PhotonUnityNetworking +
+            # PhotonRealtime) pins both, so dropping either passes only
+            # the lint's absence, never the editor's.
+            foreach ($sdkReference in @($Pin.SdkReference)) {
+                if (@(Get-JsonArray -Json $json -Property 'references') -notcontains $sdkReference) {
+                    $violations.Add(
+                        "$([System.IO.Path]::GetFileName($asmdef)) : references $($Pin.SdkNamespace) types but does not reference the $sdkReference assembly.")
+                }
             }
 
             if (@(Get-JsonArray -Json $json -Property 'references') -notcontains $Pin.CoreReference) {

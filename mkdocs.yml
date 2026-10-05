@@ -116,6 +116,7 @@ nav:
       - FishNet Transport: adapters/fishnet.md
       - Mirror Transport: adapters/mirror.md
       - NGO + Unity Relay: adapters/ngo.md
+      - Photon PUN2: adapters/pun2.md
       - Bring Your Own Stack: adapters/byos.md
   - Project:
       - Server Conformance: conformance.md

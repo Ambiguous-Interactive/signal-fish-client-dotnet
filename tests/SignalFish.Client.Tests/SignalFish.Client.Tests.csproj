@@ -46,6 +46,12 @@
             Include="..\..\unity\Adapters\Ngo\Runtime\Core\**\*.cs"
             LinkBase="Adapters\Ngo\Core"
         />
+        <!-- The PUN2 adapter's pure core (the room-name envelope) is
+             engine- and Photon-free C# exercised the same way. -->
+        <Compile
+            Include="..\..\unity\Adapters\Pun2\Runtime\Core\**\*.cs"
+            LinkBase="Adapters\Pun2\Core"
+        />
     </ItemGroup>
 
     <ItemGroup>
