@@ -64,7 +64,7 @@
          failure by design.
 
 .PARAMETER Adapter
-    One package name (Core, FishNet, Mirror, Ngo, Pun2, Fusion), or omit to lint all.
+    One package name (Core, FishNet, Mirror, Ngo, Pun2, Fusion, SteamworksNet), or omit to lint all.
 
 .PARAMETER RepoRoot
     Repository root. Defaults to the parent of the scripts directory.
@@ -78,7 +78,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo', 'Pun2', 'Fusion')]
+    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo', 'Pun2', 'Fusion', 'SteamworksNet')]
     [string]$Adapter,
     [string]$RepoRoot,
     [switch]$NoBuild,
@@ -845,6 +845,216 @@ namespace Fusion.Sockets
 }
 '@
 
+# Shape stubs for the Steamworks.NET bridge compile lane: the pinned
+# member surface the bootstrap touches, spelled the way the bootstrap
+# uses it. Same contract as the stubs above; members pinned against the
+# Steamworks.NET 2025.165.0 sources (SteamNetworkingSockets is the
+# autogen static ISteamNetworkingSockets wrapper; the connection state
+# is the real k_ESteamNetworkingConnectionState_* spelling; the status
+# callback travels the standard Callback<T> dispatcher; the identity is
+# the rendezvous-authenticated SteamNetworkingIdentity, so the fence
+# needs no ConnectionInfo user data).
+$steamworksNetBridgeStubs = @'
+// Shape stubs (UnityEngine / Steamworks surface the bootstrap touches).
+// The engine SDK is never vendored or referenced in CI.
+#nullable enable
+using System;
+
+namespace UnityEngine
+{
+    public class MonoBehaviour { }
+
+    public static class Debug
+    {
+        public static void LogWarning(object message) { }
+    }
+}
+
+namespace Steamworks
+{
+    // Real member names, pinned against the Steamworks.NET sources. The
+    // bootstrap only reacts to these five states, so the member list is
+    // the pin, not the numeric values.
+    public enum ESteamNetworkingConnectionState : int
+    {
+        k_ESteamNetworkingConnectionState_None = 0,
+
+        k_ESteamNetworkingConnectionState_Connecting = 1,
+
+        k_ESteamNetworkingConnectionState_FindingRoute = 2,
+
+        k_ESteamNetworkingConnectionState_Connected = 3,
+
+        k_ESteamNetworkingConnectionState_ClosedByPeer = 4,
+
+        k_ESteamNetworkingConnectionState_ProblemDetectedLocally = 5,
+
+        k_ESteamNetworkingConnectionState_FinWait = -1,
+
+        k_ESteamNetworkingConnectionState_Linger = -2,
+
+        k_ESteamNetworkingConnectionState_Dead = -3,
+    }
+
+    // Real members, pinned against the Steamworks.NET sources
+    // (None = 0, OK = 1, Fail = 2, NoConnection = 3).
+    public enum EResult : int
+    {
+        k_EResultNone = 0,
+
+        k_EResultOK = 1,
+
+        k_EResultFail = 2,
+
+        k_EResultNoConnection = 3,
+    }
+
+    public struct SteamNetworkingConfigValue_t { }
+
+    // Real members, pinned against the Steamworks.NET sources: the
+    // rendezvous authenticates the identity, and GetSteamID64 is the
+    // SteamId64 the lane carries.
+    public struct SteamNetworkingIdentity
+    {
+        public void SetSteamID64(ulong steamId) { }
+
+        public ulong GetSteamID64() => 0UL;
+    }
+
+    public struct CSteamID
+    {
+        public ulong m_SteamID;
+    }
+
+    public struct HSteamNetConnection
+    {
+        public static readonly HSteamNetConnection Invalid = new HSteamNetConnection(0);
+
+        public uint m_HSteamNetConnection;
+
+        public HSteamNetConnection(uint value)
+        {
+            m_HSteamNetConnection = value;
+        }
+
+        public override bool Equals(object other)
+        {
+            return other is HSteamNetConnection && this == (HSteamNetConnection)other;
+        }
+
+        public override int GetHashCode() => m_HSteamNetConnection.GetHashCode();
+
+        public static bool operator ==(HSteamNetConnection x, HSteamNetConnection y) => false;
+
+        public static bool operator !=(HSteamNetConnection x, HSteamNetConnection y) => false;
+    }
+
+    public struct HSteamListenSocket
+    {
+        public static readonly HSteamListenSocket Invalid = new HSteamListenSocket(0);
+
+        public uint m_HSteamListenSocket;
+
+        public HSteamListenSocket(uint value)
+        {
+            m_HSteamListenSocket = value;
+        }
+
+        public override bool Equals(object other)
+        {
+            return other is HSteamListenSocket && this == (HSteamListenSocket)other;
+        }
+
+        public override int GetHashCode() => m_HSteamListenSocket.GetHashCode();
+
+        public static bool operator ==(HSteamListenSocket x, HSteamListenSocket y) => false;
+
+        public static bool operator !=(HSteamListenSocket x, HSteamListenSocket y) => false;
+    }
+
+    // Real member names, pinned against the Steamworks.NET sources
+    // (SteamNetConnectionStatusChangedCallback_t travels the standard
+    // Callback<T> dispatcher; m_info carries the full connection info).
+    public struct SteamNetConnectionInfo_t
+    {
+        public SteamNetworkingIdentity m_identityRemote;
+
+        public long m_nUserData;
+
+        public HSteamListenSocket m_hListenSocket;
+
+        public ESteamNetworkingConnectionState m_eState;
+
+        public int m_eEndReason;
+
+        public string m_szEndDebug => string.Empty;
+    }
+
+    public struct SteamNetConnectionStatusChangedCallback_t
+    {
+        public HSteamNetConnection m_hConn;
+
+        public SteamNetConnectionInfo_t m_info;
+
+        public ESteamNetworkingConnectionState m_eOldState;
+    }
+
+    // The real Callback<T> is IDisposable and registers through the
+    // standard dispatcher; Dispose is the teardown surface.
+    public sealed class Callback<T> : IDisposable
+    {
+        public delegate void DispatchDelegate(T param);
+
+        public static Callback<T> Create(DispatchDelegate func) => new Callback<T>();
+
+        public void Dispose() { }
+    }
+
+    public static class SteamAPI
+    {
+        // SteamAPI_RunCallbacks dispatches the sockets callbacks too;
+        // the bootstrap calls it once per tick.
+        public static void RunCallbacks() { }
+    }
+
+    public static class SteamUser
+    {
+        public static CSteamID GetSteamID() => new CSteamID();
+    }
+
+    // Real member names, pinned against the Steamworks.NET sources: the
+    // autogen static ISteamNetworkingSockets wrapper. Handle structs
+    // carry Invalid, the uint field, the ctor, and the equality
+    // operators the bootstrap's bookkeeping uses.
+    public static class SteamNetworkingSockets
+    {
+        public static HSteamListenSocket CreateListenSocketP2P(
+            int nLocalVirtualPort,
+            int nOptions,
+            SteamNetworkingConfigValue_t[] pOptions
+        ) => HSteamListenSocket.Invalid;
+
+        public static HSteamNetConnection ConnectP2P(
+            ref SteamNetworkingIdentity identityRemote,
+            int nRemoteVirtualPort,
+            int nOptions,
+            SteamNetworkingConfigValue_t[] pOptions
+        ) => HSteamNetConnection.Invalid;
+
+        public static EResult AcceptConnection(HSteamNetConnection hConn) => EResult.k_EResultOK;
+
+        public static bool CloseConnection(
+            HSteamNetConnection hPeer,
+            int nReason,
+            string pszDebug,
+            bool bEnableLinger
+        ) => false;
+
+        public static bool CloseListenSocket(HSteamListenSocket hSocket) => false;
+    }
+}
+'@
+
 $adapters = @{
     FishNet = @{
         Root = 'unity/Adapters/FishNet'
@@ -1057,6 +1267,55 @@ $adapters = @{
             'OnDisconnectedFromServer',
             'OnShutdown',
             'OnHostMigration'
+        )
+    }
+    SteamworksNet = @{
+        Root = 'unity/Adapters/SteamworksNet'
+        Define = 'SIGNALFISH_STEAMWORKSNET'
+        SdkNamespace = 'Steamworks'
+        SdkReferencePattern = '(^|[^\w.])Steamworks(\.[A-Za-z_]|;)'
+        SdkReference = @('com.rlabrecque.steamworks.net')
+        CoreReference = 'SignalFish.Adapters.Core'
+        CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+
+        # The bootstrap is not a transport bridge: it never frames engine
+        # payloads, so there is no engine channel pin. Its wire surface
+        # is the package's own identity envelope, which the bridge must
+        # go through rather than hand-rolling. Steamworks.NET ships as a
+        # UPM package (com.rlabrecque.steamworks.net, UPM since 20.0.0),
+        # so the asmdef's versionDefines are the define's primary owner
+        # and the editor detector only fills the vendored gap.
+        WirePin = 'SteamIdentityEnvelope.'
+        ChannelPin = $null
+        PackagePin = 'com.rlabrecque.steamworks.net'
+        PackageExpression = '20.0.0'
+        BridgeFile = 'SignalFishSteamIdentityBootstrap.cs'
+        BridgeCompile = $true
+        BridgeStubs = $steamworksNetBridgeStubs
+        DetectorFile = 'SignalFishSteamworksNetDefineDetector.cs'
+        DetectorProbes = @('com.rlabrecque.steamworks.net')
+        PinnedMembers = @(
+            'GetSteamID',
+            'm_SteamID',
+            'RunCallbacks',
+            'CreateListenSocketP2P',
+            'ConnectP2P',
+            'AcceptConnection',
+            'CloseConnection',
+            'CloseListenSocket',
+            'SetSteamID64',
+            'GetSteamID64',
+            'm_identityRemote',
+            'm_hListenSocket',
+            'm_eState',
+            'm_szEndDebug',
+            'm_hConn',
+            'm_info',
+            'k_ESteamNetworkingConnectionState_Connecting',
+            'k_ESteamNetworkingConnectionState_Connected',
+            'k_ESteamNetworkingConnectionState_ClosedByPeer',
+            'k_ESteamNetworkingConnectionState_ProblemDetectedLocally',
+            'k_EResultOK'
         )
     }
 }

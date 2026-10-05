@@ -8,6 +8,25 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Steamworks.NET adapter (M8.6): a new UPM package,
+  `com.ambiguous-interactive.signalfish.adapters.steamworksnet`, ships
+  `SignalFishSteamIdentityBootstrap` — a bootstrap that puts Steam P2P
+  sockets on a Signal Fish room by exchanging the two SteamId64s each
+  side needs over the room's game-data lane. The host opens a Steam
+  listen socket, publishes its id (re-published on every join, so late
+  joiners never depend on timing), and accepts an incoming Steam
+  connection only after that peer's id was advertised on the lane —
+  the room's membership is the accept fence, and Steam's
+  rendezvous-authenticated identity carries the claim. Clients dial
+  the host id that arrives on the lane. Peers surface as events the
+  game's own protocol then owns. Requires Steamworks.NET 20.0.0+
+  (detected through the UPM package, with an included editor define
+  detector for vendored installs). The pure core (identity envelope)
+  runs in the dotnet test suite; the `lint-unity-adapter` CI gate pins
+  the compile-only-with-Steamworks guard, the detector and package-pin
+  contracts, and the bootstrap's member completeness against the
+  pinned Steamworks.NET surface. Live Unity validation stays the M8.7
+  runbook item (Unity never runs in CI).
 - Fusion adapter (M8.5): a new UPM package,
   `com.ambiguous-interactive.signalfish.adapters.fusion`, ships
   `SignalFishFusionBootstrap` — a bootstrap that puts a Photon Fusion

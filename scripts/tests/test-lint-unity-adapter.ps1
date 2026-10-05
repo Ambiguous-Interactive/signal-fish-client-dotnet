@@ -448,6 +448,113 @@ try {
         DetectorProbe = 'Fusion.Runtime'
     }
 
+    $steamworksNet = @{
+        Root = 'unity/Adapters/SteamworksNet'
+        Define = 'SIGNALFISH_STEAMWORKSNET'
+        LocalCoreCs = @(
+            '#nullable enable',
+            'namespace SignalFish.Client.Adapters.SteamworksNet',
+            '{',
+            '    public static class SteamIdentityEnvelope',
+            '    {',
+            '        public const int MaxSteamIdLength = 20;',
+            '        public static bool IsValidSteamId(string? steamId) => throw null!;',
+            '    }',
+            '}'
+        )
+        ChannelPin = $null
+        BridgeCs = @(
+            '#if SIGNALFISH_STEAMWORKSNET',
+            'namespace SignalFish.Client.Adapters.SteamworksNet',
+            '{',
+            '    public sealed class Bridge : UnityEngine.MonoBehaviour',
+            '    {',
+            '        private readonly System.Collections.Generic.List<string> ids = new();',
+            '        private global::Steamworks.HSteamListenSocket socket =',
+            '            global::Steamworks.HSteamListenSocket.Invalid;',
+            '        public void Host()',
+            '        {',
+            '            socket = global::Steamworks.SteamNetworkingSockets.CreateListenSocketP2P(0, 0, null!);',
+            '        }',
+            '        public void Exchange()',
+            '        {',
+            '            ulong local = global::Steamworks.SteamUser.GetSteamID().m_SteamID;',
+            '            var identity = new global::Steamworks.SteamNetworkingIdentity();',
+            '            identity.SetSteamID64(local);',
+            '            var handle = global::Steamworks.SteamNetworkingSockets.ConnectP2P(',
+            '                ref identity, 0, 0, null!);',
+            '            if (handle != global::Steamworks.HSteamNetConnection.Invalid',
+            '                && SteamIdentityEnvelope.IsValidSteamId(local.ToString()))',
+            '            {',
+            '                ids.Add(local.ToString());',
+            '            }',
+            '            global::Steamworks.SteamAPI.RunCallbacks();',
+            '            if (global::Steamworks.SteamNetworkingSockets.AcceptConnection(handle)',
+            '                == global::Steamworks.EResult.k_EResultOK)',
+            '            {',
+            '                global::Steamworks.SteamNetworkingSockets.CloseConnection(handle, 1000, null!, false);',
+            '            }',
+            '            global::Steamworks.SteamNetworkingSockets.CloseListenSocket(socket);',
+            '        }',
+            '        private void OnConnectionStatusChanged(',
+            '            global::Steamworks.SteamNetConnectionStatusChangedCallback_t callback)',
+            '        {',
+            '            global::Steamworks.HSteamNetConnection connection = callback.m_hConn;',
+            '            if (callback.m_info.m_hListenSocket != global::Steamworks.HSteamListenSocket.Invalid',
+            '                && callback.m_info.m_eState',
+            '                    == global::Steamworks.ESteamNetworkingConnectionState',
+            '                        .k_ESteamNetworkingConnectionState_Connecting)',
+            '            {',
+            '                ids.Add(callback.m_info.m_identityRemote.GetSteamID64().ToString());',
+            '            }',
+            '            else if (callback.m_info.m_eState',
+            '                == global::Steamworks.ESteamNetworkingConnectionState',
+            '                    .k_ESteamNetworkingConnectionState_Connected',
+            '                || callback.m_info.m_eState',
+            '                    == global::Steamworks.ESteamNetworkingConnectionState',
+            '                        .k_ESteamNetworkingConnectionState_ClosedByPeer',
+            '                || callback.m_info.m_eState',
+            '                    == global::Steamworks.ESteamNetworkingConnectionState',
+            '                        .k_ESteamNetworkingConnectionState_ProblemDetectedLocally)',
+            '            {',
+            '                ids.Add(connection.m_HSteamNetConnection.GetHashCode().ToString());',
+            '                ids.Add(callback.m_info.m_szEndDebug);',
+            '            }',
+            '        }',
+            '    }',
+            '}',
+            '#endif'
+        )
+        AsmdefJson = @(
+            '{',
+            '    "name": "SignalFish.Adapters.SteamworksNet",',
+            '    "references": ["SignalFish.Client", "SignalFish.Adapters.Core", "com.rlabrecque.steamworks.net"],',
+            '    "defineConstraints": ["SIGNALFISH_STEAMWORKSNET"],',
+            '    "versionDefines": [',
+            '        { "name": "com.rlabrecque.steamworks.net", "expression": "20.0.0", "define": "SIGNALFISH_STEAMWORKSNET" }',
+            '    ],',
+            '    "noEngineReferences": false',
+            '}'
+        )
+        DetectorCs = @(
+            'namespace SignalFish.Client.Adapters.SteamworksNet.Editor',
+            '{',
+            '    internal static class SignalFishSteamworksNetDefineDetector',
+            '    {',
+            '        private const string Define = "SIGNALFISH_STEAMWORKSNET";',
+            '        private const string Package = "com.rlabrecque.steamworks.net";',
+            '    }',
+            '}'
+        )
+        DetectorFile = 'SignalFishSteamworksNetDefineDetector.cs'
+        BridgeFile = 'SignalFishSteamIdentityBootstrap.cs'
+        VendorNamespace = 'Steamworks.Transporting'
+        MemberProbe = 'CreateListenSocketP2P'
+        WireFilter = 'SteamIdentityEnvelope\.'
+        WireName = 'SteamIdentityEnvelope'
+        DetectorProbe = 'com.rlabrecque.steamworks.net'
+    }
+
     $editorAsmdefJson = @(
         '{',
         '    "name": "Adapter.Editor",',
@@ -505,6 +612,7 @@ try {
     Write-AdapterFixture -Pin $ngo
     Write-AdapterFixture -Pin $pun2
     Write-AdapterFixture -Pin $fusion
+    Write-AdapterFixture -Pin $steamworksNet
 
     # 1. Well-formed packages pass the static lane (-NoBuild; the compile
     #    lane is CI's job and the real repo exercises it).
@@ -518,7 +626,7 @@ try {
     Assert-Equal 0 $run.ExitCode 'core-only run passes'
 
     # 3. An SDK reference without the define guard fails (all shapes).
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $unguarded = @($pin.BridgeCs | Where-Object { $_ -notmatch '^#if SIGNALFISH_' -and $_ -ne '#endif' })
         Write-TestFile -Path $bridgePath -Content $unguarded
@@ -529,7 +637,7 @@ try {
     }
 
     # 4. Vendoring the SDK (namespace <SDK>) always fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $vendorCs = @(
             "namespace $($pin.VendorNamespace)",
@@ -545,7 +653,7 @@ try {
     }
 
     # 5. A dropped pinned engine member fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $probe = $pin.MemberProbe
         $missingMemberCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $probe })
@@ -558,7 +666,7 @@ try {
 
     # 6. A bridge that forks the shared wire fails; a transport bridge
     #    that drops the engine channel pin fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $forkedCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $pin.WireFilter })
         Write-TestFile -Path $bridgePath -Content $forkedCs
@@ -653,7 +761,7 @@ try {
 
     # 12. The detector contract: missing file, missing define string,
     #     missing probe, and an ungated editor assembly all fail.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
         $detectorPath = Join-Path $repo "Editor/$($pin.DetectorFile)".Replace('Editor/', "$($pin.Root)/Editor/")
         $expectedProbe = $pin.DetectorProbe
 

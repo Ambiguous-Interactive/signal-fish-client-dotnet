@@ -1,0 +1,26 @@
+{
+    "name": "SignalFish.Adapters.SteamworksNet",
+    "rootNamespace": "SignalFish.Client.Adapters.SteamworksNet",
+    "references": [
+        "SignalFish.Client",
+        "SignalFish.Adapters.Core",
+        "com.rlabrecque.steamworks.net"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "SIGNALFISH_STEAMWORKSNET"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.rlabrecque.steamworks.net",
+            "expression": "20.0.0",
+            "define": "SIGNALFISH_STEAMWORKSNET"
+        }
+    ],
+    "noEngineReferences": false
+}
