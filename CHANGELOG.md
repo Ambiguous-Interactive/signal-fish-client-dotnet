@@ -8,6 +8,22 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Fusion adapter (M8.5): a new UPM package,
+  `com.ambiguous-interactive.signalfish.adapters.fusion`, ships
+  `SignalFishFusionBootstrap` — a bootstrap that puts a Photon Fusion
+  session on a Signal Fish room by exchanging the session name over the
+  room's game-data lane. The host starts the Fusion session
+  (`GameMode.Host`) and publishes its name (re-published on every join,
+  so late joiners never depend on timing); clients join by room code
+  and start as `GameMode.Client` with the name that arrives — a mode
+  that joins a named session and never creates one. The pure core
+  (session-name envelope) runs in the dotnet test suite; the
+  `lint-unity-adapter` CI gate pins the compile-only-with-Fusion guard,
+  the detector contract (Fusion ships as an asset, so the detector owns
+  the define), and the bootstrap's member completeness against the
+  pinned Fusion 2 surface. A session-name exchange sample covers the
+  scene wiring. Live Unity validation stays the M8.7 runbook item
+  (Unity never runs in CI).
 - PUN2 adapter (M8.5): a new UPM package,
   `com.ambiguous-interactive.signalfish.adapters.pun2`, ships
   `SignalFishPun2Bootstrap` — a bootstrap that puts a Photon PUN2 room

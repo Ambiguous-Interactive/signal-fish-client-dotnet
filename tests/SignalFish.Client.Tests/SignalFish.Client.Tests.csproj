@@ -52,6 +52,12 @@
             Include="..\..\unity\Adapters\Pun2\Runtime\Core\**\*.cs"
             LinkBase="Adapters\Pun2\Core"
         />
+        <!-- The Fusion adapter's pure core (the session-name envelope)
+             is engine- and Fusion-free C# exercised the same way. -->
+        <Compile
+            Include="..\..\unity\Adapters\Fusion\Runtime\Core\**\*.cs"
+            LinkBase="Adapters\Fusion\Core"
+        />
     </ItemGroup>
 
     <ItemGroup>

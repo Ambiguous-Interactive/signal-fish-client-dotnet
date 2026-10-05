@@ -64,7 +64,7 @@
          failure by design.
 
 .PARAMETER Adapter
-    One package name (Core, FishNet, Mirror, Ngo, Pun2), or omit to lint all.
+    One package name (Core, FishNet, Mirror, Ngo, Pun2, Fusion), or omit to lint all.
 
 .PARAMETER RepoRoot
     Repository root. Defaults to the parent of the scripts directory.
@@ -78,7 +78,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo', 'Pun2')]
+    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo', 'Pun2', 'Fusion')]
     [string]$Adapter,
     [string]$RepoRoot,
     [switch]$NoBuild,
@@ -629,6 +629,222 @@ namespace Photon.Pun
 }
 '@
 
+# Shape stubs for the Fusion bridge compile lane: the pinned member
+# surface the bootstrap touches, spelled the way the bootstrap uses it.
+# Same contract as the stubs above; members pinned against the Fusion 2
+# runtime source (NetworkRunner.StartGame returns Task<StartGameResult>,
+# StartGameArgs is a struct with GameMode/SessionName/PlayerCount/
+# EnableClientSessionCreation fields, INetworkRunnerCallbacks carries
+# the 19 members implemented here, Fusion's runtime ships as precompiled
+# DLLs so the lane models the plugin surface the adapter references).
+$fusionBridgeStubs = @'
+// Shape stubs (UnityEngine / Fusion / Fusion.Sockets surface the
+// bootstrap touches). The engine SDK is never vendored or referenced in CI.
+#nullable enable
+namespace UnityEngine
+{
+    public class MonoBehaviour { }
+
+    public static class Debug
+    {
+        public static void LogWarning(object message) { }
+    }
+
+    public sealed class GameObject
+    {
+        public GameObject(string name) { }
+
+        public T AddComponent<T>()
+            where T : MonoBehaviour => null!;
+    }
+}
+
+namespace Fusion
+{
+    // Real member names, pinned against the Fusion 2 runtime source. The
+    // bootstrap only formats this enum into messages (it never switches on
+    // a value), so the member list is the pin, not the numeric values.
+    public enum ShutdownReason
+    {
+        Ok,
+        Error,
+        IncompatibleConfiguration,
+        ServerInRoom,
+        DisconnectedByPluginLogic,
+        GameClosed,
+        GameNotFound,
+        MaxCcuReached,
+        InvalidRegion,
+        GameIdAlreadyExists,
+        GameIsFull,
+        InvalidAuthentication,
+        CustomAuthenticationFailed,
+        AuthenticationTicketExpired,
+        PhotonCloudTimeout,
+        AlreadyRunning,
+        InvalidArguments,
+        HostMigration,
+        ConnectionTimeout,
+        ConnectionRefused,
+        OperationTimeout,
+        OperationCanceled,
+    }
+
+    // Real members, pinned against the Fusion 2 runtime source
+    // (Single = 1, Shared, Server, Host, Client, AutoHostOrClient).
+    public enum GameMode
+    {
+        Single = 1,
+        Shared,
+        Server,
+        Host,
+        Client,
+        AutoHostOrClient,
+    }
+
+    public struct PlayerRef { }
+
+    public struct NetworkInput { }
+
+    public struct SimulationMessagePtr { }
+
+    public struct ReliableKey { }
+
+    public struct HostMigrationToken { }
+
+    public class NetworkObject : UnityEngine.MonoBehaviour { }
+
+    public class SessionInfo
+    {
+        public string Name => string.Empty;
+    }
+
+    public class NetworkRunnerCallbackArgs
+    {
+        public sealed class ConnectRequest { }
+    }
+
+    public class StartGameResult
+    {
+        public bool Ok => false;
+
+        public ShutdownReason ShutdownReason => ShutdownReason.Error;
+
+        public string ErrorMessage => string.Empty;
+    }
+
+    public struct StartGameArgs
+    {
+        public GameMode GameMode;
+
+        public string SessionName;
+
+        public int? PlayerCount;
+
+        public bool? EnableClientSessionCreation;
+    }
+
+    // The real callbacks are the registration surface a bootstrap must
+    // implement in full (AddCallbacks takes this interface); a member the
+    // bootstrap drops is a compile miss in the editor, so the pinned
+    // surface is what the lane type-checks.
+    public interface INetworkRunnerCallbacks
+    {
+        void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player);
+
+        void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player);
+
+        void OnPlayerJoined(NetworkRunner runner, PlayerRef player);
+
+        void OnPlayerLeft(NetworkRunner runner, PlayerRef player);
+
+        void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason);
+
+        void OnDisconnectedFromServer(NetworkRunner runner, global::Fusion.Sockets.NetDisconnectReason reason);
+
+        void OnConnectRequest(
+            NetworkRunner runner,
+            NetworkRunnerCallbackArgs.ConnectRequest request,
+            byte[] token
+        );
+
+        void OnConnectFailed(
+            NetworkRunner runner,
+            global::Fusion.Sockets.NetAddress remoteAddress,
+            global::Fusion.Sockets.NetConnectFailedReason reason
+        );
+
+        void OnUserSimulationMessage(NetworkRunner runner, SimulationMessagePtr message);
+
+        void OnReliableDataReceived(
+            NetworkRunner runner,
+            PlayerRef player,
+            ReliableKey key,
+            System.ArraySegment<byte> data
+        );
+
+        void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey key, float progress);
+
+        void OnInput(NetworkRunner runner, NetworkInput input);
+
+        void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input);
+
+        void OnConnectedToServer(NetworkRunner runner);
+
+        void OnSessionListUpdated(NetworkRunner runner, System.Collections.Generic.List<SessionInfo> sessionList);
+
+        void OnCustomAuthenticationResponse(
+            NetworkRunner runner,
+            System.Collections.Generic.Dictionary<string, object> data
+        );
+
+        void OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken);
+
+        void OnSceneLoadDone(NetworkRunner runner);
+
+        void OnSceneLoadStart(NetworkRunner runner);
+    }
+
+    // The real runner derives from Behaviour; the lane models the
+    // MonoBehaviour surface the bootstrap's GameObject.AddComponent needs.
+    public class NetworkRunner : UnityEngine.MonoBehaviour
+    {
+        public void AddCallbacks(params INetworkRunnerCallbacks[] callbacks) { }
+
+        public System.Threading.Tasks.Task<StartGameResult> StartGame(StartGameArgs args) => null!;
+
+        public System.Threading.Tasks.Task Shutdown(
+            bool destroyGameObject = true,
+            ShutdownReason shutdownReason = ShutdownReason.Ok,
+            bool forceShutdownProcedure = false
+        ) => null!;
+    }
+}
+
+namespace Fusion.Sockets
+{
+    // Real member names, pinned against the Fusion 2 runtime source.
+    public enum NetDisconnectReason : byte
+    {
+        Unknown = 1,
+        Timeout,
+        Requested,
+        SequenceOutOfBounds,
+        SendWindowFull,
+        ByRemote,
+    }
+
+    public enum NetConnectFailedReason : byte
+    {
+        Timeout = 1,
+        ServerFull,
+        ServerRefused,
+    }
+
+    public struct NetAddress { }
+}
+'@
+
 $adapters = @{
     FishNet = @{
         Root = 'unity/Adapters/FishNet'
@@ -799,6 +1015,48 @@ $adapters = @{
             'OnCreateRoomFailed',
             'OnJoinRoomFailed',
             'OnDisconnected'
+        )
+    }
+    Fusion = @{
+        Root = 'unity/Adapters/Fusion'
+        Define = 'SIGNALFISH_FUSION'
+        SdkNamespace = 'Fusion'
+        SdkReferencePattern = '(^|[^\w.])Fusion(\.[A-Za-z_]|;)'
+        SdkReference = @('Fusion.Runtime', 'Fusion.Sockets')
+        CoreReference = 'SignalFish.Adapters.Core'
+        CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+
+        # The bootstrap is not a transport bridge: it never frames engine
+        # payloads, so there is no engine channel pin. Its wire surface
+        # is the package's own session-name envelope, which the bridge
+        # must go through rather than hand-rolling. Fusion ships as an
+        # asset (precompiled DLLs under Assets/Photon/Fusion, not a UPM
+        # package the Package Manager knows), so the editor define
+        # detector owns the define and a package pin would be a lie.
+        WirePin = 'FusionSessionEnvelope.'
+        ChannelPin = $null
+        PackagePin = $null
+        PackageExpression = $null
+        BridgeFile = 'SignalFishFusionBootstrap.cs'
+        BridgeCompile = $true
+        BridgeStubs = $fusionBridgeStubs
+        DetectorFile = 'SignalFishFusionDefineDetector.cs'
+        DetectorProbes = @('Fusion.Runtime')
+        PinnedMembers = @(
+            'StartGame',
+            'StartGameArgs',
+            'GameMode.Host',
+            'GameMode.Client',
+            'SessionName',
+            'PlayerCount',
+            'EnableClientSessionCreation',
+            'AddCallbacks',
+            'Shutdown',
+            'ErrorMessage',
+            'OnConnectFailed',
+            'OnDisconnectedFromServer',
+            'OnShutdown',
+            'OnHostMigration'
         )
     }
 }
