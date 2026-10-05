@@ -73,7 +73,8 @@ shaped the adapter:
 
 ## Adversarial review round
 
-The review loop found one blocker and the fix landed in this branch:
+The review loop found one blocker in the first draft and the fix
+landed in this branch:
 
 - `SettleStaged`'s success path never cleared the active start, so
   `EnforceFusionDeadline` tore every healthy session down
@@ -86,6 +87,31 @@ The review loop found one blocker and the fix landed in this branch:
 - The pinned `INetworkRunnerCallbacks` surface (all 19 members),
   `AddCallbacks`, `StartGame`, and `Shutdown` were re-verified against
   the Fusion 2 decompiled runtime source before the fix.
+
+The second adversarial pass over the fixed state machine found four
+more; all fixed the same round:
+
+- The deferred runner shutdown was a bare flag, not generation-scoped:
+  a retry between ticks kicked the next start first, and the pending
+  shutdown then killed the *new* runner while the old one leaked. The
+  pending shutdown now parks the exact runner reference (checked
+  against `_runner` before clearing ownership) and `Update` performs
+  it before kicking any newer start.
+- The `_active` branches of `OnShutdown`, `OnDisconnectedFromServer`,
+  and `OnConnectFailed` fired for any runner; a stale runner's
+  teardown callback could fail a newer start. All Fusion failure
+  callbacks are now scoped with `ReferenceEquals(runner, _runner)`
+  (the PUN2 singleton made the unscoped shape sound there; Fusion's
+  per-start runners do not), and `OnHostMigration` gained the missing
+  mid-start branch.
+- The drain read `_published`/`_fusionSessionName`/`_isHost` unlocked
+  while the host's publish writes them under the lock from the start
+  continuation; `DrainEvents` now takes one locked snapshot.
+- `OnDestroy` after a background teardown deferred a shutdown that no
+  further tick would perform (the context check can only answer false
+  once `_mainContext` is nulled). `Teardown` takes an explicit
+  `shutdownRunnerNow` override; `OnDestroy` — always main-thread —
+  passes true.
 
 ## Open issues triage
 

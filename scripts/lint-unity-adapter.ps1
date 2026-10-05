@@ -64,7 +64,7 @@
          failure by design.
 
 .PARAMETER Adapter
-    One package name (Core, FishNet, Mirror, Ngo, Pun2), or omit to lint all.
+    One package name (Core, FishNet, Mirror, Ngo, Pun2, Fusion), or omit to lint all.
 
 .PARAMETER RepoRoot
     Repository root. Defaults to the parent of the scripts directory.

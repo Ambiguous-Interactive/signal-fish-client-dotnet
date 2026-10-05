@@ -253,15 +253,15 @@ namespace SignalFish.Client.Adapters.Fusion
 
         private bool _published;
 
-        private bool _shutdownRequested;
-
         private SynchronizationContext? _mainContext;
 
         /*
             Main-thread state: the staged start's Unity half and the
             runner it started. Fusion raises its callbacks on the main
             thread and Update() kicks the staging, so none of this needs
-            the lock.
+            the lock. _shutdownPending is the one cross-thread hand-off:
+            a background Teardown parks the exact runner it wants shut
+            down here, and Update (main thread) performs the shutdown.
         */
         private StagedStart? _active;
 
@@ -272,6 +272,8 @@ namespace SignalFish.Client.Adapters.Fusion
         private NetworkRunner? _runner;
 
         private bool _runnerOwned;
+
+        private NetworkRunner? _shutdownPending;
 
         /// <summary>
         /// Starts the host side: join (or create) the Signal Fish room,
@@ -348,7 +350,12 @@ namespace SignalFish.Client.Adapters.Fusion
 
         void INetworkRunnerCallbacks.OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
         {
-            if (_active is not null)
+            /*
+                The runner argument is the scope: a shutdown from a
+                runner this bootstrap already replaced or released must
+                never fail the start that is active now.
+            */
+            if (_active is not null && ReferenceEquals(runner, _runner))
             {
                 FailStaged(
                     new InvalidOperationException(
@@ -369,7 +376,7 @@ namespace SignalFish.Client.Adapters.Fusion
             NetDisconnectReason reason
         )
         {
-            if (_active is not null)
+            if (_active is not null && ReferenceEquals(runner, _runner))
             {
                 FailStaged(
                     new InvalidOperationException($"The Fusion server connection closed: {reason}.")
@@ -401,7 +408,7 @@ namespace SignalFish.Client.Adapters.Fusion
             NetConnectFailedReason reason
         )
         {
-            if (_active is not null)
+            if (_active is not null && ReferenceEquals(runner, _runner))
             {
                 FailStaged(
                     new InvalidOperationException(
@@ -497,6 +504,16 @@ namespace SignalFish.Client.Adapters.Fusion
                 coordination loudly rather than coordinate a session
                 someone else now names.
             */
+            if (_active is not null && ReferenceEquals(runner, _runner))
+            {
+                FailStaged(
+                    new InvalidOperationException(
+                        "The Fusion session began a host migration mid-start."
+                    )
+                );
+                return;
+            }
+
             if (_client is not null && ReferenceEquals(runner, _runner))
             {
                 Fail("The Fusion session began a host migration; re-host the room.");
@@ -515,15 +532,27 @@ namespace SignalFish.Client.Adapters.Fusion
 
         private void Update()
         {
+            /*
+                The deferred shutdown runs first: a runner parked by a
+                background teardown is shut down before any newer start
+                is kicked, so a retry between ticks can never claim the
+                pending shutdown's victim.
+            */
+            ShutdownRunnerIfRequested();
             RunStagedStart();
             EnforceFusionDeadline();
-            ShutdownRunnerIfRequested();
             DrainSession();
         }
 
         private void OnDestroy()
         {
-            Teardown();
+            /*
+                The component never ticks again after this, so the
+                runner shutdown cannot be deferred: OnDestroy always
+                runs on the main thread, where Unity objects may be
+                touched.
+            */
+            Teardown(shutdownRunnerNow: true);
         }
 
         private async Task RunStartAsync(
@@ -906,12 +935,20 @@ namespace SignalFish.Client.Adapters.Fusion
                 The start task settles on a Fusion worker thread as often
                 as not, but _active is main-thread state: the settle is
                 marshaled onto the context the kick was captured on, so
-                every active-start transition happens on one thread. The
-                generation rides along: a torn-down or superseded start's
-                settle finds no matching active start and is a no-op.
+                every active-start transition happens on one thread. A
+                null context means Teardown already ran: it settled (and
+                failed) the completion itself, so there is nothing left
+                to settle. The generation rides along: a superseded
+                start's settle finds no matching active start and is a
+                no-op.
             */
             SynchronizationContext? main = _mainContext;
-            if (main is null || main == SynchronizationContext.Current)
+            if (main is null)
+            {
+                return;
+            }
+
+            if (main == SynchronizationContext.Current)
             {
                 SettleStagedOnMain(started, generation);
                 return;
@@ -1061,6 +1098,22 @@ namespace SignalFish.Client.Adapters.Fusion
 
         private void DrainEvents(SignalFishClient client)
         {
+            /*
+                The publish-state trio is written under the lock (the
+                host's publish runs on the start's continuation thread),
+                so the main-thread drain reads it under the lock too —
+                one snapshot, no torn decisions.
+            */
+            bool isHost;
+            bool published;
+            string? sessionName;
+            lock (_lock)
+            {
+                isHost = _isHost;
+                published = _published;
+                sessionName = _fusionSessionName;
+            }
+
             while (client.TryDequeueEvent(out PollEvent pollEvent))
             {
                 if (!ReferenceEquals(RequireLiveClientOrNull(), client))
@@ -1068,7 +1121,7 @@ namespace SignalFish.Client.Adapters.Fusion
                     return;
                 }
 
-                if (pollEvent.Kind == PollEventKind.PlayerJoined && _isHost && _published)
+                if (pollEvent.Kind == PollEventKind.PlayerJoined && isHost && published)
                 {
                     /*
                         The game-data lane replays nothing: a member that
@@ -1077,7 +1130,6 @@ namespace SignalFish.Client.Adapters.Fusion
                         here (the room socket died under us) fails the
                         session instead of throwing out of Update.
                     */
-                    string? sessionName = _fusionSessionName;
                     if (sessionName is not null && !TryPublishSessionName(client, sessionName))
                     {
                         Fail("The host could not re-publish the Fusion session name.");
@@ -1089,7 +1141,7 @@ namespace SignalFish.Client.Adapters.Fusion
 
                 if (
                     pollEvent.Kind == PollEventKind.AuthorityChanged
-                    && _isHost
+                    && isHost
                     && !pollEvent.AuthorityChanged.YouAreAuthority
                 )
                 {
@@ -1156,18 +1208,23 @@ namespace SignalFish.Client.Adapters.Fusion
             Teardown();
         }
 
-        private void Teardown()
+        private void Teardown(bool shutdownRunnerNow = false)
         {
             /*
                 The runner is a Unity object: its shutdown belongs on the
-                main thread. A caller on the captured main context shuts
-                it down now; a background caller (a start failure on a
-                room-side continuation) leaves the request for the next
-                tick — ShutdownRunnerIfRequested performs it there.
+                main thread. A caller on the captured main context (or
+                one that is provably on the main thread, like
+                OnDestroy) shuts it down now; a background caller (a
+                start failure on a room-side continuation) parks the
+                exact runner for the next tick —
+                ShutdownRunnerIfRequested performs it there.
             */
             bool onMain =
-                SynchronizationContext.Current != null
-                && SynchronizationContext.Current == _mainContext;
+                shutdownRunnerNow
+                || (
+                    SynchronizationContext.Current != null
+                    && SynchronizationContext.Current == _mainContext
+                );
             TaskCompletionSource<bool>? stagedCompletion;
             TaskCompletionSource<bool>? activeCompletion;
             SignalFishClient? live;
@@ -1202,7 +1259,7 @@ namespace SignalFish.Client.Adapters.Fusion
             }
             else
             {
-                _shutdownRequested = true;
+                _shutdownPending = _runner;
             }
 
             if (live is not null)
@@ -1244,18 +1301,25 @@ namespace SignalFish.Client.Adapters.Fusion
             /*
                 The deferred half of Teardown: a background caller cannot
                 touch the runner (Unity object APIs throw off the main
-                thread), so it leaves the request and this tick performs
-                the shutdown. A destroyed component never ticks again —
-                fine, because a destroyed runner shuts its own session
-                down.
+                thread), so it parks the exact runner reference and this
+                tick performs the shutdown. The reference — not a flag —
+                is the contract: even if a newer start has claimed
+                _runner by now, the parked runner is the one shut down.
             */
-            if (!_shutdownRequested)
+            NetworkRunner? pending = _shutdownPending;
+            if (pending is null)
             {
                 return;
             }
 
-            _shutdownRequested = false;
-            QuietShutdownRunner();
+            _shutdownPending = null;
+            if (_runnerOwned && ReferenceEquals(_runner, pending))
+            {
+                _runner = null;
+                _runnerOwned = false;
+            }
+
+            _ = ShutdownRunnerQuietlyAsync(pending);
         }
 
         private int BeginSession()
