@@ -1291,6 +1291,18 @@ namespace SignalFish.Client.Adapters.Fusion
             NetworkRunner? runner = _runner;
             _runner = null;
             _runnerOwned = false;
+            /*
+                The shutdown performed here serves the parked request too
+                when it names this runner — clearing it here is what
+                keeps the next tick from shutting the same runner down a
+                second time. A parked request for a different runner (a
+                newer start has claimed _runner since) survives.
+            */
+            if (ReferenceEquals(_shutdownPending, runner))
+            {
+                _shutdownPending = null;
+            }
+
             if (runner is null)
             {
                 return;
