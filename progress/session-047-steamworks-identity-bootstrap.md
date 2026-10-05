@@ -110,12 +110,17 @@ this branch:
   observable side effect (a socket refusal no longer leaves a
   published id pointing at a socket that never existed).
 
-The reviewer verified every pinned Steamworks member against the
-2025.165.0 sources, the envelope's byte arithmetic (29 + id length;
-both keys are 22 chars), the scan/rescan logic, the Signal Fish
-protocol surface against `src/SignalFish.Client`, the generation/
-completion machinery, and the packaging claims (UPM-since-20.0.0,
-detector probe names, sample paths) — all confirmed.
+The second adversarial round verified every fix against the SDK
+sources (own-dial dispatch ordering, close-on-ended semantics and its
+interplay with the client fail path, the kick/dispatch ordering),
+swept the file for the same bug classes (state transitions that cannot
+fire, double/never frees, stale-session leakage, lock ordering, hung
+awaits, event double-fires), confirmed `Update()`'s phase ordering is
+hazard-free, and re-ran the full gate set — verdict: approve. Its one
+non-blocking note (free accepted-but-unestablished handles explicitly
+in teardown instead of relying on the listen socket's ungraceful
+sweep) landed too, and the docs now state that peer events fire on the
+bootstrap's tick and handlers must not block.
 
 ## Open issues triage
 

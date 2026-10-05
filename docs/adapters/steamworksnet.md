@@ -103,7 +103,7 @@ identity carries the claim, and the room carries the membership.
 | `JoinedRoomCode` / `LocalSteamId` / `HostSteamId` / `IsCoordinating` | Live diagnostics. |
 | `CoordinationFailed` | Live-session failures after the start completed (a closed room connection, the host Steam connection closing, authority leaving the host, the host's published id changing mid-session). |
 | `SteamHostIdReceived` | The published host id, as the client's wait received it. Informational — the bootstrap dials by itself. |
-| `SteamPeerConnected` / `SteamPeerDisconnected` | A fenced peer's Steam connection came up or closed (host side). The game owns the traffic from here. |
+| `SteamPeerConnected` / `SteamPeerDisconnected` | A fenced peer's Steam connection came up or closed (host side). The game owns the traffic from here. Handlers run on the bootstrap's tick; return promptly and never block. |
 
 ## What this tier does not do
 

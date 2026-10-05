@@ -1426,6 +1426,22 @@ namespace SignalFish.Client.Adapters.SteamworksNet
                     }
 
                     _trackedPeers.Clear();
+                    foreach (uint handle in _acceptedHandles)
+                    {
+                        /*
+                            Accepted-but-not-yet-established connections:
+                            freed explicitly like their established
+                            siblings, not left to the listen socket's
+                            ungraceful sweep.
+                        */
+                        SteamNetworkingSockets.CloseConnection(
+                            new HSteamNetConnection(handle),
+                            0,
+                            null!,
+                            false
+                        );
+                    }
+
                     _acceptedHandles.Clear();
                     _advertisedPeers.Clear();
                     if (_listenSocket != HSteamListenSocket.Invalid)
