@@ -172,27 +172,27 @@ try {
         @{
             Name = 'null dependencies'
             Json = '{"name": "com.ambiguous-interactive.signalfish.adapters.x", "version": "0.1.0", "dependencies": null}'
-            Pattern = 'dependencies must be an object'
+            Pattern = 'unity/Adapters/x/package\.json : dependencies must be an object'
         },
         @{
             Name = 'array version'
             Json = '{"name": "com.ambiguous-interactive.signalfish.adapters.x", "version": ["0.1.0"]}'
-            Pattern = 'must carry a version string'
+            Pattern = 'unity/Adapters/x/package\.json : package\.json must carry a version string'
         },
         @{
             Name = 'array dependencies'
             Json = '{"name": "com.ambiguous-interactive.signalfish.adapters.x", "version": "0.1.0", "dependencies": ["com.ambiguous-interactive.signalfish"]}'
-            Pattern = 'dependencies must be an object'
+            Pattern = 'unity/Adapters/x/package\.json : dependencies must be an object'
         },
         @{
             Name = 'self dependency'
             Json = '{"name": "com.ambiguous-interactive.signalfish.adapters.x", "version": "0.1.0", "dependencies": {"com.ambiguous-interactive.signalfish.adapters.x": "0.1.0"}}'
-            Pattern = 'depends on itself'
+            Pattern = 'unity/Adapters/x/package\.json : depends on itself'
         },
         @{
             Name = 'non-string pin'
             Json = '{"name": "com.ambiguous-interactive.signalfish.adapters.x", "version": "0.1.0", "dependencies": {"com.ambiguous-interactive.signalfish": ["0.1.0"]}}'
-            Pattern = 'non-string value'
+            Pattern = 'unity/Adapters/x/package\.json : pins com.ambiguous-interactive.signalfish with a non-string value'
         }
     )
     foreach ($case in $cases) {

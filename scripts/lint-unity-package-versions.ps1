@@ -109,12 +109,12 @@ foreach ($path in $manifests) {
     if (-not $fleet.ContainsKey($name)) { continue }
     $dependenciesProperty = $json.PSObject.Properties['dependencies']
     if ($null -eq $dependenciesProperty) { continue }
+    $relative = $fleet[$name].relative
     if ($null -eq $dependenciesProperty.Value -or
         $dependenciesProperty.Value -isnot [System.Management.Automation.PSCustomObject]) {
         $problems.Add("$relative : dependencies must be an object of package -> version pins (got null/array/scalar).")
         continue
     }
-    $relative = $fleet[$name].relative
     foreach ($property in @($dependenciesProperty.Value.PSObject.Properties)) {
         $dependency = [string]$property.Name
         if (-not $dependency.StartsWith('com.ambiguous-interactive.signalfish')) { continue }
