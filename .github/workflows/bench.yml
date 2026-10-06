@@ -25,6 +25,11 @@ on:
         type: boolean
         required: false
         default: false
+  # TEMP (M9.4 bootstrap, remove with the shim step below): lets the PR
+  # record the first x64 baseline and prove the gate green on CI hardware
+  # before merge.
+  push:
+    branches: [m94-scheduled-bench]
 
 permissions:
   contents: read
@@ -46,8 +51,15 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      # TEMP (M9.4 bootstrap, remove with the push trigger above): a run
+      # without a committed baseline records one instead of failing, so
+      # the first x64 baseline can be captured from this PR.
+      - name: Record the first baseline if none is committed
+        if: ${{ inputs.update_baseline != true && !hashFiles('tests/SignalFish.Client.PerfTests/baseline.json') }}
+        run: pwsh -NoProfile -File scripts/run-bench.ps1 -UpdateBaseline
+
       - name: Compare benchmarks against the committed baseline
-        if: ${{ inputs.update_baseline != true }}
+        if: ${{ inputs.update_baseline != true && hashFiles('tests/SignalFish.Client.PerfTests/baseline.json') }}
         run: pwsh -NoProfile -File scripts/run-bench.ps1
 
       - name: Record a fresh baseline
