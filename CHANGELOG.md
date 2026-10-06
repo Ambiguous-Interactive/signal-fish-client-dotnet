@@ -6,6 +6,13 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ## [Unreleased]
 
+### Added
+
+- Releases now ship every Unity package as a tarball: a `v*` tag
+  attaches all nine UPM `.tgz` files (the core SDK package plus the
+  engine adapters) to the GitHub Release next to the NuGet packages,
+  so a Unity project can install any package without a UPM registry.
+
 ## [0.1.0] - 2026-10-06
 
 ### Added

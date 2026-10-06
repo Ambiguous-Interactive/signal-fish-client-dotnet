@@ -24,12 +24,19 @@ root; tag pushes only — it never runs on branches or PRs):
    branches, PR CI) fall back to a `0.1.0-alpha.0` pre-release
    (suffixed `.<commit-height>` when the checkout has history depth)
    instead of failing.
-4. Publishes the `.nupkg` to **GitHub Packages** (always).
-5. Publishes the `.nupkg` + `.snupkg` to **nuget.org** (only if
+4. Packs all nine Unity UPM packages into `.tgz` tarballs
+   (`scripts/pack-unity-packages.ps1`): the core SDK package through
+   the sync script's staging (fresh source mirror + shipped-asmdef
+   check), every adapter verbatim from its source tree. A manifest
+   without a name/version, a duplicated package name, or an empty
+   fleet fails the run instead of shipping a partial set.
+5. Publishes the `.nupkg` to **GitHub Packages** (always).
+6. Publishes the `.nupkg` + `.snupkg` to **nuget.org** (only if
    `NUGET_API_KEY` is set — see below).
-6. Creates a **GitHub Release** with generated notes and attaches the
-   `.nupkg`/`.snupkg` — the no-auth fallback consumers can download
-   directly.
+7. Creates a **GitHub Release** with generated notes and attaches the
+   `.nupkg`/`.snupkg` and the nine UPM `.tgz` tarballs — the no-auth
+   fallback consumers can download directly (NuGet feed or Unity
+   package, no registry or PAT needed).
 
 ## One-time setup
 
@@ -80,7 +87,8 @@ version coupling is a reviewed change that lands **before** the tag.
 
 ### After the run
 
-- The GitHub Release exists with `.nupkg` + `.snupkg` attached.
+- The GitHub Release exists with `.nupkg` + `.snupkg` + the nine UPM
+  `.tgz` tarballs attached.
 - GitHub Packages shows the new version (consumers authenticate with a PAT
   per [GitHub's package auth rules](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry)).
 - If `NUGET_API_KEY` was set, the package is live on nuget.org within a
@@ -126,10 +134,12 @@ break ships, remove the stale entries — the new baseline covers them.
   anything already left the building (published packages cannot be
   replaced).
 
-## Future: UPM + NPM distribution
+## Future: OpenUPM + NPM listing
 
-The Unity packages install from source today ([Unity](unity.md));
-`scripts/sync-unity-package.ps1 -Pack` stages the core package tarball
-by hand. Wiring the UPM tarballs (core + adapters) and NPM/OpenUPM
-listing into the tag pipeline is future work; nothing to configure
-today.
+The Unity packages ship as release artifacts today: every `v*` tag
+attaches all nine UPM `.tgz` tarballs to the GitHub Release next to the
+NuGet packages (see the pipeline above), and
+`scripts/sync-unity-package.ps1 -Pack` stages the same core tarball by
+hand. What remains future is **discovery**: listing the packages on
+OpenUPM/NPM so they resolve from Unity's package manager UI. Nothing to
+configure today.

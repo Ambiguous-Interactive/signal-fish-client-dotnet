@@ -18,9 +18,9 @@
                  pre-commit hook use this.
       -Pack      Stage the installable package (skeleton + fresh mirror)
                  and write the UPM tarball into -OutDir, ready to attach
-                 to a GitHub Release. The tag pipeline does not ship UPM
-                 tarballs yet (docs/releasing.md, "Future"); this stages
-                 the artifact by hand.
+                 to a GitHub Release. The release lane packs the same
+                 way for every v* tag and ships the whole fleet
+                 (scripts/pack-unity-packages.ps1).
 
 .EXAMPLE
     pwsh -NoProfile -File scripts/sync-unity-package.ps1
