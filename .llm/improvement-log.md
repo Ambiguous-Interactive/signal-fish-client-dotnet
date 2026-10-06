@@ -19,8 +19,8 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   self-test's message-text assertions could not match the wrapped
   lines. Rule 3 of powershell-tooling (report-all-then-fail) only
   covered `Write-Error` inside violation loops, not early guards.
-- Findings: machine-readable lint failures need the `Write-Host` red
-  + `exit 1` form everywhere — a terminating error's wrapped rendering
+- Findings: machine-readable lint failures need the `Write-Host` red +
+  `exit 1` form everywhere — a terminating error's wrapped rendering
   defeats both humans and output assertions.
 - Applied: guard converted to the `Write-Host` form; powershell-tooling
   rule 3 extended with the early-guard case and this evidence.

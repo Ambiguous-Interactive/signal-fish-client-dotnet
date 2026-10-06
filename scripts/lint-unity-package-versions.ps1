@@ -39,13 +39,17 @@ Set-StrictMode -Version Latest
 if (-not $RepoRoot) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
+$RepoRoot = $RepoRoot.TrimEnd('/', '\')
 
 $unityRoot = Join-Path $RepoRoot 'unity'
 if (-not (Test-Path -LiteralPath $unityRoot)) {
     Write-Host 'No package manifests found under unity/ - nothing to enforce; check the glob.' -ForegroundColor Red
     exit 1
 }
+# Samples~ is Unity's import-hidden sample tree; a demo manifest there is
+# not a fleet member.
 $manifests = [string[]]@(Get-ChildItem -LiteralPath $unityRoot -Recurse -File -Filter 'package.json' |
+    Where-Object { $_.FullName -notmatch '[\\/]Samples~[\\/]' } |
     ForEach-Object { $_.FullName })
 [System.Array]::Sort($manifests, [System.StringComparer]::Ordinal)
 
@@ -57,25 +61,29 @@ if ($manifests.Count -eq 0) {
 $semver = '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
 $problems = New-Object 'System.Collections.Generic.List[string]'
 
-# First pass: read name/version and validate the version shape.
+# First pass: read name/version and validate the shapes.
 $fleet = @{}
 foreach ($path in $manifests) {
     $json = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     $nameProperty = $json.PSObject.Properties['name']
     $versionProperty = $json.PSObject.Properties['version']
-    $name = if ($null -ne $nameProperty) { [string]$nameProperty.Value } else { '' }
-    $version = if ($null -ne $versionProperty) { [string]$versionProperty.Value } else { '' }
     $relative = $path.Substring($RepoRoot.Length + 1)
-    if ($name -eq '' -or $version -eq '') {
-        $problems.Add("$relative : package.json must carry both a name and a version.")
+    if ($null -eq $nameProperty -or $nameProperty.Value -isnot [string] -or $nameProperty.Value -eq '') {
+        $problems.Add("$relative : package.json must carry a name string.")
         continue
     }
+    if ($null -eq $versionProperty -or $versionProperty.Value -isnot [string] -or $versionProperty.Value -eq '') {
+        $problems.Add("$relative : package.json must carry a version string.")
+        continue
+    }
+    $name = $nameProperty.Value
+    $version = $versionProperty.Value
     if ($fleet.ContainsKey($name)) {
         $problems.Add("$relative : duplicate package name $name (also in $($fleet[$name].relative)).")
         continue
     }
     if ($version -notmatch $semver) {
-        $problems.Add("$relative : version '$version' is not semver (MAJOR.MINOR.PATCH); UPM rejects anything else.")
+        $problems.Add("$relative : version '$version' is not semver (MAJOR.MINOR.PATCH, optional -prerelease/+build).")
         continue
     }
     $fleet[$name] = @{ version = $version; relative = $relative }
@@ -101,13 +109,26 @@ foreach ($path in $manifests) {
     if (-not $fleet.ContainsKey($name)) { continue }
     $dependenciesProperty = $json.PSObject.Properties['dependencies']
     if ($null -eq $dependenciesProperty) { continue }
+    if ($null -eq $dependenciesProperty.Value -or
+        $dependenciesProperty.Value -isnot [System.Management.Automation.PSCustomObject]) {
+        $problems.Add("$relative : dependencies must be an object of package -> version pins (got null/array/scalar).")
+        continue
+    }
     $relative = $fleet[$name].relative
     foreach ($property in @($dependenciesProperty.Value.PSObject.Properties)) {
         $dependency = [string]$property.Name
         if (-not $dependency.StartsWith('com.ambiguous-interactive.signalfish')) { continue }
-        $pin = [string]$property.Value
+        if ($dependency -eq $name) {
+            $problems.Add("$relative : depends on itself - a package can never resolve its own dependency.")
+            continue
+        }
+        if ($null -eq $property.Value -or $property.Value -isnot [string]) {
+            $problems.Add("$relative : pins $dependency with a non-string value - pins must be version strings.")
+            continue
+        }
+        $pin = $property.Value
         if (-not $fleet.ContainsKey($dependency)) {
-            $problems.Add("$relative : pins '$dependency', which is not a package in this repository - a renamed or typo'd fleet member would never resolve.")
+            $problems.Add("$relative : pins '$dependency', which is not a fleet package in this repository - a renamed or typo'd member would never resolve.")
             continue
         }
         $current = $fleet[$dependency].version

@@ -58,21 +58,34 @@ jobs:
       # M9.5 release coupling: the UPM fleet releases with the tag. The
       # PR-side lint (lint-unity-package-versions.ps1) keeps the manifests
       # consistent with each other; this re-checks them against the tag
-      # itself (prerelease/build suffixes aside), so tagging a main whose
+      # itself — an rc tag requires the fleet at the same rc version, and
+      # only build metadata (+...) is ignored — so tagging a main whose
       # manifests lag fails here instead of shipping a version mismatch.
       - name: Check Unity package version coupling with the tag
         shell: bash
         run: |
-          RELEASE="${VERSION%%-*}"
-          RELEASE="${RELEASE%%+*}"
+          # Build metadata never participates in version identity.
+          RELEASE="${VERSION%%+*}"
+          # Capture first: the assignment propagates a find failure to
+          # set -e, and the count guard keeps an empty result (tree
+          # drift, glob typo) from passing the gate vacuously.
+          manifests=$(find unity -type f -name package.json -not -path '*Samples~*')
+          count=0
           mismatch=0
           while IFS= read -r manifest; do
+            if [ -z "$manifest" ]; then continue; fi
+            count=$((count + 1))
             version=$(jq -r .version "$manifest")
             if [ "$version" != "$RELEASE" ]; then
               echo "::error file=$manifest::version $version does not match the release $RELEASE (docs/releasing.md, release checklist: version-couple the UPM fleet)"
               mismatch=1
             fi
-          done < <(find unity -name package.json)
+          done <<< "$manifests"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no unity/**/package.json found - tree drift; check the glob"
+            exit 1
+          fi
+          echo "coupling: $count UPM manifests checked against $RELEASE"
           exit $mismatch
 
       - name: Restore

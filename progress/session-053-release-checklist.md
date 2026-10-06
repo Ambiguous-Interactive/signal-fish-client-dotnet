@@ -19,11 +19,14 @@ ops surface in PLAN.md:
   assets; they never resolve through UPM). Wired into the `dotnet.yml`
   lint cell next to `lint-unity-adapter`.
 - **Tag-side re-check in `release.yml`** — before packing, every
-  manifest must carry the release version (prerelease/build suffixes
-  stripped: `v0.2.0-rc.1` requires `0.2.0`). The PR-side lint keeps
-  the manifests consistent with each other; only the release lane can
-  catch tagging a `main` whose manifests lag the tag, which is the one
-  hole a PR-time gate cannot close.
+  manifest must carry the tag's version exactly: an rc tag requires
+  the fleet at the same rc version, and only build metadata (`+...`)
+  is ignored. The PR-side lint keeps the manifests consistent with
+  each other; only the release lane can catch tagging a `main` whose
+  manifests lag the tag, which is the one hole a PR-time gate cannot
+  close. The step counts the manifests it checked (a tree rename that
+  empties the glob fails the run instead of passing vacuously) and
+  skips `Samples~` (sample trees are not fleet members).
 - **`docs/releasing.md`** — "Cutting a release" (3 steps) is now a real
   checklist (before the tag / tag / after the run) whose step 3 is the
   coupling step with both gates named; the "what happens on a tag push"
@@ -31,10 +34,13 @@ ops surface in PLAN.md:
   section and `sync-unity-package.ps1 -Pack`'s comment now state that
   UPM tarballs do **not** ship in the tag pipeline (they never did —
   the old comment claimed it was "wired up in M9.2").
-- **`scripts/tests/test-lint-unity-package-versions.ps1`** — 14
-  fixture-driven assertions: lockstep pass/fail, stale/range/missing
-  pins, semver shape, empty-fleet remedy, and a run against the real
-  repository fleet (9 packages, lockstep at 0.1.0).
+- **`scripts/tests/test-lint-unity-package-versions.ps1`** — 26
+  fixture-driven assertions: lockstep pass/fail, stale/range/missing/
+  self/non-string pins, semver shape, malformed shapes (`dependencies:
+  null`, array-valued version and dependencies — violations, never
+  crashes or silent passes), prerelease lockstep, empty-fleet remedy,
+  and a run against the real repository fleet (9 packages, lockstep at
+  0.1.0).
 
 ## Why this shape
 
@@ -54,12 +60,27 @@ before merge, not after tagging.
 - The `release.yml` guard logic was exercised locally with `jq` +
   `find` against the real fleet: green at release `0.1.0`; a doctored
   `v0.2.0-rc.1` fails naming all nine manifests.
-- First lint draft had three real bugs caught by its own self-tests:
+- First lint draft had two real bugs caught by its own self-tests:
   the empty-fleet guard used `Write-Error` (rendered as a
   console-wrapped record no assertion could match), and the guard ran
   after a `Get-ChildItem` that threw on a missing `unity/` root.
   Both fixed; the Write-Error lesson folded into powershell-tooling
   rule 3 (`.llm/improvement-log.md`, session 053 entry).
+- **Adversarial review round** (evidence-first sub-agent, reproduced
+  every finding): 1 blocker + 2 should-fix + 9 nits + 1 optional.
+  All fixed except the two noted below. The blocker: the `release.yml`
+  step read `find` through process substitution, whose exit code does
+  not propagate under `bash -eo pipefail` — a tree drift that emptied
+  the glob passed the gate vacuously (the exact failure mode the gate
+  exists for). The should-fix set: `dependencies: null` crashed the
+  lint with a wrapped terminating error; array-valued `version` and
+  `dependencies` false-passed (`[string]` coercion flattens
+  single-element arrays; `.PSObject.Properties` on an array enumerates
+  `Length`/`Rank`); and the two gates contradicted each other on
+  prerelease tags (the lane stripped the rc suffix while the lint
+  accepted rc fleets — the lane now compares the full version and
+  strips only `+build`, so the fleet ships exactly what the tag
+  ships).
 
 ## Findings
 
@@ -89,10 +110,23 @@ before merge, not after tagging.
 - **No adapter `dependencies` loosening** (e.g. ranges instead of
   exact pins) — exact pins are the shipped contract; loosening them is
   a consumer-facing decision, not a tooling cleanup.
+- **`Write-Error` sweep limited to the touched script**: sync-unity-package.ps1
+  converted (six sites, self-test asserts exit codes + the
+  `Write-Host` remedy lines). `fuzz-codec.ps1` and `install-hooks.ps1`
+  keep their terminating errors for now — the fuzz lane needs the
+  libfuzzer driver to exercise its paths locally, so converting them
+  unverified would trade a cosmetic inconsistency for an untested
+  failure path. Follow-up when either lane is next touched.
 
 ## Verification
 
-- Self-test 14/14; `scripts/tests/run-all.ps1` 17/17 files.
+- Self-test 26/26; `scripts/tests/run-all.ps1` 17/17 files.
+- The `release.yml` step exercised locally under the exact CI shell
+  (`bash -eo pipefail`), five scenarios: green plain tag (9 counted);
+  red rc mismatch naming all nine; missing `unity/` tree fails (no
+  vacuous pass); consistent rc fleet green; `Samples~` demo manifest
+  ignored.
+- The lint re-verified against the real fleet after every fix.
 - markdownlint (65 files), typos (whole repo, v1.50.3 = CI pin),
   `mkdocs build --strict` green locally.
 - `lint-llm-instructions` green after the skill edit + index

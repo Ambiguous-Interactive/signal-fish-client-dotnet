@@ -47,7 +47,7 @@ $packageRoot = Join-Path $RepoRoot 'unity/Packages/com.ambiguous-interactive.sig
 $runtimeRoot = Join-Path $packageRoot 'Runtime'
 
 if (-not (Test-Path -LiteralPath (Join-Path $packageRoot 'package.json'))) {
-    Write-Error "Unity package skeleton not found: $packageRoot"
+    Write-Host "Unity package skeleton not found: $packageRoot" -ForegroundColor Red
     exit 1
 }
 
@@ -162,7 +162,7 @@ function New-PackageTarball {
 
     $manifest = Get-Content -LiteralPath (Join-Path $packageRoot 'package.json') -Raw
     if ($manifest -notmatch '"version"\s*:\s*"([^"]+)"') {
-        Write-Error 'Cannot read the package version from package.json.'
+        Write-Host 'Cannot read the package version from package.json.' -ForegroundColor Red
         exit 1
     }
     $version = $Matches[1]
@@ -216,7 +216,7 @@ function New-PackageTarball {
                     continue
                 }
                 if (-not $available.ContainsKey($referenceName)) {
-                    Write-Error "pack: shipped asmdef '$displayName' references '$referenceName', which does not ship in the package."
+                    Write-Host "pack: shipped asmdef '$displayName' references '$referenceName', which does not ship in the package." -ForegroundColor Red
                     exit 1
                 }
             }
@@ -232,7 +232,7 @@ function New-PackageTarball {
         }
         tar -czf $tarball -C $stage .
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "tar failed with exit code $LASTEXITCODE."
+            Write-Host "tar failed with exit code $LASTEXITCODE." -ForegroundColor Red
             exit 1
         }
         Write-Host "pack: $tarball"
@@ -244,7 +244,7 @@ function New-PackageTarball {
 
 if ($Pack) {
     if ($Check) {
-        Write-Error '-Check and -Pack are mutually exclusive.'
+        Write-Host '-Check and -Pack are mutually exclusive.' -ForegroundColor Red
         exit 1
     }
     New-PackageTarball -Destination $OutDir
@@ -269,7 +269,7 @@ if ($Check) {
 Copy-Mirror -TargetRuntimeRoot $runtimeRoot
 $remaining = Find-Drift
 if ($remaining.Count -gt 0) {
-    Write-Error 'Sync did not converge; refusing to continue.'
+    Write-Host 'Sync did not converge; refusing to continue.' -ForegroundColor Red
     exit 1
 }
 Write-Host "sync: mirrored library sources into the Unity package ($($drift.Count) entries updated)."
