@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "job": "medium",
+  "architecture": "X64",
+  "benchmarkDotNetVersion": "0.15.8",
+  "recordedAtUtc": "2026-10-06T19:21:26Z",
+  "entries": [
+    {
+      "fullName": "SignalFish.Client.PerfTests.BoundedQueueBenchmarks.ChannelsAwaitHandoff",
+      "medianNanoseconds": 11875.855377197266,
+      "bytesAllocatedPerOperation": 72
+    },
+    {
+      "fullName": "SignalFish.Client.PerfTests.BoundedQueueBenchmarks.ChannelsTryRoundtrip",
+      "medianNanoseconds": 25399.509796142578,
+      "bytesAllocatedPerOperation": 0
+    },
+    {
+      "fullName": "SignalFish.Client.PerfTests.BoundedQueueBenchmarks.HandRolledAwaitHandoff",
+      "medianNanoseconds": 8825.677513122559,
+      "bytesAllocatedPerOperation": 72
+    },
+    {
+      "fullName": "SignalFish.Client.PerfTests.BoundedQueueBenchmarks.HandRolledTryRoundtrip",
+      "medianNanoseconds": 20884.949157714844,
+      "bytesAllocatedPerOperation": 0
+    },
+    {
+      "fullName": "SignalFish.Client.PerfTests.CodecBenchmarks.DecodeFullCorpus",
+      "medianNanoseconds": 16904.794830322266,
+      "bytesAllocatedPerOperation": 0
+    },
+    {
+      "fullName": "SignalFish.Client.PerfTests.CodecBenchmarks.EncodeRepresentativeSession",
+      "medianNanoseconds": 1007.9975147247314,
+      "bytesAllocatedPerOperation": 0
+    }
+  ]
+}
