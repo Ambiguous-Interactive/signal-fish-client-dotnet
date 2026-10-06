@@ -33,8 +33,8 @@ Derived budgets (approximate, same environment):
 
 Budget policy: codec hot paths must stay **zero-alloc steady-state** (gate
 tests fail the build otherwise) and within ~2x of these means. Regression
-checks run locally or on the scheduled bench workflow (PLAN.md M9.4) — not on
-PR CI, to keep CI time flat.
+checks run on the weekly Bench workflow (see the [regression gate](#regression-gate-m94)
+below) — not on PR CI, to keep CI time flat.
 
 ## Baseline — 2026-09-22 (session 020, M4.1 bounded-queue spike)
 
@@ -62,3 +62,37 @@ nothing; the `IBoundedQueue<T>` abstraction keeps a Channels swap-in honest
 
 Budget policy: fail-fast enqueue/dequeue must stay 0 B (allocation-gate test
 `FailFastRoundtripAllocatesNothing`); means within ~2x of the table above.
+
+## Regression gate (M9.4)
+
+The weekly **Bench** workflow (`.github/workflows/bench.yml`, Mondays
+05:00 UTC) runs `scripts/run-bench.ps1`: every benchmark (BenchmarkDotNet,
+medium job) is compared against the committed machine baseline
+`tests/SignalFish.Client.PerfTests/baseline.json`. The check fails when:
+
+- median wall time grows more than 30% (`-MaxRegression`, default 1.30 —
+  shared runners are noisy, real regressions are larger);
+- bytes allocated per operation grow at all (allocation is
+  deterministic, and the codec budget is zero-alloc steady state);
+- a baseline benchmark no longer exists in the run (renames and removals
+  fail, so the gate cannot silently rot);
+- the runner architecture differs from the baseline's (Arm64 and x64
+  medians are not comparable).
+
+New benchmarks pass with a warning; re-record the baseline to gate them.
+
+### Re-recording the baseline
+
+Baselines are environment-specific, so a new one is always a reviewed
+change — recorded deliberately, diff reviewed, then committed:
+
+1. Dispatch the **Bench** workflow with `update_baseline` (or run
+   `pwsh -NoProfile -File scripts/run-bench.ps1 -UpdateBaseline` locally
+   — only meaningful when your machine matches the baseline
+   architecture).
+2. Download the `bench-baseline` artifact (CI) or take the file in place
+   (local).
+3. Commit `tests/SignalFish.Client.PerfTests/baseline.json`.
+
+An intentional regression (speed traded for correctness) follows the
+same path: the PR that updates the baseline is the review record.
