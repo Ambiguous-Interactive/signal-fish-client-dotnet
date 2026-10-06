@@ -67,7 +67,10 @@ foreach ($path in $manifests) {
     $json = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     $nameProperty = $json.PSObject.Properties['name']
     $versionProperty = $json.PSObject.Properties['version']
-    $relative = $path.Substring($RepoRoot.Length + 1)
+    # Forward slashes: messages must match identically on every OS
+    # (self-tests assert on these paths; Windows Get-ChildItem returns
+    # backslash separators).
+    $relative = $path.Substring($RepoRoot.Length + 1) -replace '\\', '/'
     if ($null -eq $nameProperty -or $nameProperty.Value -isnot [string] -or $nameProperty.Value -eq '') {
         $problems.Add("$relative : package.json must carry a name string.")
         continue
