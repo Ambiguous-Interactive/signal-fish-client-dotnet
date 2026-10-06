@@ -10,4 +10,25 @@
     <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
         <NoWarn>$(NoWarn);CA1707;CA1062;CA1515</NoWarn>
     </PropertyGroup>
+
+    <!-- M9.1: MinVer stamps the git-tag version into the client library
+        (package version, file version, InformationalVersion — which
+        SignalFishClientInfo.SdkVersion reads at runtime; AssemblyVersion
+        stays on the stable major line). Build-time only:
+        PrivateAssets keeps it out of the shipped package and out of
+        consumers, so the zero-dependency lock
+        (scripts/lint-zero-dependencies.ps1) holds — no src/*.csproj
+        carries a PackageReference. Conditioned on PackageId (set in the
+        csproj body, which is evaluated before this .targets import) so
+        test and tooling projects keep their default versions. The
+        minimum keeps untagged checkouts (PR CI, local branches) building
+        deterministically at the 0.1 line instead of failing; a tagged
+        checkout (v*) gets the exact tag. -->
+    <PropertyGroup Condition="'$(PackageId)' == 'SignalFish.Client'">
+        <MinVerTagPrefix>v</MinVerTagPrefix>
+        <MinVerMinimumMajorMinor>0.1</MinVerMinimumMajorMinor>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(PackageId)' == 'SignalFish.Client'">
+        <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="all" />
+    </ItemGroup>
 </Project>

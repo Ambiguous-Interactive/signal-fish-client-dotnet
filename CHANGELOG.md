@@ -217,6 +217,16 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Changed
 
+- The SDK version reported on every `Authenticate`
+  (`SignalFishClientInfo.SdkVersion`) is now stamped from the git tag
+  by MinVer instead of being a hardcoded `0.1.0` constant — the tag,
+  the NuGet package version, and the wire identity can no longer
+  drift apart (the Unity package's own `package.json` version stays
+  manual for now). Builds without a tag (local branches, PR CI)
+  report a `0.1.0-alpha.0` pre-release (suffixed
+  `.<commit-height>` when the checkout has history depth); Unity and
+  other engine consumers that compile the mirrored sources keep
+  reporting `0.1.0`.
 - The Unity adapter packages share one adapter-core package: the new
   `com.ambiguous-interactive.signalfish.adapters.core` owns the 18-byte
   adapter header (`AdapterWire`), the MTU math (`AdapterMtu`), the peer

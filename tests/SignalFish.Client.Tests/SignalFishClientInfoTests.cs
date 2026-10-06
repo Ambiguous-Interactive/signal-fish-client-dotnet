@@ -1,6 +1,7 @@
 namespace SignalFish.Client.Tests
 {
     using System;
+    using System.Reflection;
     using NUnit.Framework;
     using SignalFish.Client;
 
@@ -65,6 +66,51 @@ namespace SignalFish.Client.Tests
             Assert.That(SignalFishClientInfo.V2WebSocketPath, Is.EqualTo("/v2/ws"));
             Assert.That(SignalFishClientInfo.V3WebSocketPath, Is.EqualTo("/v3/ws"));
             Assert.That(SignalFishClientInfo.Platform, Is.EqualTo("dotnet"));
+        }
+
+        [Test]
+        public void SdkVersionMatchesTheAssemblyStampSansMetadata()
+        {
+            /*
+                M9.1: the reported version is the one stamped into the
+                library assembly (MinVer from the git tag), minus the
+                source-revision metadata the .NET SDK appends after '+'
+                in CI builds. The dotnet build always carries the stamp;
+                the Unity fallback (no stamp, or a toolchain default of
+                0.0.0) returns the 0.1.0 floor inside the library —
+                there is no unit-testable seam for it here, and the
+                Unity lane pins its compilation, not the value.
+            */
+            string informational =
+                typeof(SignalFishClientInfo)
+                    .Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                    ?.InformationalVersion
+                ?? SignalFishClientInfo.SdkVersion;
+
+            Assert.That(
+                SignalFishClientInfo.SdkVersion,
+                Is.EqualTo(StripInformationalVersionMetadata(informational))
+            );
+        }
+
+        [Test]
+        public void SdkVersionIsASemverCoreVersion()
+        {
+            /*
+                The property strips build metadata ('+'), so a
+                pre-release tail is the only optional part.
+            */
+            Assert.That(
+                SignalFishClientInfo.SdkVersion,
+                Does.Match(@"^\d+\.\d+\.\d+(-[0-9A-Za-z\-.]+)?$"),
+                "the version reported on Authenticate must be a semver core version"
+            );
+        }
+
+        private static string StripInformationalVersionMetadata(string version)
+        {
+            int metadata = version.IndexOf('+', StringComparison.Ordinal);
+            return metadata < 0 ? version : version.Substring(0, metadata);
         }
     }
 }

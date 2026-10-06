@@ -104,7 +104,9 @@ namespace SignalFish.Client.Tests.Async
             Assert.That(
                 second.SentText[0],
                 Is.EqualTo(
-                    "{\"type\": \"Authenticate\", \"data\": {\"sdk_version\": \"0.1.0\", \"platform\": \"dotnet\"}}"
+                    "{\"type\": \"Authenticate\", \"data\": {\"sdk_version\": \""
+                        + SignalFish.Client.SignalFishClientInfo.SdkVersion
+                        + "\", \"platform\": \"dotnet\"}}"
                 )
             );
             EnqueueGolden(second, "Authenticated");
@@ -676,7 +678,9 @@ namespace SignalFish.Client.Tests.Async
             Assert.That(
                 second.SentText[0],
                 Is.EqualTo(
-                    @"{""type"": ""Authenticate"", ""data"": {""app_id"": ""mb_app_abc123"", ""sdk_version"": ""0.1.0"", ""platform"": ""dotnet"", ""connect_token"": ""sfct_v1.secret-token-value""}}"
+                    @"{""type"": ""Authenticate"", ""data"": {""app_id"": ""mb_app_abc123"", ""sdk_version"": """
+                        + SignalFish.Client.SignalFishClientInfo.SdkVersion
+                        + @""", ""platform"": ""dotnet"", ""connect_token"": ""sfct_v1.secret-token-value""}}"
                 )
             );
             await client.DisposeAsync();
