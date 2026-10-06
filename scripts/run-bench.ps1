@@ -83,6 +83,18 @@ function Read-Results {
     $byFullName = @{}
     foreach ($file in $files) {
         $report = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+        # StrictMode makes bare property reads throw before the friendly
+        # guards can, so existence is checked via PSObject.Properties.
+        foreach ($field in @('HostEnvironmentInfo', 'Benchmarks')) {
+            if (-not $report.PSObject.Properties[$field]) {
+                throw "Report field missing: $field in $($file.Name)."
+            }
+        }
+        foreach ($field in @('Architecture', 'BenchmarkDotNetVersion')) {
+            if (-not $report.HostEnvironmentInfo.PSObject.Properties[$field]) {
+                throw "Report field missing: HostEnvironmentInfo.$field in $($file.Name)."
+            }
+        }
         if (-not $report.Benchmarks) {
             throw "Report has no benchmarks: $($file.Name)"
         }
@@ -90,10 +102,13 @@ function Read-Results {
         $versions.Add([string]$report.HostEnvironmentInfo.BenchmarkDotNetVersion) | Out-Null
 
         foreach ($bench in $report.Benchmarks) {
-            if (-not $bench.Statistics -or $null -eq $bench.Statistics.Median) {
-                throw "Benchmark '$($bench.FullName)' has no timing statistics in $($file.Name)."
+            if (-not $bench.PSObject.Properties['FullName'] -or
+                -not $bench.PSObject.Properties['Statistics'] -or
+                -not $bench.Statistics.PSObject.Properties['Median']) {
+                throw "Benchmark entry has no timing statistics in $($file.Name) (FullName / Statistics.Median missing)."
             }
-            if ($null -eq $bench.Memory -or $null -eq $bench.Memory.BytesAllocatedPerOperation) {
+            if (-not $bench.PSObject.Properties['Memory'] -or
+                -not $bench.Memory.PSObject.Properties['BytesAllocatedPerOperation']) {
                 throw "Benchmark '$($bench.FullName)' has no MemoryDiagnoser data in $($file.Name). Add [MemoryDiagnoser] to it."
             }
             $entry = [pscustomobject]@{
@@ -132,7 +147,9 @@ function Write-Baseline {
         job                    = 'medium'
         architecture           = $Run.Architecture
         benchmarkDotNetVersion = $Run.BenchmarkDotNetVersion
-        recordedAtUtc          = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        recordedAtUtc          = (Get-Date).ToUniversalTime().ToString(
+            'yyyy-MM-ddTHH:mm:ssZ',
+            [System.Globalization.CultureInfo]::InvariantCulture)
         entries                = @($Run.Entries | ForEach-Object {
             [ordered]@{
                 fullName                   = $_.FullName
@@ -151,6 +168,13 @@ function Read-Baseline {
     param([string]$Path)
 
     $baseline = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    # StrictMode makes bare property reads throw before the friendly
+    # guards can, so existence is checked via PSObject.Properties.
+    foreach ($field in @('schemaVersion', 'architecture', 'entries')) {
+        if (-not $baseline.PSObject.Properties[$field]) {
+            throw "Baseline is missing '$field': $Path. Re-record it with -UpdateBaseline."
+        }
+    }
     if ($baseline.schemaVersion -ne 1) {
         throw "Unsupported baseline schema version '$($baseline.schemaVersion)' in $Path."
     }
@@ -177,6 +201,13 @@ function Compare-Results {
     $failures = New-Object 'System.Collections.Generic.List[string]'
     $warnings = New-Object 'System.Collections.Generic.List[string]'
 
+    # A BenchmarkDotNet upgrade can shift medians with no code change;
+    # warn so a required re-record has a named cause.
+    if ($Baseline.PSObject.Properties['benchmarkDotNetVersion'] -and
+        $Baseline.benchmarkDotNetVersion -ne $Run.BenchmarkDotNetVersion) {
+        $warnings.Add("BenchmarkDotNet changed since the baseline ($($Baseline.benchmarkDotNetVersion) -> $($Run.BenchmarkDotNetVersion)); medians may shift without a code change. Re-record if the diff is tooling, not regression.") | Out-Null
+    }
+
     $runByName = @{}
     foreach ($entry in $Run.Entries) { $runByName[$entry.FullName] = $entry }
 
@@ -193,10 +224,16 @@ function Compare-Results {
             $verdict = 'FAIL'
         }
         else {
-            $ratio = $runEntry.MedianNanoseconds / $base.medianNanoseconds
-            if ($ratio -gt $MaxRegression) {
-                $failures.Add("Median regression: $($base.fullName) $(Format-Us $base.medianNanoseconds) -> $(Format-Us $runEntry.MedianNanoseconds) ($('{0:N3}x' -f $ratio) > $('{0:N2}x' -f $MaxRegression) limit).") | Out-Null
+            if ($runEntry.MedianNanoseconds -le 0) {
+                $failures.Add("Run median must be positive for $($base.fullName) (corrupt report?); got $($runEntry.MedianNanoseconds) ns.") | Out-Null
                 $verdict = 'FAIL'
+            }
+            else {
+                $ratio = $runEntry.MedianNanoseconds / $base.medianNanoseconds
+                if ($ratio -gt $MaxRegression) {
+                    $failures.Add("Median regression: $($base.fullName) $(Format-Us $base.medianNanoseconds) -> $(Format-Us $runEntry.MedianNanoseconds) ($('{0:N3}x' -f $ratio) > $('{0:N2}x' -f $MaxRegression) limit).") | Out-Null
+                    $verdict = 'FAIL'
+                }
             }
         }
         if ($runEntry.BytesAllocatedPerOperation -gt $base.bytesAllocatedPerOperation) {

@@ -9,125 +9,53 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
-## 2026-10-06 - session 051: M9.3 API-compat gate (refactor-by-memory regression, branch-state surprise)
+## 2026-10-06 - session 052: M9.4 scheduled bench gate (argument-mode misbind, dispatch-before-default-branch)
 
-- Trigger: the reflect-improve loop after a CI-infrastructure change
-  (new gate script + workflow step) and the first release cut.
-- Evidence: (1) refactoring the script's apicompat invocation into an
-  args array rewrote `dotnet tool run` as `dotnet run` — the very next
-  green-run check caught it red, same step. (2) `gh pr merge
-  --delete-branch` silently checked out main; the following commit
-  landed on local main and the push created a stale remote feature
-  branch — found by reading the commit output before anything was
-  pushed to main. (3) An initial `.snupkg` exclusion filter was dead
-  code: `.snupkg` cannot match a `*.nupkg` wildcard; verified against
-  wildcard semantics and removed.
-- Findings: both live failures were edit-adjacent, not design flaws —
-  re-run the check immediately after any edit to a command line
-  (red-green applies to scripts, not just C#), and re-read branch
-  state (`git status --branch`) after any tool that can switch
-  branches before committing. Review convergence held: the
-  adversarial sub-agent and Cursor Bugbot independently flagged the
-  same major gap (committed suppressions unreachable from CI); both
-  were fixed by the convention-path default, verified end-to-end.
-- Applied: all fixes landed on the PR (suppression convention path,
-  scoped attribute claim, session-record correction, explicit
-  zero-asset message); the durable ApiCompat facts (default
-  attribute exclusions; latest-release-excludes-prereleases) live in
-  `docs/releasing.md` and the script help, not duplicated here.
-- Open: none; M9.4 (scheduled bench) is the next surface.
-
-## 2026-10-06 - session 049: M8.7 validation runbook (summary-page drift)
-
-- Trigger: the reflect-improve loop after a 14-file docs change (the
-  M8.7 runbook page + nine pages' validation sections re-pointed).
-- Evidence: the adversarial review caught three factual errors in the
-  new summary page — a borrowed watch item from the wrong sibling
-  page, an inverted component attribution, and an invented
-  unverifiable gloss on a version pin — plus a sourcing overclaim
-  ("taken verbatim") in the session record. All were prose claims no
-  compiler or lint can see.
-- Findings: a summary page that aggregates claims from many source
-  pages re-introduces the "never write from memory" failure class
-  (already an adapter-code rule) at the docs layer: every borrowed
-  claim needs re-verification against its source page, and a pin
-  field must never carry framing the repo has not itself asserted.
-- Applied: all four findings fixed in the same change; the
-  verification step is recorded here — the existing
-  `author-engine-adapter` rule ("verify against the source, never
-  memory") is the durable knowledge, now understood to cover docs.
+- Trigger: the reflect-improve loop after the second
+  CI-infrastructure change (new gate script + scheduled workflow +
+  self-test file).
+- Evidence: (1) the first self-test run failed 6 assertions: the test
+  passed `[regex]::Escape($x)` as a named-parameter argument, and
+  PowerShell argument mode bound the literal string `[regex]::Escape`
+  to the parameter and shifted `$x` into the name position — silent,
+  no error, wrong assertion names. (2) `gh workflow run bench.yml`
+  404s until the workflow file exists on the default branch, so the
+  first CI baseline could not be recorded from the PR by dispatch.
+  (3) The devcontainer is Arm64, CI runners are x64 — a locally
+  recorded baseline would fail every scheduled run on incomparable
+  medians. (4) The adversarial review round found three holes the
+  first round's tests missed: a zero/negative run median passed the
+  gate (only the baseline side was guarded), `Set-StrictMode` turned
+  every missing-field guard into a raw property-not-found throw
+  (friendly remedies were dead code), and the baseline timestamp used
+  the ambient culture (Hijri under ar-SA).
+- Findings: expression arguments to named parameters need parens
+  (`-P ([regex]::Escape($x))`); argument mode evaluates them as typed
+  strings otherwise. Platform gates shape bootstrap paths: `gh workflow
+  run` 404s until the workflow is on the default branch, and a
+  temporary push trigger + record-if-absent shim recorded the first
+  baseline on the target hardware. `hashFiles` in a step-`if` is
+  evaluated when the step starts, not at workflow parse: a record step
+  that creates the file flips a later hashFiles-gated step to true
+  (benign here — the extra compare validated the fresh baseline
+  in-place — but the shim was removed rather than kept). Environment
+  facts that gate comparability (architecture) belong in the artifact
+  itself, not the docs.
+- Applied: parens in the test file; architecture pinned in the
+  baseline schema with a named failure message; shim and trigger
+  removed after the baseline landed; the re-record flow documented in
+  `docs/benchmarks.md`. Review round: run-median positivity guard,
+  `PSObject.Properties` existence guards so the friendly messages
+  actually fire under StrictMode, InvariantCulture timestamp, BDN
+  version-drift warning. CI self-comparison data: max run-to-run
+  median ratio 1.15 on ubuntu-latest (ChannelsTryRoundtrip), inside
+  the 1.30 budget with headroom.
 - Open: none.
 
-## 2026-10-04 - session 042 PR feedback: Bugbot round on #90 (invisible-to-CI engine-gated code)
-
-- Trigger: Cursor Bugbot's three high-severity findings on PR #90,
-  verified against the code, the E2E conformance suite, and the UGS
-  Relay API surface.
-- Evidence: (1) `joinCode = await AwaitHook(...)` awaited a void `Task`
-  — a compile error in the `#if SIGNALFISH_NGO` bridge that no compiler
-  in CI sees; the round-2 refactor that introduced it shipped green.
-  (2) The drain failed on every `AuthorityChanged`, including the
-  server's grant broadcast (`you_are_authority: true` follows a granted
-  `AuthorityResponse` for the grantee, in either order — proven by
-  `AuthorityClaimMovesTheSeatAndGatesStart`), so every healthy host
-  start tore itself down on its first `Update`. (3) The sample returned
-  `allocation.JoinCode`, which Unity Relay's `Allocation` does not
-  carry — the host must call `GetJoinCodeAsync(allocationId)`.
-  Bonus catch by the new stub lane itself: `Environment.TickCount64`
-  does not exist on the netstandard2.1 API floor Unity compiles
-  against, despite the dotnet build passing.
-- Findings: engine-gated sources need a compile contract (shape stubs),
-  not review discipline; event-to-fatal classification must be verified
-  against the conformance suite (the executable spec of server
-  broadcasts), not intuition; external-SDK member names must be checked
-  against the SDK's source or docs, never memory.
-- Applied: generic + void `AwaitHook` overloads; the drain now fails
-  only when `you_are_authority != _isHost`; the sample calls
-  `GetJoinCodeAsync`; waits use `SystemClock` instead of `TickCount64`;
-  `lint-unity-adapter` grew a shape-stub bridge-compile lane
-  (`BridgeCompile`/`BridgeStubs`, NGO first) that type-checks
-  engine-gated bridges at the netstandard2.1 floor on every CI run;
-  knowledge folded into the new `author-engine-adapter` skill and two
-  new sweep rows in `address-pr-feedback`.
-- Open: Mirror/FishNet bridges have no stub-compile lane yet (large
-  engine surfaces); tracked as a follow-up issue.
-
-## 2026-10-04 - session 042: M8.3 NGO coordinator (third-entry lint generalization + floor-portable core)
-
-- Trigger: the reflect-improve loop after authoring the third adapter
-  package (the NGO + Relay coordinator).
-- Evidence: (1) the adapter lint's SDK reference pattern was a
-  FishNet/Mirror if/else — a third adapter would have been silently
-  linted with the Mirror pattern (false negatives, no failure shape);
-  generalized to a pin field before it could misfire. (2) `string.Create`
-  with a span state compiled on net10.0 and failed CS9244 on net8.0 —
-  pure-core sources ride the oldest supported floor, and only the
-  multi-TFM test suite catches newest-framework-only API shapes. (3)
-  Writing the consumer sample exposed a real API race (a synchronous
-  binder hook vs an inherently async Unity Relay join) that the runtime
-  API review had missed; the sample is the cheapest API reviewer for
-  hook-shaped surfaces. (4) the adversarial review pass verified the
-  NGO bridge against NGO's own 1.2.0 source and found the approval gate
-  dead: `NetworkConfig.ConnectionApproval` gates the whole mechanism
-  (without it the host auto-approves everything and the client never
-  sends ConnectionData), the callback setter throws on a two-target
-  delegate (so `+=` breaks every restart), and `StartHost/StartClient`
-  report refusal as `false` + a log, not an exception.
-- Findings: generalize lint pins when the second consumer becomes a
-  third; avoid newest-framework-only API shapes in sources that must
-  compile on older floors; author the sample call sites first when an
-  adapter API is hook-shaped; engine-gated sources need their feature
-  flags verified against the engine's actual source — presence of the
-  callback is not activation, and restart cycles break on engine-side
-  state the adapter never clears.
-- Applied: `SdkReferencePattern`/`WirePin` pin fields + optional
-  channel pin + fixture lane (72 assertions); the envelope decode
-  rewritten to `Encoding.ASCII.GetString`; the client Relay binder
-  contract became `Func<string, Task>`, awaited before the NGO client
-  start stages; the approval flag, host self-payload, callback
-  assignment, and start-result checks all landed with the adversarial
-  round.
-- Open: none.
+Entries pruned 2026-10-06 (sessions 042, 042-bugbot, 048, 049, 051):
+knowledge graduated into `author-engine-adapter`, `address-pr-feedback`,
+`docs/releasing.md`, the runbook page, and the lint self-tests; open
+items resolved or tracked as issues; originals in git history.
 
 ## 2026-10-04 - session 040: M8.2 Mirror adapter (blind bridge, two-round review)
 
@@ -274,25 +202,3 @@ issues; originals in git history.
   guarded thin bridge + structural gate) is the template for M8.2
   Mirror.
 
-## 2026-10-06 - session 048: M8.6 Facepunch adapter (second Steamworks half)
-
-- Trigger: new adapter module (12+ files); two adversarial rounds
-  against the cloned Facepunch.Steamworks 2.5.2 sources.
-- Findings: (1) member-name pinning is not semantic pinning — the
-  binding's dispatch/threading mode (Facepunch's Init defaults to a
-  background-thread callback pump), refusal mechanics (a refused
-  create throws from a registry setter; the returned-default check is
-  dead code), and registry lifetimes (static dictionaries never
-  remove entries; stale dispatch + recycled handles) all needed the
-  same clone-and-verify discipline as the member surface; (2) the
-  sibling's hard-won teardown guarantee (close accepted-but-
-  unestablished connections) was lost in translation — port every
-  cleanup loop, not just the structure; (3) an exposed "the game owns
-  the traffic" surface needs its receive path proven (Facepunch's
-  managers drop OnMessage without an Interface — the contract had to
-  be documented, not implied).
-- Applied: all 8 first-round + 3 second-round findings in the
-  bootstrap/lint/docs; "Pin semantics, not just names" folded into
-  author-engine-adapter.
-- Verified: lint-unity-adapter (8 packages), 128-assertion self-test,
-  dotnet test 931x2 green, csharpier + conventions clean.

@@ -120,5 +120,10 @@ workflow"):
   3.4.0 remains latest on nuget.org (verified this session); no action
   possible. Issue #80 trigger (first use of a new mkdocs extension)
   did not occur.
-- Live validation watch item: the first scheduled run (Monday
-  2026-10-12) is the gate's first unsupervised execution.
+- Live validation watch items: the first scheduled run (Monday
+  2026-10-12) is the gate's first unsupervised execution, and the
+  second (2026-10-19) rides the `ubuntu-latest` → Ubuntu 26 image
+  migration (runner-images#14748) — a no-code-change median shift
+  there may need a baseline re-record, and the new BenchmarkDotNet
+  version-drift warning names that cause when tooling, not code,
+  moved.

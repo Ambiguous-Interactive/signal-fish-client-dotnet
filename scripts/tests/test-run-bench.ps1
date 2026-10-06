@@ -26,11 +26,16 @@ try {
     }
 
     function Write-Report {
-        param([object[]]$Benchmarks, [string]$Architecture = 'X64', [string]$Name = 'PerfTests-report-full-compressed.json')
+        param(
+            [object[]]$Benchmarks,
+            [string]$Architecture = 'X64',
+            [string]$Name = 'PerfTests-report-full-compressed.json',
+            [string]$Version = '0.15.8'
+        )
         $report = [ordered]@{
             HostEnvironmentInfo = [ordered]@{
                 Architecture           = $Architecture
-                BenchmarkDotNetVersion = '0.15.8'
+                BenchmarkDotNetVersion = $Version
             }
             Benchmarks = @($Benchmarks)
         }
@@ -114,13 +119,62 @@ try {
     Assert-True ($run.ExitCode -ne 0) 'architecture mismatch fails'
     Assert-OutputContains -Run $run -Pattern 'Arm64.*X64|X64.*Arm64' 'architecture message names both'
 
-    # 8. A benchmark the run no longer produces fails (rot protection).
+    # 8. A BenchmarkDotNet version drift warns but passes.
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median 55000 -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64' -Version '0.16.0'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-Equal 0 $run.ExitCode 'benchmarkdotnet version drift passes'
+    Assert-OutputContains -Run $run -Pattern 'BenchmarkDotNet changed since the baseline' 'version drift warns with both versions'
+
+    # 9. A zero or negative run median fails instead of dividing noise.
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median 0 -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-True ($run.ExitCode -ne 0) 'zero run median fails'
+    Assert-OutputContains -Run $run -Pattern 'Run median must be positive' 'zero median message names the cause'
+
+    # 10. Two report files that disagree on one benchmark fail loudly.
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median 55000 -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64'
+    Write-Report -Benchmarks @((New-Entry -FullName $codec -Median 99000 -Alloc 0)) `
+        -Architecture 'X64' -Name 'PerfTests-report-brief.json'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-True ($run.ExitCode -ne 0) 'conflicting duplicate results fail'
+    Assert-OutputContains -Run $run -Pattern 'Conflicting results' 'conflict message names the benchmark'
+
+    # 11. A report without the expected fields fails with the friendly message.
+    Write-TestFile -Path (Join-Path $resultsDir 'PerfTests-report-full-compressed.json') -Content '{"HostEnvironmentInfo": {}}'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-True ($run.ExitCode -ne 0) 'field-less report fails'
+    Assert-OutputContains -Run $run -Pattern 'Report field missing' 'missing-field message is the friendly one'
+
+    # 12. A baseline missing the entries field fails with the friendly message.
+    Remove-Item -Path (Join-Path $resultsDir '*') -Force
+    Write-Report -Benchmarks @((New-Entry -FullName $codec -Median 55000 -Alloc 0)) -Architecture 'X64'
+    Write-TestFile -Path $baselinePath -Content '{"schemaVersion": 1, "architecture": "X64"}'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-True ($run.ExitCode -ne 0) 'field-less baseline fails'
+    Assert-OutputContains -Run $run -Pattern "Baseline is missing 'entries'" 'baseline missing-field message'
+
+    # 13. A benchmark the run no longer produces fails (rot protection).
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median 55000 -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir, '-UpdateBaseline')
+    Assert-Equal 0 $run.ExitCode 'baseline re-recorded after the corrupt-baseline test'
     Write-Report -Benchmarks @((New-Entry -FullName $codec -Median 55000 -Alloc 0)) -Architecture 'X64'
     $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
     Assert-True ($run.ExitCode -ne 0) 'orphaned baseline entry fails'
     Assert-OutputContains -Run $run -Pattern ([regex]::Escape($queue)) 'orphan message names the missing benchmark'
 
-    # 9. A new benchmark is additive: passes with a warning.
+    # 14. A new benchmark is additive: passes with a warning.
     Write-Report -Benchmarks @(
         (New-Entry -FullName $codec -Median 55000 -Alloc 0),
         (New-Entry -FullName $queue -Median 66000 -Alloc 0),
@@ -130,7 +184,7 @@ try {
     Assert-Equal 0 $run.ExitCode 'new benchmark passes'
     Assert-OutputContains -Run $run -Pattern 'New benchmark, not yet gated' 'new benchmark warns'
 
-    # 10. Every failure is reported, not just the first.
+    # 15. Every failure is reported, not just the first.
     Write-Report -Benchmarks @(
         (New-Entry -FullName $codec -Median (55000 * 2) -Alloc 16),
         (New-Entry -FullName $queue -Median (66000 * 2) -Alloc 0)
