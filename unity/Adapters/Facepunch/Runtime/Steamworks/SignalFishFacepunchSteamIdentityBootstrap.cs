@@ -983,7 +983,7 @@ namespace SignalFish.Client.Adapters.Facepunch
                 */
                 if (!SteamClient.IsValid)
                 {
-                    Fail("Steam was shut down under the live session.");
+                    Fail("Steam was shut down under the session.");
                     return;
                 }
             }
@@ -1490,6 +1490,23 @@ namespace SignalFish.Client.Adapters.Facepunch
 
         private void Fail(string reason)
         {
+            /*
+                A start still in flight fails through its own task: the
+                awaiter gets the real reason, and CoordinationFailed
+                stays reserved for failures of a live session. FailStaged
+                re-enters under the same lock (C# locks are reentrant on
+                the owning thread) and takes the whole session with it,
+                exactly like the direct path below.
+            */
+            lock (_lock)
+            {
+                if (_active is not null)
+                {
+                    FailStaged(new InvalidOperationException(reason));
+                    return;
+                }
+            }
+
             Debug.LogWarning("[SignalFishFacepunchSteamIdentityBootstrap] " + reason);
             CoordinationFailed?.Invoke(reason);
             Teardown();
