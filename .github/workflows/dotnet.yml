@@ -143,6 +143,20 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         run: dotnet tool run csharpier -- check .
 
+      # M9.3 API-compat gate: a PR that breaks the released public surface
+      # fails here. The baseline is the latest GitHub Release's package -
+      # the same bits consumers download - so a breaking change cannot
+      # slip through between releases. Needs the packed tool manifest
+      # (apicompat) and gh, which downloads the baseline asset; a missing
+      # release fails the step (never skips) so the gate cannot silently
+      # rot.
+      - name: Check API compatibility against the latest release
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/check-api-compat.ps1
+
       # Explicit project restores: bare `dotnet restore` on the slnx needs a
       # newer SDK than some runner images preinstall. The Tests restore
       # covers the library; the coverage cell also restores the tooling

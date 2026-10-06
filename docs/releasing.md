@@ -53,6 +53,29 @@ root; tag pushes only — it never runs on branches or PRs):
   per [GitHub's package auth rules](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry)).
 - If `NUGET_API_KEY` was set, the package is live on nuget.org within a
   few minutes of the push step.
+- The released package is now the **API-compat baseline**: every PR's
+  packed library is compared against it in CI
+  (`scripts/check-api-compat.ps1`), so a breaking change fails its own
+  PR instead of a consumer's build.
+
+## API-compat gate (M9.3)
+
+`dotnet.yml` packs the PR's library and compares it with
+[Microsoft.DotNet.ApiCompat](https://learn.microsoft.com/dotnet/fundamentals/apicompat/overview)
+against the latest release's package — the same bits consumers
+download. Removals and signature changes fail the PR; additions are
+compatible and pass. Parameter renames and attribute mismatches are
+checked too (both are source-breaking for C#), minus the attributes
+the tool excludes by default: adding `[Obsolete]` is an additive
+deprecation and passes.
+
+Intentional breaks are audited, not silent: draft a suppression file
+(run the tool's `--generate-suppression-file`), commit it as
+`.config/apicompat-suppressions.xml` (the gate picks it up
+automatically; `-Suppression <file>` tests other paths locally), and
+treat its diff as the review record. The version bump follows
+semver (minor in 0.x, major from 1.0). Once the release containing the
+break ships, remove the stale entries — the new baseline covers them.
 
 ## Troubleshooting
 

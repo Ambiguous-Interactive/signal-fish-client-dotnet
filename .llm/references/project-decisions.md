@@ -66,7 +66,8 @@ publishing, Unity-in-CI, source-generated serializers.
 
 Workflows live in `.github/workflows/` and are the operational truth:
 `dotnet.yml` (3-cell matrix, `-warnaserror`, coverage, allocation-gate
-tests), `e2e.yml` (server service container, open-dev env, conformance
+tests, api-compat gate vs the latest release), `e2e.yml` (server service
+container, open-dev env, conformance
 suite), `docs.yml` (mkdocs + markdownlint/typos/lychee, Pages deploy on
 main), `fuzz.yml` (weekly codec fuzz gate), `release.yml` (tag `v*`).
 The E2E server must run exactly as documented for local dev.
