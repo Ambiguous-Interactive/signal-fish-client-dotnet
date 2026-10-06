@@ -1,0 +1,22 @@
+{
+    "name": "SignalFish.Adapters.Facepunch",
+    "rootNamespace": "SignalFish.Client.Adapters.Facepunch",
+    "references": [
+        "SignalFish.Client",
+        "SignalFish.Adapters.Core",
+        "Facepunch.Steamworks.Win32",
+        "Facepunch.Steamworks.Win64",
+        "Facepunch.Steamworks.Posix"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "SIGNALFISH_FACEPUNCH"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

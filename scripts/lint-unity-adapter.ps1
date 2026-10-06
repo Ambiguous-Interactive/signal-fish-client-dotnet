@@ -64,7 +64,7 @@
          failure by design.
 
 .PARAMETER Adapter
-    One package name (Core, FishNet, Mirror, Ngo, Pun2, Fusion, SteamworksNet), or omit to lint all.
+    One package name (Core, FishNet, Mirror, Ngo, Pun2, Fusion, SteamworksNet, Facepunch), or omit to lint all.
 
 .PARAMETER RepoRoot
     Repository root. Defaults to the parent of the scripts directory.
@@ -78,7 +78,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo', 'Pun2', 'Fusion', 'SteamworksNet')]
+    [ValidateSet('Core', 'FishNet', 'Mirror', 'Ngo', 'Pun2', 'Fusion', 'SteamworksNet', 'Facepunch')]
     [string]$Adapter,
     [string]$RepoRoot,
     [switch]$NoBuild,
@@ -1055,6 +1055,248 @@ namespace Steamworks
 }
 '@
 
+$facepunchBridgeStubs = @'
+// Shape stubs (UnityEngine / Steamworks / Steamworks.Data surface the
+// bootstrap touches). The engine SDK is never vendored or referenced in CI.
+#nullable enable
+namespace UnityEngine
+{
+    public class MonoBehaviour { }
+
+    public static class Debug
+    {
+        public static void LogWarning(object message) { }
+    }
+}
+
+namespace Steamworks
+{
+    // Real member names, pinned against the Facepunch.Steamworks 2.5.2
+    // sources. The bootstrap only reacts to these states through the
+    // managers' own routing, so the member list is the pin, not the
+    // numeric values.
+    public enum ConnectionState : int
+    {
+        None = 0,
+
+        Connecting = 1,
+
+        FindingRoute = 2,
+
+        Connected = 3,
+
+        ClosedByPeer = 4,
+
+        ProblemDetectedLocally = 5,
+
+        FinWait = -1,
+
+        Linger = -2,
+
+        Dead = -3,
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources
+    // (None = 0, OK = 1, Fail = 2).
+    public enum Result : int
+    {
+        None = 0,
+
+        OK = 1,
+
+        Fail = 2,
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // the app range is the fence-refusal end reason.
+    public enum NetConnectionEnd : int
+    {
+        Invalid = 0,
+
+        App_Min = 1000,
+
+        App_Generic = 1000,
+
+        App_Max = 1999,
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // Value is the ulong the lane carries, and the implicit ulong
+    // conversion is the supported read.
+    public struct SteamId
+    {
+        public ulong Value;
+
+        public static implicit operator SteamId(ulong value) => new SteamId();
+
+        public static implicit operator ulong(SteamId value) => 0UL;
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // Accept is the fence's accept, Close frees an ended connection,
+    // and the uint conversion is the supported validity read (the Id
+    // property setter is public; the handle's validity is the uint).
+}
+
+namespace Steamworks.Data
+{
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // the listen-socket handle. The public uint conversion is the
+    // supported validity read (the id field is internal); the Manager
+    // property is the registry setter teardown uses to null a dead
+    // socket's entry (Facepunch never removes entries itself). The
+    // pragma keeps the stub's never-assigned field honest under
+    // warnings-as-errors (the real struct is assigned internally).
+    public struct Socket
+    {
+#pragma warning disable 649
+        internal uint Id;
+#pragma warning restore 649
+
+        public bool Close() => true;
+
+        public SocketManager Manager
+        {
+            get => null!;
+            set { }
+        }
+
+        public static implicit operator Socket(uint value) => new Socket();
+
+        public static implicit operator uint(Socket value) => value.Id;
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // Accept is the fence's accept, Close frees an ended connection,
+    // and the uint conversion is the supported validity read (the Id
+    // property setter is public; the handle's validity is the uint).
+    // Lives in Steamworks.Data, as in the real SDK.
+    public struct Connection
+    {
+        public uint Id { get; set; }
+
+        public Result Accept() => Result.OK;
+
+        public bool Close(
+            bool linger = false,
+            int reasonCode = 0,
+            string debugString = "Closing Connection"
+        ) => false;
+
+        public static implicit operator Connection(uint value) => new Connection();
+
+        public static implicit operator uint(Connection value) => value.Id;
+
+        public bool Equals(Connection other) => Id == other.Id;
+
+        public override bool Equals(object obj) => obj is Connection other && Id == other.Id;
+
+        public override int GetHashCode() => Id.GetHashCode();
+
+        public static bool operator ==(Connection value1, Connection value2) =>
+            value1.Equals(value2);
+
+        public static bool operator !=(Connection value1, Connection value2) =>
+            !value1.Equals(value2);
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources.
+    public struct NetIdentity
+    {
+        public SteamId SteamId => default(SteamId);
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // State, Identity, and EndReason are the public surface (there is
+    // no public end-debug string on this binding).
+    public struct ConnectionInfo
+    {
+        public ConnectionState State => ConnectionState.None;
+
+        public NetIdentity Identity => default(NetIdentity);
+
+        public NetConnectionEnd EndReason => NetConnectionEnd.Invalid;
+    }
+}
+
+namespace Steamworks
+{
+    using Steamworks.Data;
+
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // the manager owns the poll group, and its base OnConnected is what
+    // puts an accepted connection on it (the game's receive path).
+    public class SocketManager
+    {
+        public Socket Socket { get; internal set; }
+
+        public virtual void OnConnectionChanged(Connection connection, ConnectionInfo info) { }
+
+        public virtual void OnConnecting(Connection connection, ConnectionInfo info) { }
+
+        public virtual void OnConnected(Connection connection, ConnectionInfo info) { }
+
+        public virtual void OnDisconnected(Connection connection, ConnectionInfo info) { }
+
+        public bool Close() => true;
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // Connecting starts true, so the state machine absorbs the
+    // Connecting status of the manager's own dial.
+    public class ConnectionManager
+    {
+        public bool Connected = false;
+
+        public bool Connecting = true;
+
+        public Connection Connection;
+
+        public virtual void OnConnectionChanged(ConnectionInfo info) { }
+
+        public virtual void OnConnecting(ConnectionInfo info) { }
+
+        public virtual void OnConnected(ConnectionInfo info) { }
+
+        public virtual void OnDisconnected(ConnectionInfo info) { }
+
+        // The real Close returns void (only SocketManager.Close and the
+        // Connection struct return bool).
+        public void Close(
+            bool linger = false,
+            int reasonCode = 0,
+            string debugString = "Closing Connection"
+        ) { }
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // RunCallbacks is the dispatch pump the status changes ride on,
+    // IsValid guards the API's availability, and SteamId is the local
+    // user's id.
+    public static class SteamClient
+    {
+        public static bool IsValid => false;
+
+        public static SteamId SteamId => default(SteamId);
+
+        public static void RunCallbacks() { }
+    }
+
+    // Real members, pinned against the Facepunch.Steamworks sources:
+    // CreateRelaySocket opens the host's P2P listen socket and
+    // ConnectRelay dials a published SteamId64; both register the
+    // manager instance the status dispatch routes to.
+    public class SteamNetworkingSockets
+    {
+        public static T CreateRelaySocket<T>(int virtualport = 0)
+            where T : SocketManager, new() => new T();
+
+        public static T ConnectRelay<T>(SteamId serverId, int virtualport = 0)
+            where T : ConnectionManager, new() => new T();
+    }
+}
+'@
+
 $adapters = @{
     FishNet = @{
         Root = 'unity/Adapters/FishNet'
@@ -1316,6 +1558,58 @@ $adapters = @{
             'k_ESteamNetworkingConnectionState_ClosedByPeer',
             'k_ESteamNetworkingConnectionState_ProblemDetectedLocally',
             'k_EResultOK'
+        )
+    }
+    Facepunch = @{
+        Root = 'unity/Adapters/Facepunch'
+        Define = 'SIGNALFISH_FACEPUNCH'
+        SdkNamespace = 'Steamworks'
+        SdkReferencePattern = '(^|[^\w.])Steamworks(\.[A-Za-z_]|;)'
+        SdkReference = @(
+            'Facepunch.Steamworks.Win32',
+            'Facepunch.Steamworks.Win64',
+            'Facepunch.Steamworks.Posix'
+        )
+        CoreReference = 'SignalFish.Adapters.Core'
+        CorePackage = 'com.ambiguous-interactive.signalfish.adapters.core'
+
+        # The bootstrap is not a transport bridge: it never frames engine
+        # payloads, so there is no engine channel pin. Its wire surface
+        # is the package's own identity envelope, which the bridge must
+        # go through rather than hand-rolling. Facepunch.Steamworks
+        # ships as an asset (precompiled platform assemblies plus native
+        # binaries, not a UPM package the Package Manager knows), so the
+        # editor define detector owns the define and a package pin would
+        # be a lie.
+        WirePin = 'SteamIdentityEnvelope.'
+        ChannelPin = $null
+        PackagePin = $null
+        PackageExpression = $null
+        BridgeFile = 'SignalFishFacepunchSteamIdentityBootstrap.cs'
+        BridgeCompile = $true
+        BridgeStubs = $facepunchBridgeStubs
+        DetectorFile = 'SignalFishFacepunchDefineDetector.cs'
+        DetectorProbes = @(
+            'Facepunch.Steamworks.Win32',
+            'Facepunch.Steamworks.Win64',
+            'Facepunch.Steamworks.Posix'
+        )
+        PinnedMembers = @(
+            'CreateRelaySocket',
+            'ConnectRelay',
+            'RunCallbacks',
+            'IsValid',
+            'SteamId',
+            'Value',
+            'Identity',
+            'EndReason',
+            'Accept',
+            'Close',
+            'OnConnecting',
+            'OnConnected',
+            'OnDisconnected',
+            'ConnectionInfo',
+            'NetConnectionEnd.App_Min'
         )
     }
 }

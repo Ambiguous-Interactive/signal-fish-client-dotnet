@@ -65,6 +65,13 @@
             Include="..\..\unity\Adapters\SteamworksNet\Runtime\Core\**\*.cs"
             LinkBase="Adapters\SteamworksNet\Core"
         />
+        <!-- The Facepunch adapter's pure core (the same SteamId64
+             identity envelope, one namespace over) is exercised the
+             same way; the two lane keys must stay byte-identical. -->
+        <Compile
+            Include="..\..\unity\Adapters\Facepunch\Runtime\Core\**\*.cs"
+            LinkBase="Adapters\Facepunch\Core"
+        />
     </ItemGroup>
 
     <ItemGroup>

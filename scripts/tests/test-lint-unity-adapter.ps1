@@ -555,6 +555,123 @@ try {
         DetectorProbe = 'com.rlabrecque.steamworks.net'
     }
 
+    $facepunch = @{
+        Root = 'unity/Adapters/Facepunch'
+        Define = 'SIGNALFISH_FACEPUNCH'
+        LocalCoreCs = @(
+            '#nullable enable',
+            'namespace SignalFish.Client.Adapters.Facepunch',
+            '{',
+            '    public static class SteamIdentityEnvelope',
+            '    {',
+            '        public const int MaxSteamIdLength = 20;',
+            '        public static bool IsValidSteamId(string? steamId) => throw null!;',
+            '    }',
+            '}'
+        )
+        ChannelPin = $null
+        BridgeCs = @(
+            '#if SIGNALFISH_FACEPUNCH',
+            'namespace SignalFish.Client.Adapters.Facepunch',
+            '{',
+            '    public sealed class Bridge : UnityEngine.MonoBehaviour',
+            '    {',
+            '        private readonly System.Collections.Generic.List<string> ids = new();',
+            '        private global::Steamworks.SocketManager? socketManager;',
+            '        private global::Steamworks.ConnectionManager? connectionManager;',
+            '        public void Host()',
+            '        {',
+            '            var manager = global::Steamworks.SteamNetworkingSockets.CreateRelaySocket<Manager>(0);',
+            '            manager.Owner = this;',
+            '            socketManager = manager;',
+            '        }',
+            '        public void Exchange()',
+            '        {',
+            '            ulong local = global::Steamworks.SteamClient.SteamId.Value;',
+            '            if (!global::Steamworks.SteamClient.IsValid)',
+            '            {',
+            '                return;',
+            '            }',
+            '            connectionManager =',
+            '                global::Steamworks.SteamNetworkingSockets.ConnectRelay<Client>(local, 0);',
+            '            if (SteamIdentityEnvelope.IsValidSteamId(local.ToString()))',
+            '            {',
+            '                ids.Add(local.ToString());',
+            '            }',
+            '            global::Steamworks.SteamClient.RunCallbacks();',
+            '        }',
+            '        private sealed class Manager : global::Steamworks.SocketManager',
+            '        {',
+            '            public Bridge Owner = null!;',
+            '            public override void OnConnecting(',
+            '                global::Steamworks.Data.Connection connection,',
+            '                global::Steamworks.Data.ConnectionInfo info)',
+            '            {',
+            '                connection.Accept();',
+            '            }',
+            '            public override void OnConnected(',
+            '                global::Steamworks.Data.Connection connection,',
+            '                global::Steamworks.Data.ConnectionInfo info)',
+            '            {',
+            '                base.OnConnected(connection, info);',
+            '            }',
+            '            public override void OnDisconnected(',
+            '                global::Steamworks.Data.Connection connection,',
+            '                global::Steamworks.Data.ConnectionInfo info)',
+            '            {',
+            '                connection.Close(false, (int)global::Steamworks.NetConnectionEnd.App_Min, "refused");',
+            '            }',
+            '        }',
+            '        private sealed class Client : global::Steamworks.ConnectionManager',
+            '        {',
+            '            public Bridge Owner = null!;',
+            '            public override void OnConnected(global::Steamworks.Data.ConnectionInfo info)',
+            '            {',
+            '                Owner.ids.Add(info.Identity.SteamId.Value.ToString());',
+            '                Owner.ids.Add(((int)info.EndReason).ToString());',
+            '            }',
+            '            public override void OnDisconnected(global::Steamworks.Data.ConnectionInfo info)',
+            '            {',
+            '                Close(false, (int)global::Steamworks.NetConnectionEnd.App_Min, "refused");',
+            '            }',
+            '        }',
+            '    }',
+            '}',
+            '#endif'
+        )
+        AsmdefJson = @(
+            '{',
+            '    "name": "SignalFish.Adapters.Facepunch",',
+            '    "references": ["SignalFish.Client", "SignalFish.Adapters.Core", "Facepunch.Steamworks.Win32", "Facepunch.Steamworks.Win64", "Facepunch.Steamworks.Posix"],',
+            '    "defineConstraints": ["SIGNALFISH_FACEPUNCH"],',
+            '    "versionDefines": [],',
+            '    "noEngineReferences": false',
+            '}'
+        )
+        DetectorCs = @(
+            'namespace SignalFish.Client.Adapters.Facepunch.Editor',
+            '{',
+            '    internal static class SignalFishFacepunchDefineDetector',
+            '    {',
+            '        private const string Define = "SIGNALFISH_FACEPUNCH";',
+            '        private static readonly string[] AssemblyNames =',
+            '        {',
+            '            "Facepunch.Steamworks.Win32",',
+            '            "Facepunch.Steamworks.Win64",',
+            '            "Facepunch.Steamworks.Posix",',
+            '        };',
+            '    }',
+            '}'
+        )
+        DetectorFile = 'SignalFishFacepunchDefineDetector.cs'
+        BridgeFile = 'SignalFishFacepunchSteamIdentityBootstrap.cs'
+        VendorNamespace = 'Steamworks.Data.Transporting'
+        MemberProbe = 'CreateRelaySocket'
+        WireFilter = 'SteamIdentityEnvelope\.'
+        WireName = 'SteamIdentityEnvelope'
+        DetectorProbe = 'Facepunch.Steamworks.Win64'
+    }
+
     $editorAsmdefJson = @(
         '{',
         '    "name": "Adapter.Editor",',
@@ -613,6 +730,7 @@ try {
     Write-AdapterFixture -Pin $pun2
     Write-AdapterFixture -Pin $fusion
     Write-AdapterFixture -Pin $steamworksNet
+    Write-AdapterFixture -Pin $facepunch
 
     # 1. Well-formed packages pass the static lane (-NoBuild; the compile
     #    lane is CI's job and the real repo exercises it).
@@ -626,7 +744,7 @@ try {
     Assert-Equal 0 $run.ExitCode 'core-only run passes'
 
     # 3. An SDK reference without the define guard fails (all shapes).
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet, $facepunch)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $unguarded = @($pin.BridgeCs | Where-Object { $_ -notmatch '^#if SIGNALFISH_' -and $_ -ne '#endif' })
         Write-TestFile -Path $bridgePath -Content $unguarded
@@ -637,7 +755,7 @@ try {
     }
 
     # 4. Vendoring the SDK (namespace <SDK>) always fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet, $facepunch)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $vendorCs = @(
             "namespace $($pin.VendorNamespace)",
@@ -653,7 +771,7 @@ try {
     }
 
     # 5. A dropped pinned engine member fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet, $facepunch)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $probe = $pin.MemberProbe
         $missingMemberCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $probe })
@@ -666,7 +784,7 @@ try {
 
     # 6. A bridge that forks the shared wire fails; a transport bridge
     #    that drops the engine channel pin fails.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet, $facepunch)) {
         $bridgePath = Join-Path $repo "$($pin.Root)/Runtime/Engine/$($pin.BridgeFile)"
         $forkedCs = @($pin.BridgeCs | Where-Object { $_ -notmatch $pin.WireFilter })
         Write-TestFile -Path $bridgePath -Content $forkedCs
@@ -761,7 +879,7 @@ try {
 
     # 12. The detector contract: missing file, missing define string,
     #     missing probe, and an ungated editor assembly all fail.
-    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet)) {
+    foreach ($pin in @($fishnet, $mirror, $ngo, $pun2, $fusion, $steamworksNet, $facepunch)) {
         $detectorPath = Join-Path $repo "Editor/$($pin.DetectorFile)".Replace('Editor/', "$($pin.Root)/Editor/")
         $expectedProbe = $pin.DetectorProbe
 

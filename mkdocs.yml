@@ -119,6 +119,7 @@ nav:
       - Photon PUN2: adapters/pun2.md
       - Photon Fusion: adapters/fusion.md
       - Steamworks.NET: adapters/steamworksnet.md
+      - Facepunch Steamworks: adapters/facepunch.md
       - Bring Your Own Stack: adapters/byos.md
   - Project:
       - Server Conformance: conformance.md

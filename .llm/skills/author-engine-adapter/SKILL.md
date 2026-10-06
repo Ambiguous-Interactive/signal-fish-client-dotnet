@@ -76,6 +76,23 @@ broadcast behavior - never against memory of an API.
   join code - the host must call `GetJoinCodeAsync(allocationId)`. The
   sample compiles in a consumer project, so an invented member ships
   broken.
+- **Pin semantics, not just names.** Member shapes are half the pin;
+  the binding's *behavior* needs the same source-verified discipline.
+  Facepunch.Steamworks real cases (all caught in one adversarial
+  round against the 2.5.2 sources, none visible in the member
+  surface): an SDK init can default to a background-thread callback
+  pump (`SteamClient.Init(asyncCallbacks: true)` starts one) - a
+  tick-dispatch bootstrap must verify the pump mode and require the
+  manual one in its docs; a refusal can surface as a throw from a
+  registry setter instead of a returned default handle (the returned-
+  default check you planned is dead code); static dispatch registries
+  can never remove entries (stale post-teardown dispatches and
+  recycled handles are real - scope every callback to the session's
+  instance and clear what is clearable); base-class state machines can
+  absorb states the sibling binding surfaced (Facepunch's
+  `ConnectionManager.Connecting` starts `true`, absorbing the own-dial
+  Connecting that blocked the Steamworks.NET half). Diff the two
+  bindings' *flows*, not just their signatures.
 - **Await-shape discipline**: hook contracts that the bootstrap awaits
   must be `Func<..., Task<T>>` when the bootstrap needs the value; a
   fire-and-forget or void-task await loses it silently in Unity-only

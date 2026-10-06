@@ -268,3 +268,26 @@ issues; originals in git history.
   own binary game-data decoder. The pattern (pure CI-compiled core +
   guarded thin bridge + structural gate) is the template for M8.2
   Mirror.
+
+## 2026-10-06 - session 048: M8.6 Facepunch adapter (second Steamworks half)
+
+- Trigger: new adapter module (12+ files); two adversarial rounds
+  against the cloned Facepunch.Steamworks 2.5.2 sources.
+- Findings: (1) member-name pinning is not semantic pinning — the
+  binding's dispatch/threading mode (Facepunch's Init defaults to a
+  background-thread callback pump), refusal mechanics (a refused
+  create throws from a registry setter; the returned-default check is
+  dead code), and registry lifetimes (static dictionaries never
+  remove entries; stale dispatch + recycled handles) all needed the
+  same clone-and-verify discipline as the member surface; (2) the
+  sibling's hard-won teardown guarantee (close accepted-but-
+  unestablished connections) was lost in translation — port every
+  cleanup loop, not just the structure; (3) an exposed "the game owns
+  the traffic" surface needs its receive path proven (Facepunch's
+  managers drop OnMessage without an Interface — the contract had to
+  be documented, not implied).
+- Applied: all 8 first-round + 3 second-round findings in the
+  bootstrap/lint/docs; "Pin semantics, not just names" folded into
+  author-engine-adapter.
+- Verified: lint-unity-adapter (8 packages), 128-assertion self-test,
+  dotnet test 931x2 green, csharpier + conventions clean.
