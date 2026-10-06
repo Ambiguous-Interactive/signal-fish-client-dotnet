@@ -9,6 +9,34 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-06 - session 051: M9.3 API-compat gate (refactor-by-memory regression, branch-state surprise)
+
+- Trigger: the reflect-improve loop after a CI-infrastructure change
+  (new gate script + workflow step) and the first release cut.
+- Evidence: (1) refactoring the script's apicompat invocation into an
+  args array rewrote `dotnet tool run` as `dotnet run` — the very next
+  green-run check caught it red, same step. (2) `gh pr merge
+  --delete-branch` silently checked out main; the following commit
+  landed on local main and the push created a stale remote feature
+  branch — found by reading the commit output before anything was
+  pushed to main. (3) An initial `.snupkg` exclusion filter was dead
+  code: `.snupkg` cannot match a `*.nupkg` wildcard; verified against
+  wildcard semantics and removed.
+- Findings: both live failures were edit-adjacent, not design flaws —
+  re-run the check immediately after any edit to a command line
+  (red-green applies to scripts, not just C#), and re-read branch
+  state (`git status --branch`) after any tool that can switch
+  branches before committing. Review convergence held: the
+  adversarial sub-agent and Cursor Bugbot independently flagged the
+  same major gap (committed suppressions unreachable from CI); both
+  were fixed by the convention-path default, verified end-to-end.
+- Applied: all fixes landed on the PR (suppression convention path,
+  scoped attribute claim, session-record correction, explicit
+  zero-asset message); the durable ApiCompat facts (default
+  attribute exclusions; latest-release-excludes-prereleases) live in
+  `docs/releasing.md` and the script help, not duplicated here.
+- Open: none; M9.4 (scheduled bench) is the next surface.
+
 ## 2026-10-06 - session 049: M8.7 validation runbook (summary-page drift)
 
 - Trigger: the reflect-improve loop after a 14-file docs change (the
@@ -183,26 +211,9 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
 
 ## 2026-10-02 - msgpack-frame fuzz corpus red-green catches
 
-- Trigger: session 032 (issue #68, fuzz the MessagePack binary frame
-  decoder); adversarial review hunted the committed corpus and lane.
-- Evidence: the seed generator's `Str8` helper dropped the str8 length
-  byte — the corpus-contract test failed on first run and named the
-  exact seed. Review then found `reject-seq-on-v2.bin` byte-identical
-  to `reject-missing-key.bin` (the count gate masks the key branch the
-  name claimed), and `.gitattributes` left NUL-free `.bin` seeds on the
-  `text=auto` path where a future `0d 0a` byte pair would be rewritten
-  per-platform.
-- Findings: name-labeled binary data can silently duplicate; a
-  contract test over the labels catches both generator and duplication
-  bugs for free. Seed classes whose failure fires at an earlier gate
-  than the name claims need shape choices that reach the named branch.
-  Any committed binary format needs an explicit `.gitattributes`
-  `binary` rule — NUL-heuristics are not a guarantee.
-- Applied: rebuilt the seed as fixmap(3) (v2 count gate passes, the
-  seq key reaches the unknown-key branch; same shape in the unit
-  matrix), added `*.bin binary`, and class-minimum asserts to the
-  corpus-contract test.
-- Open: none.
+(Pruned 2026-10-06: Open was none and the knowledge is embodied in the
+artifacts it guards — the corpus contract test, `*.bin binary` in
+`.gitattributes`, and the weekly fuzz gate. Originals in git history.)
 
 Pruned 2026-10-04: the devcontainer rounds, the maintain-plan restructure, and the 027 scope note — graduated into `.devcontainer`, `.llm/skills/maintain-plan`, and git history. The 027 Bugbot round (terminal-latch reset, shared-local decoder corruption, `default`-means-fail) also pruned 2026-10-06: fully folded into [reconnection](./skills/reconnection/SKILL.md) hard rule 6, [json-serialization](./skills/json-serialization/SKILL.md) debugging note 4, and three [address-pr-feedback](./skills/address-pr-feedback/SKILL.md) sweep rows.
 
