@@ -9,6 +9,27 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-06 - session 049: M8.7 validation runbook (summary-page drift)
+
+- Trigger: the reflect-improve loop after a 14-file docs change (the
+  M8.7 runbook page + nine pages' validation sections re-pointed).
+- Evidence: the adversarial review caught three factual errors in the
+  new summary page — a borrowed watch item from the wrong sibling
+  page, an inverted component attribution, and an invented
+  unverifiable gloss on a version pin — plus a sourcing overclaim
+  ("taken verbatim") in the session record. All were prose claims no
+  compiler or lint can see.
+- Findings: a summary page that aggregates claims from many source
+  pages re-introduces the "never write from memory" failure class
+  (already an adapter-code rule) at the docs layer: every borrowed
+  claim needs re-verification against its source page, and a pin
+  field must never carry framing the repo has not itself asserted.
+- Applied: all four findings fixed in the same change; the
+  verification step is recorded here — the existing
+  `author-engine-adapter` rule ("verify against the source, never
+  memory") is the durable knowledge, now understood to cover docs.
+- Open: none.
+
 ## 2026-10-04 - session 042 PR feedback: Bugbot round on #90 (invisible-to-CI engine-gated code)
 
 - Trigger: Cursor Bugbot's three high-severity findings on PR #90,
@@ -183,34 +204,7 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   corpus-contract test.
 - Open: none.
 
-Pruned 2026-10-04: the devcontainer rounds, the maintain-plan restructure, and the 027 scope note — graduated into `.devcontainer`, `.llm/skills/maintain-plan`, and git history.
-
-- Trigger: Cursor Bugbot flagged 2 High findings on commit 0a36a6e;
-  addressed per [address-pr-feedback](./skills/address-pr-feedback/SKILL.md).
-- Evidence: both findings reproduced red before fixing (a stale-engine
-  RelayStats interval refusal; a NullReferenceException from a default
-  struct) and green after. The red-green run also caught the fix's own
-  first draft: a nullable-struct signal turned every routed fact
-  (`Authenticated`) into a violation — caught by the suite, re-cut to
-  the Try/out idiom.
-- Findings: (1) a "swap once" guard keyed only on the negotiated
-  version is not once-per-connection — the latch must reset at the
-  terminal boundary, or a reconnect inherits dead monotonic state and
-  quarantines on arrival. (2) A mapper can validate a frame with a
-  looser decoder than the consumer's typed re-decode (join decoder
-  ignores `sender_watermarks`; reconnect decoder validates them), so an
-  ignored `TryDecode` feeding a default struct is authoritative-input
-  poison — `default` bypasses the ctor's null-coalescing. (3) `return
-  default;` in a `T?`-returning method means *fail*, not "empty but
-  valid".
-- Applied: `DeliveryGate.ObserveTerminal` resets the negotiation latch;
-  the pipeline guards all snapshot re-decodes (routed-fact violation on
-  failure); `MapRoster` is null-safe. Two regression tests pinned red
-  (verified against the unfixed tree). Classes folded into
-  [reconnection](./skills/reconnection/SKILL.md) hard rule 6,
-  [json-serialization](./skills/json-serialization/SKILL.md) debugging
-  note 4, and three [address-pr-feedback](./skills/address-pr-feedback/SKILL.md)
-  sweep rows. Open: none.
+Pruned 2026-10-04: the devcontainer rounds, the maintain-plan restructure, and the 027 scope note — graduated into `.devcontainer`, `.llm/skills/maintain-plan`, and git history. The 027 Bugbot round (terminal-latch reset, shared-local decoder corruption, `default`-means-fail) also pruned 2026-10-06: fully folded into [reconnection](./skills/reconnection/SKILL.md) hard rule 6, [json-serialization](./skills/json-serialization/SKILL.md) debugging note 4, and three [address-pr-feedback](./skills/address-pr-feedback/SKILL.md) sweep rows.
 
 ## 2026-10-02 - session 031: M6.4 binary game data + stale-main convergence
 

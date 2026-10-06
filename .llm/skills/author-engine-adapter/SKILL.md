@@ -126,9 +126,10 @@ main thread - marshal through a queue the component drains in
 ## Validation honesty
 
 Unity never runs in CI. The packages are authored, lint-pinned, and
-stub-compiled; live two-client validation is the M8.7 runbook item
-(licensed seat). Document what is validated and what is contract-checked
-in `docs/adapters/<name>.md`.
+stub-compiled; live two-client validation runs the scripted drill
+recorded in `docs/unity-validation.md` (licensed seat) - a new adapter
+ships its runbook entry with the package. Document what is validated
+and what is contract-checked in `docs/adapters/<name>.md`.
 
 ## Related Skills
 

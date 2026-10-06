@@ -164,10 +164,11 @@ sources (`SteamNetworkingSockets.CreateRelaySocket`/`ConnectRelay`, the
 hooks, `Connection.Accept`/`Close`, `ConnectionInfo.State`/`Identity`/
 `EndReason`, `NetConnectionEnd.App_Min`, `SteamClient.RunCallbacks`/
 `IsValid`/`SteamId`), pinned into the CI compile lane; **live
-two-client validation in Unity with the Steam client running is the
-M8.7 runbook item** (needs a licensed Unity seat). Treat unvalidated
-behavior as the honest unknown it is — the same status the other
-adapters shipped under.
+two-client validation in Unity with the Steam client running runs the
+[validation runbook](../unity-validation.md#facepunch-m86) drill**
+(pending a licensed Unity seat). Treat unvalidated behavior as the
+honest unknown it is — the same status the other adapters shipped
+under.
 
 Known, deliberate limitations in this version: authority moves that
 leave the host tear the coordination down (the fence would have no

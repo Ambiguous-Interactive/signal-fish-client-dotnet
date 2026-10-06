@@ -123,7 +123,8 @@ The bootstrap itself is authored against the Fusion 2 matchmaking
 contract (`NetworkRunner.StartGame`, the `StartGameArgs` fields, the
 `INetworkRunnerCallbacks` registration surface, pinned against the
 Fusion 2 runtime source) and the library's conformance suite; **live
-two-client validation in Unity is the M8.7 runbook item** (needs a
+two-client validation in Unity runs the [validation
+runbook](../unity-validation.md#fusion-m85) drill** (pending a
 licensed Unity seat). Treat unvalidated behavior as the honest unknown
 it is — the same status the other adapters shipped under.
 

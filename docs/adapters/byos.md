@@ -704,6 +704,7 @@ public sealed class ByosClient : MonoBehaviour
   connect token is the smallest honest version.
 - WebGL builds have no `ClientWebSocket`; inject the package's browser
   WebSocket transport instead (see [WebGL](../webgl.md)).
-- Like every M8 surface, this template is authored against the library's
-  conformance suite; live validation in a real engine project is the
-  M8.7 runbook item.
+- Like every M8 surface, this template is authored against the
+  library's conformance suite; live validation in a real engine
+  project runs the [validation
+  runbook](../unity-validation.md#byos-template-m84) drill.

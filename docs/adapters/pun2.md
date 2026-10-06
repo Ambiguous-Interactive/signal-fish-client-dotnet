@@ -108,9 +108,10 @@ and the bootstrap's member completeness against the pinned PUN 2 surface.
 The bootstrap itself is authored against the PUN 2.31 matchmaking
 contract (`ConnectUsingSettings`, `JoinOrCreateRoom`, the
 `MonoBehaviourPunCallbacks` virtuals) and the library's conformance
-suite; **live two-client validation in Unity is the M8.7 runbook item**
-(needs a licensed Unity seat). Treat unvalidated behavior as the honest
-unknown it is — the same status the other adapters shipped under.
+suite; **live two-client validation in Unity runs the [validation
+runbook](../unity-validation.md#pun2-m85) drill** (pending a licensed
+Unity seat). Treat unvalidated behavior as the honest unknown it is —
+the same status the other adapters shipped under.
 
 Known, deliberate limitations in this version: authority moves that
 leave the host tear the coordination down (the published name would

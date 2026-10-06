@@ -71,8 +71,8 @@ guarantees, and the CI lint are documented on the dedicated
 ## Validation status
 
 Unity is never built in CI (a locked project decision): all Unity
-validation runs locally through the scripted MCP pipeline
-(`docs/unity-validation.md`, landing with the validation milestone).
-The package layout, asmdef, and sample are authored and
-mirror-checked here; live IL2CPP and WebGL smokes are tracked in the
-plan before the 0.1.0 Unity checkpoint.
+validation runs locally through the scripted MCP pipeline recorded in
+the [validation runbook](unity-validation.md). The package layout,
+asmdef, and sample are authored and mirror-checked here; the IL2CPP
+and WebGL build smokes and the allocation pass are the runbook's
+M7.4 drill, pending a licensed Unity seat.
