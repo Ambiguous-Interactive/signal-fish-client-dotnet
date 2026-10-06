@@ -1,0 +1,67 @@
+# Scheduled perf gate (PLAN.md M9.4).
+#
+# Never runs on pull requests: a BenchmarkDotNet run is minutes-long and
+# shared runners are noisy, so PR CI time stays flat (same policy as the
+# fuzz lane). The gate compares each scheduled run against the committed
+# baseline (tests/SignalFish.Client.PerfTests/baseline.json): median time
+# within -MaxRegression, allocated bytes exact, architecture pinned, and
+# removed or renamed benchmarks fail so the gate cannot silently rot.
+#
+# A fresh baseline is a reviewed change, never an automatic one: dispatch
+# with update_baseline to record one, download the bench-baseline
+# artifact, and commit it (same audited escape hatch as the api-compat
+# suppression file).
+
+name: Bench
+
+on:
+  schedule:
+    # Weekly, Monday 05:00 UTC (the fuzz lane runs at 04:00).
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      update_baseline:
+        description: 'Record a fresh baseline instead of comparing (download the bench-baseline artifact, review, commit)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    name: Perf gate (codec + bounded-queue vs committed baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Compare benchmarks against the committed baseline
+        if: ${{ inputs.update_baseline != true }}
+        run: pwsh -NoProfile -File scripts/run-bench.ps1
+
+      - name: Record a fresh baseline
+        if: ${{ inputs.update_baseline == true }}
+        run: pwsh -NoProfile -File scripts/run-bench.ps1 -UpdateBaseline
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        # Artifact and baseline names are load-bearing: keep the paths in
+        # sync with scripts/run-bench.ps1 and docs/benchmarks.md.
+        with:
+          name: bench-baseline
+          path: |
+            BenchmarkDotNet.Artifacts/results/
+            tests/SignalFish.Client.PerfTests/baseline.json
+          if-no-files-found: ignore
