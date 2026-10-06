@@ -6,6 +6,8 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-06
+
 ### Added
 
 - Facepunch Steamworks adapter (M8.6): a new UPM package,
