@@ -161,7 +161,7 @@ namespace SignalFish.Client.Async
             ReconnectPolicy? reconnectPolicy = null,
             string? appId = null,
             string? connectToken = null,
-            string? sdkVersion = SignalFishClientInfo.SdkVersion,
+            string? sdkVersion = null,
             string? platform = SignalFishClientInfo.Platform,
             uint? protocolVersion = null,
             IReadOnlyList<string>? supportedTransports = null,

@@ -35,7 +35,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          # MinVer (M9.1) derives the version from the git tag, which a
+          # shallow clone cannot see — the default fetch-depth of 1 would
+          # silently stamp the untagged fallback version.
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
@@ -58,7 +62,7 @@ jobs:
         run: >
           dotnet pack src/SignalFish.Client/SignalFish.Client.csproj
           --no-restore -c Release
-          -p:Version=${{ env.VERSION }}
+          -p:MinVerVersionOverride=${{ env.VERSION }}
           -p:ContinuousIntegrationBuild=true
           -o dist
 

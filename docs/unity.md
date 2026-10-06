@@ -23,8 +23,10 @@ Requirement: Unity 2021.2 or newer (Mono and IL2CPP).
 - `link.xml` — a ready-made stripping snippet. Unity ignores `link.xml`
   inside packages, so copy it into your project's `Assets/` folder (or
   merge the `SignalFish.Client` assembly rule into an existing one) to
-  keep the assembly intact under IL2CPP managed stripping. The library
-  uses zero reflection, so nothing inside depends on stripping
+  keep the assembly intact under IL2CPP managed stripping. The only
+  reflection is one self-assembly version-attribute read (the SDK
+  version stamp); when the stamp is absent — always, in Unity — the
+  built-in `0.1.0` floor applies, so stripping cannot change
   behavior.
 - `Plugins/SignalFishWebGL/` — the reference browser-WebSocket
   transport for WebGL builds (see [WebGL](webgl.md)); compiled only on

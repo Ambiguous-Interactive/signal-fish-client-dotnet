@@ -5,7 +5,6 @@
         <Nullable>enable</Nullable>
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
         <PackageId>SignalFish.Client</PackageId>
-        <Version>0.1.0</Version>
         <Description>C# client SDK for the Signal Fish multiplayer signaling server: rooms, lobbies, readiness, relay, heartbeats, reconnection, spectators, authority, and v3 mesh signaling. Zero dependencies, Unity compatible (netstandard2.1).</Description>
         <Authors>Ambiguous Interactive</Authors>
         <Company>Ambiguous Interactive</Company>

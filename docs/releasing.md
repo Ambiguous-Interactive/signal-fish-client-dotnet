@@ -11,7 +11,14 @@ root; tag pushes only — it never runs on branches or PRs):
 
 1. Validates the tag is semver (`vMAJOR.MINOR.PATCH`, optional `-suffix`).
 2. Packs the library with the tag's version (reproducible CI build):
-   `SignalFish.Client.<version>.nupkg` + `.snupkg` (symbols).
+   `SignalFish.Client.<version>.nupkg` + `.snupkg` (symbols). MinVer
+   stamps that version into the package and the assembly — and the
+   client reports it to the server as `Authenticate.sdk_version`
+   (`SignalFishClientInfo.SdkVersion`), so the tag, the package, and
+   the wire identity always agree. Builds without a tag (local
+   branches, PR CI) fall back to a `0.1.0-alpha.0` pre-release
+   (suffixed `.<commit-height>` when the checkout has history depth)
+   instead of failing.
 3. Publishes the `.nupkg` to **GitHub Packages** (always).
 4. Publishes the `.nupkg` + `.snupkg` to **nuget.org** (only if
    `NUGET_API_KEY` is set — see below).
