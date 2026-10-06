@@ -89,9 +89,11 @@ completeness against the pinned NGO 1.2.0 `NetworkManager` surface.
 
 The coordinator itself is authored against the NGO 1.2.0 connection
 approval contract and the library's conformance suite; **live
-two-client validation in Unity is the M8.7 runbook item** (needs a
-licensed Unity seat). Treat unvalidated behavior as the honest unknown
-it is — the same status the other adapters shipped under.
+two-client validation in Unity runs the [validation
+runbook](../unity-validation.md#ngo-and-unity-relay-m83) drill**
+(pending a licensed Unity seat). Treat unvalidated behavior as the
+honest unknown it is — the same status the other adapters shipped
+under.
 
 Known, deliberate limitations in this version: authority moves that
 leave an NGO host without its authority tear the coordination down

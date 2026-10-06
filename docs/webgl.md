@@ -102,6 +102,8 @@ in this repo builds together:
 !!! note "Validation status"
 
     CI never builds Unity (a locked project decision). The checks above
-    pin everything CI can pin; live in-browser validation is the M7.4
-    runbook item (planned). See [Unity](unity.md) for the package
-    layout and [Transport](transport.md) for the interface contract.
+    pin everything CI can pin; live in-browser validation is the
+    [validation runbook](unity-validation.md#core-package-and-webgl-m74)
+    drill (pending a licensed Unity seat). See [Unity](unity.md) for
+    the package layout and [Transport](transport.md) for the interface
+    contract.

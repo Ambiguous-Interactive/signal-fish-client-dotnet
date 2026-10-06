@@ -121,6 +121,7 @@ nav:
       - Steamworks.NET: adapters/steamworksnet.md
       - Facepunch Steamworks: adapters/facepunch.md
       - Bring Your Own Stack: adapters/byos.md
+      - Validation Runbook: unity-validation.md
   - Project:
       - Server Conformance: conformance.md
       - Performance Baselines: benchmarks.md

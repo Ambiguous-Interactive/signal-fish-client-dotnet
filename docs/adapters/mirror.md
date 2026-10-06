@@ -112,9 +112,11 @@ surface.
 
 The bridge itself is authored against the Mirror 96.9.x transport
 contract and the library's conformance suite; **live two-client
-validation in Unity is the M8.7 runbook item** (needs a licensed Unity
-seat). Treat unvalidated behavior as the honest unknown it is — the
-same status the WebGL transport shipped under before M7.4 validation.
+validation in Unity runs the [validation
+runbook](../unity-validation.md#mirror-m82) drill** (pending a
+licensed Unity seat). Treat unvalidated behavior as the honest unknown
+it is — the same status the WebGL transport shipped under before M7.4
+validation.
 
 Known, deliberate limitations in this version: both Mirror channels ride
 the reliable relay lane (above), authority migration without a running
