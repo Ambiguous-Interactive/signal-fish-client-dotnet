@@ -2,6 +2,7 @@
 
 Date: 2026-10-06
 Branch: `m94-scheduled-bench`
+PR: #105
 
 ## What shipped
 
@@ -65,8 +66,8 @@ workflow"):
 - Self-tests red first: the first run failed 6 assertions (a test-harness
   bug: PowerShell argument mode binds `[regex]::Escape($x)` as the
   literal string `[regex]::Escape` in a named-parameter argument and
-  shifts `$x` into the next positional — parens fix it). All 33 green
-  after the fix.
+  shifts `$x` into the next positional — parens fix it). Green after
+  the fix; the review round then grew the suite to 44 assertions.
 - Real pipeline locally (Arm64): `-UpdateBaseline` recorded 6
   benchmarks in 4m24s; compare green against it; a doctored baseline
   (median 20 us vs 37.65 us actual) went red with the named benchmark
@@ -112,10 +113,34 @@ workflow"):
 
 ## Verification
 
-- `pwsh scripts/tests/test-run-bench.ps1`: 33/33 assertions.
+- **Adversarial review round** (sub-agent, evidence-first): 7 findings,
+  all fixed — the reflect-improve log was not yet on the branch and
+  would have broken the 300-line lint once committed (pruned five
+  graduated entries to fit); a zero or negative *run* median passed
+  the gate (only the baseline side was guarded); `Set-StrictMode`
+  turned every missing-field diagnostic into a raw property-not-found
+  throw (guards are now `PSObject.Properties` existence checks);
+  culture-sensitive baseline timestamp (now InvariantCulture);
+  BenchmarkDotNet version drift unchecked (now a warning — the
+  2026-10-19 ubuntu-26 image migration makes a no-code-change shift
+  plausible); two exercised behaviors had no fixtures (duplicate
+  conflict, zero median — added); load-bearing baseline/artifact paths
+  got a sync-pointer comment. Finding 8 (align the input-guard idiom
+  with the fuzz lane) was skipped deliberately: the reviewer verified
+  the current form safe and marked the change optional.
+- **Second-round verification sub-agent**: all 8 items VERIFIED with
+  live probes (ran the script with a negative median; re-ran the lint
+  and the full self-test suite).
+- `pwsh scripts/tests/test-run-bench.ps1`: 44/44 assertions.
+  `scripts/tests/run-all.ps1`: all 16 files pass.
 - Real run + compare + doctored-red locally (Arm64), full CI record +
-  compare green on x64 (run 37517712684).
-- `lint-file-sizes` (PLAN.md budget) and `lint-llm-instructions` green.
+  compare green on x64 (run 37517712684); the reviewed script
+  reproduces that CI compare exactly on the downloaded artifact (max
+  ratio 1.148).
+- `lint-file-sizes` (PLAN.md + log budget) and `lint-llm-instructions`
+  green.
+- PR CI: one red check after the review commit (markdownlint MD012,
+  double trailing blank in the pruned log) — fixed; all checks green.
 - Checked issue #88 (NUnit 5): still blocked upstream — FsCheck.NUnit
   3.4.0 remains latest on nuget.org (verified this session); no action
   possible. Issue #80 trigger (first use of a new mkdocs extension)
