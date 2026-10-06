@@ -1,0 +1,25 @@
+{
+    "name": "com.ambiguous-interactive.signalfish.adapters.facepunch",
+    "version": "0.1.0",
+    "displayName": "Signal Fish Steam Identity Bootstrap for Facepunch Steamworks",
+    "description": "Puts Steam P2P sockets on a Signal Fish room: the host opens a Steam listen socket and publishes its SteamId64 over the room's game-data lane (re-published on every join), clients dial the host id that arrives on the lane, and the host accepts an incoming Steam connection only after that peer's SteamId64 was published on the lane — the room's membership is the accept fence. Requires the Facepunch.Steamworks asset (detected through the included editor define detector), com.ambiguous-interactive.signalfish, and com.ambiguous-interactive.signalfish.adapters.core.",
+    "unity": "2021.2",
+    "license": "MIT",
+    "documentationUrl": "https://ambiguous-interactive.github.io/signal-fish-client-dotnet/adapters/facepunch/",
+    "licensesUrl": "https://github.com/Ambiguous-Interactive/signal-fish-client-dotnet/blob/main/LICENSE",
+    "author": {
+        "name": "Ambiguous Interactive",
+        "url": "https://github.com/Ambiguous-Interactive"
+    },
+    "dependencies": {
+        "com.ambiguous-interactive.signalfish": "0.1.0",
+        "com.ambiguous-interactive.signalfish.adapters.core": "0.1.0"
+    },
+    "samples": [
+        {
+            "displayName": "Steam Identity Exchange",
+            "description": "A host/client bootstrap that wires the SteamId64 exchange and the fenced Steam P2P connections to a UI and logs peers as they come and go.",
+            "path": "Samples~/SteamIdentityExchange"
+        }
+    ]
+}

@@ -8,6 +8,32 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- Facepunch Steamworks adapter (M8.6): a new UPM package,
+  `com.ambiguous-interactive.signalfish.adapters.facepunch`, ships
+  `SignalFishFacepunchSteamIdentityBootstrap` — the second half of the
+  Steam identity exchange, on the Facepunch.Steamworks binding and
+  under the same byte-identical lane keys as the Steamworks.NET half.
+  The host opens a Steam relay socket (`CreateRelaySocket`), publishes
+  its id (re-published on every join, so late joiners never depend on
+  timing), and accepts an incoming Steam connection only after that
+  peer's id was advertised on the lane — the room's membership is the
+  accept fence (Facepunch's auto-accept default is overridden), and
+  Steam's rendezvous-authenticated identity carries the claim. Clients
+  dial the host id that arrives on the lane (`ConnectRelay`). Peers
+  surface as events the game's own protocol then owns; the live
+  Facepunch managers are exposed for the game's message pump (its
+  `Interface` receives, the game calls `Receive`). Requires Facepunch's
+  manual callback mode (`SteamClient.Init(appId, asyncCallbacks:
+  false)` — the bootstrap pumps `SteamClient.RunCallbacks` on its own
+  tick) and the Facepunch.Steamworks asset 2.5.2+ (detected through
+  the included editor define detector; the asset ships no UPM
+  package). The pure
+  core (identity envelope) runs in the dotnet test suite; the
+  `lint-unity-adapter` CI gate pins the compile-only-with-Facepunch
+  guard, the detector contract, and the bootstrap's member
+  completeness plus a full type-check against the pinned Facepunch
+  surface. Live Unity validation stays the M8.7 runbook item (Unity
+  never runs in CI).
 - Steamworks.NET adapter (M8.6): a new UPM package,
   `com.ambiguous-interactive.signalfish.adapters.steamworksnet`, ships
   `SignalFishSteamIdentityBootstrap` — a bootstrap that puts Steam P2P
