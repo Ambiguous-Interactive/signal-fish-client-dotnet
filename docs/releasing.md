@@ -10,7 +10,11 @@ The `release.yml` workflow (`.github/workflows/release.yml` in the repo
 root; tag pushes only — it never runs on branches or PRs):
 
 1. Validates the tag is semver (`vMAJOR.MINOR.PATCH`, optional `-suffix`).
-2. Packs the library with the tag's version (reproducible CI build):
+2. Checks the Unity fleet is version-coupled with the tag: every
+   `unity/**/package.json` must carry the release version (prerelease
+   suffixes ignored). A lagging manifest fails the run before anything
+   publishes.
+3. Packs the library with the tag's version (reproducible CI build):
    `SignalFish.Client.<version>.nupkg` + `.snupkg` (symbols). MinVer
    stamps that version into the package and the assembly — and the
    client reports it to the server as `Authenticate.sdk_version`
@@ -19,10 +23,10 @@ root; tag pushes only — it never runs on branches or PRs):
    branches, PR CI) fall back to a `0.1.0-alpha.0` pre-release
    (suffixed `.<commit-height>` when the checkout has history depth)
    instead of failing.
-3. Publishes the `.nupkg` to **GitHub Packages** (always).
-4. Publishes the `.nupkg` + `.snupkg` to **nuget.org** (only if
+4. Publishes the `.nupkg` to **GitHub Packages** (always).
+5. Publishes the `.nupkg` + `.snupkg` to **nuget.org** (only if
    `NUGET_API_KEY` is set — see below).
-5. Creates a **GitHub Release** with generated notes and attaches the
+6. Creates a **GitHub Release** with generated notes and attaches the
    `.nupkg`/`.snupkg` — the no-auth fallback consumers can download
    directly.
 
@@ -35,18 +39,43 @@ root; tag pushes only — it never runs on branches or PRs):
 
 ## Cutting a release
 
-1. Ensure `main` is green and the `CHANGELOG.md` `Unreleased` section is
-   final; rename it to the new version.
-2. Tag and push:
+Work the checklist top to bottom. The .NET version needs no file edit —
+MinVer reads the tag — but the Unity manifests are hand-maintained, so
+version coupling is a reviewed change that lands **before** the tag.
+
+### Before the tag (one PR to `main`)
+
+1. `main` is green (dotnet, e2e, docs, fuzz lanes) and open
+   dependency bumps are incorporated or explicitly deferred.
+2. The `CHANGELOG.md` `Unreleased` section is final; rename it to the
+   new version (keep-a-changelog). The GitHub Release notes are
+   generated from commit history, so the changelog is the human-facing
+   record — write it for the consumer, not the committer.
+3. **Version-couple the UPM fleet** (`unity/**/package.json`): set all
+   nine package manifests to the new version and re-pin every internal
+   dependency to it. The adapters depend on the core SDK package and on
+   each other with exact pins — a core bump without the adapters leaves
+   consumers unresolvable, and a lagging manifest ships a Unity source
+   distribution that reports the old version while `SdkVersion` reports
+   the new one. CI enforces both halves:
+   `scripts/lint-unity-package-versions.ps1` keeps the manifests in
+   lockstep on every PR, and the release lane re-checks each manifest
+   against the tag (prerelease suffixes ignored) before packing —
+   tagging a `main` that skipped this step fails the run.
+4. Merge the PR. `main` is now the release candidate.
+
+### Tag
+
+5. From the merged `main`:
 
    ```sh
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
 
-3. Watch the **Release** workflow run on the Actions tab.
+6. Watch the **Release** workflow run on the Actions tab.
 
-## After the run
+### After the run
 
 - The GitHub Release exists with `.nupkg` + `.snupkg` attached.
 - GitHub Packages shows the new version (consumers authenticate with a PAT
@@ -96,6 +125,8 @@ break ships, remove the stale entries — the new baseline covers them.
 
 ## Future: UPM + NPM distribution
 
-Unity (UPM/OpenUPM) and NPM publishing need the Unity package from PLAN
-M7.1; they fold into this pipeline at M9.2 (see `PLAN.md`). Nothing to
-configure today.
+The Unity packages install from source today ([Unity](unity.md));
+`scripts/sync-unity-package.ps1 -Pack` stages the core package tarball
+by hand. Wiring the UPM tarballs (core + adapters) and NPM/OpenUPM
+listing into the tag pipeline is future work; nothing to configure
+today.

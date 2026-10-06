@@ -17,8 +17,10 @@
       -Check     Fail (exit 1) when the mirror is stale; CI and the
                  pre-commit hook use this.
       -Pack      Stage the installable package (skeleton + fresh mirror)
-                 and write the UPM tarball into -OutDir. The release lane
-                 attaches it to GitHub Releases (wired up in M9.2).
+                 and write the UPM tarball into -OutDir, ready to attach
+                 to a GitHub Release. The tag pipeline does not ship UPM
+                 tarballs yet (docs/releasing.md, "Future"); this stages
+                 the artifact by hand.
 
 .EXAMPLE
     pwsh -NoProfile -File scripts/sync-unity-package.ps1

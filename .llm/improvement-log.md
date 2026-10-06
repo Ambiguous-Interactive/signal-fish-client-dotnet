@@ -9,6 +9,22 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-06 - session 053: M9.5 release checklist (wrapped Write-Error output)
+
+- Trigger: new CI gate script + self-test file (same class as session
+  052; the reflect-improve loop applies).
+- Evidence: the empty-fleet guard of
+  `lint-unity-package-versions.ps1` used `Write-Error`; under
+  `pwsh -File` it rendered as a console-wrapped error record, so the
+  self-test's message-text assertions could not match the wrapped
+  lines. Rule 3 of powershell-tooling (report-all-then-fail) only
+  covered `Write-Error` inside violation loops, not early guards.
+- Findings: machine-readable lint failures need the `Write-Host` red
+  + `exit 1` form everywhere — a terminating error's wrapped rendering
+  defeats both humans and output assertions.
+- Applied: guard converted to the `Write-Host` form; powershell-tooling
+  rule 3 extended with the early-guard case and this evidence.
+
 ## 2026-10-06 - session 052: M9.4 scheduled bench gate (argument-mode misbind, dispatch-before-default-branch)
 
 - Trigger: the reflect-improve loop after the second
