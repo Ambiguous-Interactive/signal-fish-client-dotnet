@@ -55,10 +55,17 @@ rest, which turns every fix round into a one-violation-per-CI-run loop.
 
 - **Rule** (report-all-then-fail): collect violations, print each on its
   own `Write-Host` line, then one summary line and `exit 1`. Never call
-  `Write-Error` inside a loop.
+  `Write-Error` inside a loop. The same form applies to early-guard
+  failures outside loops: under `pwsh -File` a terminating error renders
+  as a console-wrapped error record, so message-text assertions (and
+  humans) cannot match it — machine-readability needs the
+  `Write-Host` + `exit 1` form everywhere.
 - Evidence: Bugbot finding "Linters abort after first error";
   regression tests assert TWO oversized files / TWO lint errors are BOTH
   reported (`test-lint-file-sizes.ps1`, `test-lint-llm-instructions.ps1`).
+  Session 053: `Write-Error` in the empty-fleet guard of
+  `lint-unity-package-versions.ps1` printed a wrapped record the
+  self-test could not match; converted to the `Write-Host` form.
 
 ## 4. `pwsh -File` cannot receive array values
 

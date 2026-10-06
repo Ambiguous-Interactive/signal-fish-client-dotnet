@@ -133,6 +133,15 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/lint-unity-adapter.ps1 -VerboseOutput
 
+      # The UPM packages release as one unit with the tagged .NET package
+      # (docs/releasing.md): a manifest that drifts from the fleet version,
+      # or an internal pin left at an old version, ships a consumer-facing
+      # mismatch. This step fails such a PR instead of the next release.
+      - name: Lint Unity package version coupling
+        if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/lint-unity-package-versions.ps1
+
       # One restore covers both tool invocations below (CSharpier check and
       # the coverage report).
       - name: Restore pinned tools
