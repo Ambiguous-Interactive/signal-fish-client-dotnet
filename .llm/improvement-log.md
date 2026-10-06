@@ -201,4 +201,3 @@ issues; originals in git history.
   own binary game-data decoder. The pattern (pure CI-compiled core +
   guarded thin bridge + structural gate) is the template for M8.2
   Mirror.
-
