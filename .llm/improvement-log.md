@@ -23,7 +23,11 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   `exit 1` form everywhere — a terminating error's wrapped rendering
   defeats both humans and output assertions.
 - Applied: guard converted to the `Write-Host` form; powershell-tooling
-  rule 3 extended with the early-guard case and this evidence.
+  rule 3 extended with the early-guard case and this evidence. Same
+  round: the windows-latest CI cell caught path-separator drift in the
+  new lint's diagnostics (backslash paths broke the self-tests' message
+  assertions); diagnostics normalize to forward slashes — cross-OS
+  asserted output must not leak platform separators.
 
 ## 2026-10-06 - session 052: M9.4 scheduled bench gate (argument-mode misbind, dispatch-before-default-branch)
 

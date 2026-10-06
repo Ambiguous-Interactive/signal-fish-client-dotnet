@@ -81,6 +81,22 @@ before merge, not after tagging.
   accepted rc fleets — the lane now compares the full version and
   strips only `+build`, so the fleet ships exactly what the tag
   ships).
+- **Second verification round** (live-probe sub-agent): every claimed
+  fix reproduced (six shell scenarios, three hand-probes beyond the
+  suite); verdict approve. It caught one new defect the fix had
+  introduced — a stale `$relative` reporting the wrong manifest in the
+  dependencies-shape message — fixed, and the suite now asserts the
+  file path in every shape-case message (the pattern-only assertions
+  had let it through).
+- **Windows CI caught what Linux could not**: the lint's diagnostic
+  paths came from `Get-ChildItem` verbatim, so on Windows the messages
+  carried backslash separators and the path-prefixed self-test
+  assertions failed (devcontainer is Linux; only the windows-latest
+  cell exercises this). The lint now normalizes diagnostics to forward
+  slashes — the sync script's mirror-plan convention — and the suite
+  is green in both Lint cells. Corollary of session 052's "platform
+  gates shape bootstrap paths": the platform also shapes which
+  assertions can fail.
 
 ## Findings
 
