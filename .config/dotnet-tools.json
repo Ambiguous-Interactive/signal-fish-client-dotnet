@@ -16,6 +16,13 @@
       ],
       "rollForward": false
     },
+    "Microsoft.DotNet.ApiCompat.Tool": {
+      "version": "10.0.401",
+      "commands": [
+        "apicompat"
+      ],
+      "rollForward": false
+    },
     "sharpfuzz.commandline": {
       "version": "2.3.0",
       "commands": [
