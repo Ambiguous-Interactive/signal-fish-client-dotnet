@@ -45,9 +45,10 @@ Branch: `m93-api-compat-gate`
 
 ## Deliberate scope cuts
 
-- **No suppression file committed**: none needed today; the param and
-  the runbook flow exist so the first intentional break is an audit
-  diff, not new plumbing.
+- **No suppression file committed**: none needed today; the
+  `.config/apicompat-suppressions.xml` convention (picked up
+  automatically when present) and the `-Suppression` param exist so
+  the first intentional break is an audit diff, not new plumbing.
 - **No script self-test**: the gate needs a GitHub release and a
   packed tool; CI is the test. `run-e2e.ps1`/`fast-check.ps1` set the
   same precedent.
@@ -56,10 +57,18 @@ Branch: `m93-api-compat-gate`
 
 ## Verification
 
+- Adversarial review round (sub-agent, evidence-based): confirmed the
+  shallow-checkout pack path, the CP0017 rename catch, the
+  suppression flow end-to-end, and StrictMode/quoting safety. Four
+  findings, all fixed: the committed-suppression path now works in CI
+  without a workflow edit (convention path default), the attribute
+  claim scoped to the tool's default exclusions (`[Obsolete]` passes
+  by design), the session record's tool-restore claim corrected to
+  the coverage cell, and the zero-asset error message made explicit.
 - `pwsh scripts/check-api-compat.ps1` green against the live `v0.1.0`
   release assets (the same command CI runs).
 - Full local suite green (`fast-check.ps1`); the gate touches no
   library code, but the tool-manifest edit rides `dotnet tool restore`
-  in every CI cell.
+  on the coverage cell (the only cell that restores pinned tools).
 - PR CI: all cells green including the new gate step; the e2e, docs,
   and fuzz lanes unaffected.

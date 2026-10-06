@@ -13,6 +13,9 @@
 
     Parameter renames and attribute mismatches are checked too - both
     are source-breaking for C# consumers even though binary-compatible.
+    Attributes the tool excludes by default (ObsoleteAttribute,
+    AttributeUsageAttribute) are exempt: adding [Obsolete] is an
+    additive deprecation and passes.
 
 .PARAMETER RepoRoot
     Repository root. Defaults to the parent of the scripts directory.
@@ -31,6 +34,9 @@
     are listed there (run the tool with --generate-suppression-file to
     draft one) and reviewed in the PR that breaks the surface. Rare by
     design: 0.x ships breaks via a minor bump, 1.0+ via a major bump.
+    Defaults to .config/apicompat-suppressions.xml when that file
+    exists, so a committed suppression rides CI without a workflow
+    edit.
 
 .EXAMPLE
     pwsh -NoProfile -File scripts/check-api-compat.ps1
@@ -59,6 +65,13 @@ if (-not $Dist) {
     $Dist = Join-Path $RepoRoot 'artifacts/api-compat'
 }
 
+if (-not $Suppression) {
+    $conventionalSuppression = Join-Path $RepoRoot '.config/apicompat-suppressions.xml'
+    if (Test-Path $conventionalSuppression) {
+        $Suppression = $conventionalSuppression
+    }
+}
+
 function Get-ReleaseNupkgPath {
     param([string]$WorkDir)
 
@@ -71,7 +84,8 @@ function Get-ReleaseNupkgPath {
 
     $nupkg = @(Get-ChildItem -Path $downloadDir -Filter 'SignalFish.Client.*.nupkg')
     if ($nupkg.Count -ne 1) {
-        throw "Expected exactly one SignalFish.Client .nupkg release asset, found $($nupkg.Count): $($nupkg.Name -join ', ')"
+        $found = if ($nupkg.Count -eq 0) { 'none - the latest release has no matching asset' } else { $nupkg.Name -join ', ' }
+        throw "Expected exactly one SignalFish.Client .nupkg release asset, found: $found"
     }
     return $nupkg[0].FullName
 }

@@ -63,14 +63,17 @@ root; tag pushes only — it never runs on branches or PRs):
 `dotnet.yml` packs the PR's library and compares it with
 [Microsoft.DotNet.ApiCompat](https://learn.microsoft.com/dotnet/fundamentals/apicompat/overview)
 against the latest release's package — the same bits consumers
-download. Removals and signature/parameter/attribute changes fail the
-PR; additions are compatible and pass. Parameter renames and attribute
-mismatches are checked too (both are source-breaking for C#).
+download. Removals and signature changes fail the PR; additions are
+compatible and pass. Parameter renames and attribute mismatches are
+checked too (both are source-breaking for C#), minus the attributes
+the tool excludes by default: adding `[Obsolete]` is an additive
+deprecation and passes.
 
 Intentional breaks are audited, not silent: draft a suppression file
-(run the tool's `--generate-suppression-file`), commit it with the PR
-(`scripts/check-api-compat.ps1 -Suppression <file>` to test locally),
-and treat its diff as the review record. The version bump follows
+(run the tool's `--generate-suppression-file`), commit it as
+`.config/apicompat-suppressions.xml` (the gate picks it up
+automatically; `-Suppression <file>` tests other paths locally), and
+treat its diff as the review record. The version bump follows
 semver (minor in 0.x, major from 1.0). Once the release containing the
 break ships, remove the stale entries — the new baseline covers them.
 
