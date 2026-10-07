@@ -169,6 +169,10 @@ function New-PackageTarball {
 
     $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("upmpack-" + [System.Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
+    # npm pack layout: entries root at package/ (required by Unity's
+    # tarball installer).
+    $stagePackage = Join-Path $stage 'package'
+    New-Item -ItemType Directory -Path $stagePackage -Force | Out-Null
     try {
         # Stage the package skeleton (everything but the mirror), then lay a
         # fresh mirror over a verbatim Runtime copy: the mirror overlay must
@@ -179,9 +183,9 @@ function New-PackageTarball {
             if ($entry.Name -eq 'Runtime') {
                 continue
             }
-            Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $stage $entry.Name) -Recurse -Force
+            Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $stagePackage $entry.Name) -Recurse -Force
         }
-        $stageRuntime = Join-Path $stage 'Runtime'
+        $stageRuntime = Join-Path $stagePackage 'Runtime'
         New-Item -ItemType Directory -Path $stageRuntime -Force | Out-Null
         if (Test-Path -LiteralPath $runtimeRoot) {
             foreach ($entry in @(Get-ChildItem -LiteralPath $runtimeRoot -Force)) {
@@ -230,7 +234,7 @@ function New-PackageTarball {
         if (Test-Path -LiteralPath $tarball) {
             Remove-Item -LiteralPath $tarball -Force
         }
-        tar -czf $tarball -C $stage .
+        tar -czf $tarball -C $stage package
         if ($LASTEXITCODE -ne 0) {
             Write-Host "tar failed with exit code $LASTEXITCODE." -ForegroundColor Red
             exit 1
