@@ -2,7 +2,7 @@
 
 How a `SignalFish.Client` release ships, what you must set up, and what to
 check afterwards. The pipeline is **fully automatic once you push a tag**;
-nuget.org publishing is the only opt-in (one secret).
+nuget.org and npm publishing are the only opt-ins (one secret each).
 
 ## What happens when you push a `v*` tag
 
@@ -29,11 +29,17 @@ root; tag pushes only — it never runs on branches or PRs):
    the sync script's staging (fresh source mirror + shipped-asmdef
    check), every adapter verbatim from its source tree. A manifest
    without a name/version, a duplicated package name, or an empty
-   fleet fails the run instead of shipping a partial set.
-5. Publishes the `.nupkg` to **GitHub Packages** (always).
-6. Publishes the `.nupkg` + `.snupkg` to **nuget.org** (only if
+   fleet fails the run instead of shipping a partial set. Every
+   tarball follows the npm pack layout (entries root at `package/`).
+5. Dry-runs `npm publish` on all nine tarballs: a tarball that is not
+   npm-publishable fails the run before anything publishes.
+6. Publishes the `.nupkg` to **GitHub Packages** (always).
+7. Publishes the `.nupkg` + `.snupkg` to **nuget.org** (only if
    `NUGET_API_KEY` is set — see below).
-7. Creates a **GitHub Release** with generated notes and attaches the
+8. Publishes the nine UPM tarballs to the **npm registry** (only if
+   `NPM_TOKEN` is set — see below). Versions npm already has are
+   skipped.
+9. Creates a **GitHub Release** with generated notes and attaches the
    `.nupkg`/`.snupkg` and the nine UPM `.tgz` tarballs — the no-auth
    fallback consumers can download directly (NuGet feed or Unity
    package, no registry or PAT needed).
@@ -44,6 +50,7 @@ root; tag pushes only — it never runs on branches or PRs):
 | --- | --- | --- |
 | *(none)* | yes | `GITHUB_TOKEN` is provided by Actions automatically; it publishes to GitHub Packages and creates the Release. Nothing to configure. |
 | `NUGET_API_KEY` | optional | Enables nuget.org publishing. Create a key at [nuget.org/account/apikeys](https://www.nuget.org/account/apikeys) (package owner account, push scope), then add it under **Settings → Secrets and variables → Actions** ([guide](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions)). While absent, the nuget.org step skips itself; no failure, no other change. |
+| `NPM_TOKEN` | optional | Enables npm registry publishing (issue #109). Create an [access token](https://docs.npmjs.com/creating-and-viewing-access-tokens) (Granular, read-write, packages `com.ambiguous-interactive.*`) on an npm account that owns the package names, then add it as the `NPM_TOKEN` Actions secret. While absent, the npm step skips itself; no failure, no other change. |
 
 ## Cutting a release
 
@@ -93,6 +100,10 @@ version coupling is a reviewed change that lands **before** the tag.
   per [GitHub's package auth rules](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry)).
 - If `NUGET_API_KEY` was set, the package is live on nuget.org within a
   few minutes of the push step.
+- If `NPM_TOKEN` was set, the nine UPM packages are live on
+  [npmjs.com](https://www.npmjs.com/package/com.ambiguous-interactive.signalfish)
+  within a few minutes; Unity users resolve them through the package
+  manager UI (see "Discovery: npm + OpenUPM" below).
 - The released package is now the **API-compat baseline**: every PR's
   packed library is compared against it in CI
   (`scripts/check-api-compat.ps1`), so a breaking change fails its own
@@ -126,6 +137,11 @@ break ships, remove the stale entries — the new baseline covers them.
   The workflow uses `--skip-duplicate`, so this is reported but not fatal;
   NuGet package versions are immutable — never reuse a tag for different
   bits. Fix the version and cut a new tag.
+- **npm publish fails with 403** — that exact package version already
+  exists on npm; versions are immutable. The workflow skips such
+  versions via a registry lookup first, so a 403 means the lookup
+  raced a concurrent publish of the same version — benign for
+  identical bits, fatal otherwise: fix the version and cut a new tag.
 - **snupkg missing from GitHub Packages** — by design: GitHub Packages has
   no symbol endpoint. Symbols ride the Release assets (and nuget.org when
   enabled).
@@ -134,12 +150,24 @@ break ships, remove the stale entries — the new baseline covers them.
   anything already left the building (published packages cannot be
   replaced).
 
-## Future: OpenUPM + NPM listing
+## Discovery: npm + OpenUPM
 
-The Unity packages ship as release artifacts today: every `v*` tag
-attaches all nine UPM `.tgz` tarballs to the GitHub Release next to the
-NuGet packages (see the pipeline above), and
+The Unity packages ship as release artifacts: every `v*` tag attaches
+all nine UPM `.tgz` tarballs to the GitHub Release next to the NuGet
+packages (see the pipeline above), and
 `scripts/sync-unity-package.ps1 -Pack` stages the same core tarball by
-hand. What remains future is **discovery**: listing the packages on
-OpenUPM/NPM so they resolve from Unity's package manager UI. Nothing to
-configure today.
+hand. Tarballs alone are not **discovery** — this is how Unity users
+find and resolve the packages:
+
+- **npm registry** (issue #109): every tarball follows the npm pack
+  layout, so the release lane can publish the fleet to npmjs.com
+  directly. Opt-in: set the `NPM_TOKEN` secret (see "One-time setup");
+  from the next tag on, each package publishes under its UPM id (for
+  example `com.ambiguous-interactive.signalfish`) and Unity's package
+  manager resolves it by name.
+- **OpenUPM**: one-time, manual. Submit the repo on
+  [openupm.com](https://openupm.com/repos/add/) while signed in to
+  GitHub; OpenUPM's upstream resolver then serves the packages from
+  this repo's tag tree — no token, no workflow, and the existing
+  version-coupling gates keep the fleet consistent. No repo change is
+  needed or planned for this lane.
