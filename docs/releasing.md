@@ -52,7 +52,7 @@ root; tag pushes only — it never runs on branches or PRs):
 | --- | --- | --- |
 | *(none)* | yes | `GITHUB_TOKEN` is provided by Actions automatically; it publishes to GitHub Packages and creates the Release. Nothing to configure. |
 | `NUGET_API_KEY` | optional | Enables nuget.org publishing. Create a key at [nuget.org/account/apikeys](https://www.nuget.org/account/apikeys) (package owner account, push scope), then add it under **Settings → Secrets and variables → Actions** ([guide](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions)). While absent, the nuget.org step skips itself; no failure, no other change. |
-| `NPM_TOKEN` | optional | Enables npm registry publishing (issue #109). Create an [access token](https://docs.npmjs.com/creating-and-viewing-access-tokens) with read-write publish rights — for a fresh publisher the simplest is a classic **Automation** token (it publishes from CI and bypasses 2FA prompts); a Granular token restricted to specific packages can only be scoped after the names exist on npm. Add it as the `NPM_TOKEN` Actions secret. While absent, the npm step skips itself; no failure, no other change. |
+| `NPM_TOKEN` | optional | Enables npm registry publishing (issue #109). Create a [Granular access token](https://docs.npmjs.com/creating-and-viewing-access-tokens): **Packages and scopes → All packages** (specific packages can only be picked after the names exist on npm), **Permissions → Read and write**, and **Allow this token to bypass two-factor authentication** checked — CI cannot answer an OTP prompt. Add it as the `NPM_TOKEN` Actions secret. While absent, the npm step skips itself; no failure, no other change. npm deprecates bypass-2FA token publishing in January 2027 in favor of trusted publishing (OIDC) — revisit this lane then. |
 
 ## Cutting a release
 
@@ -142,9 +142,11 @@ break ships, remove the stale entries — the new baseline covers them.
   npm (versions are immutable; the workflow skips those via a registry
   lookup first, so a 403 usually means something else): the token lacks
   publish permission for that package name (typical on the very first
-  publish — check the token type and scopes), or the account enforces
-  2FA and the token cannot bypass it (Automation tokens can; see
+  publish — check the token's packages and permissions; see
   "One-time setup").
+- **npm publish fails with EOTP** — the account enforces 2FA and the
+  token is not allowed to bypass it. Create the token with "bypass
+  two-factor authentication" enabled (see "One-time setup").
 - **snupkg missing from GitHub Packages** — by design: GitHub Packages has
   no symbol endpoint. Symbols ride the Release assets (and nuget.org when
   enabled).

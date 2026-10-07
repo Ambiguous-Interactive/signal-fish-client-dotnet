@@ -115,19 +115,28 @@ jobs:
 
       # Issue #109: the UPM fleet is an npm package fleet. Two checks
       # fail the release before anything publishes:
-      # - the layout greps pin the npm pack shape (package/package.json
+      # - the layout checks pin the npm pack shape (package/package.json
       #   at the root, no './' entries): npm publish tolerates other
-      #   shapes, Unity's tarball installer does not;
+      #   shapes, Unity's tarball installer does not. Explicit ifs:
+      #   a negated `! grep` would be exempt from errexit;
       # - the dry-run (no auth needed) rejects tarballs npm cannot
-      #   publish at all. The real publish below is opt-in via
-      #   NPM_TOKEN.
+      #   publish at all; --loglevel=error keeps the failure readable
+      #   without the notice flood. The real publish below is opt-in
+      #   via NPM_TOKEN.
       - name: Validate UPM tarballs publish to npm
         run: |
           for tgz in dist/*.tgz; do
             listing=$(tar -tzf "$tgz")
-            echo "$listing" | grep -qx 'package/package.json'
-            ! echo "$listing" | grep -q '^\./'
-            npm publish "$tgz" --dry-run > /dev/null 2>&1
+            if echo "$listing" | grep -q '^\./'; then
+              echo "::error file=$tgz::tarball roots entries at './' - the npm pack layout roots everything at package/ (Unity's tarball installer requires that shape)"
+              exit 1
+            fi
+            if ! echo "$listing" | grep -Fxq 'package/package.json'; then
+              echo "::error file=$tgz::no package/package.json at the tarball root"
+              exit 1
+            fi
+            echo "dry-run: $tgz"
+            npm publish "$tgz" --dry-run --loglevel=error > /dev/null
             echo "npm-publishable: $tgz"
           done
 

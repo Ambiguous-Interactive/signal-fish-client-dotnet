@@ -57,8 +57,8 @@ try {
 
     # 2. The core tarball is the sync -Pack staging: fresh mirror, hand-
     #    written asmdef, samples — in the npm pack layout (entries root
-    #    at package/, no './' entries), which is what npm publish and
-    #    UPM's tarball installer both expect.
+    #    at package/, no './' entries), the shape Unity's tarball
+    #    installer requires.
     $listing = (tar -tzf $coreTarball) -join "`n"
     Assert-True ($listing -match '(?m)^package/package\.json$') 'core tarball roots package.json at package/'
     Assert-True ($listing -notmatch '(?m)^\./') 'core tarball has no ./ entries'

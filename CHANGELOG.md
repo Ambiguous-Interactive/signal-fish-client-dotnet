@@ -12,9 +12,9 @@ changes (CI, tests, tooling, docs) are not listed.
   attaches all nine UPM `.tgz` files (the core SDK package plus the
   engine adapters) to the GitHub Release next to the NuGet packages,
   so a Unity project can install any package without a UPM registry.
-- The UPM packages are published to the npm registry: Unity users
-  resolve them by name (`com.ambiguous-interactive.signalfish`, plus
-  the adapters) from the package manager UI instead of
+- The UPM packages can be installed from the npm registry: Unity
+  users resolve them by name (`com.ambiguous-interactive.signalfish`,
+  plus the adapters) from the package manager UI instead of
   hand-downloading tarballs.
 
 ### Changed

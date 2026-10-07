@@ -96,6 +96,29 @@ regression-shape tarballs; no blockers, four accepted findings:
   also corrected the runbook: OpenUPM submissions are one package per
   entry, submitted one by one.
 
+## Adversarial review round 2 (sub-agent)
+
+Round 2 attacked the round-1 fixes and found one blocker plus three
+real items — all fixed:
+
+- **Blocker**: the round-1 `! grep` negation is exempt from errexit,
+  so the `./` check could never fail the step (reviewer proved it by
+  running the exact step body on a hybrid tarball; re-verified here).
+  Fixed with explicit `if`/`exit 1` blocks and `::error` annotations
+  naming the tarball. Verified red on `./`-rooted, `./pkg/` hybrid,
+  wrong-dir, and `packageXjson` decoy shapes; green on all nine.
+- **npm removed classic tokens (Nov 2025)**: the round-1 "Automation
+  token" advice dead-ends. Runbook now: Granular token, All packages,
+  read-write, bypass-2FA checked — plus a note that npm deprecates
+  bypass-2FA publishing in January 2027 (trusted publishing / OIDC).
+- **EOTP split from 403**: a 2FA-blocked publish surfaces as EOTP,
+  not 403; separate troubleshooting bullets now.
+- **-Fxq** for the required-manifest grep (fixed string, not regex).
+- Dry-run output: `--loglevel=error` replaces blanket silencing —
+  failures stay readable, the notice flood is gone.
+- CHANGELOG "are published" → "can be installed" (honest pre-token).
+- Test comment updated to the corrected wording (SSOT sweep).
+
 ## Verification
 
 - `scripts/tests/run-all.ps1`: all 18 self-test files pass (red first:
