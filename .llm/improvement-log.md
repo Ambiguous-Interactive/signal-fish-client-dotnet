@@ -9,6 +9,19 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-07 - session 057: #111 decision (announcement-only pass)
+
+- Trigger: a locked-decision edit (`project-decisions.md` tooling row)
+  is an `.llm` system change, so the loop ran as a lightweight pass.
+- Evidence: no failure to analyze — the change records the #111
+  outcome (TUnit declined; NUnit-on-MTP stays, #112). Drift check:
+  main green on all four workflows, no open PRs, Dependabot clean;
+  five merged-session local branches pruned.
+- Findings: none; the log stays findings-shaped — the decision's
+  rationale lives in the session file and the issue thread.
+- Applied: decision row + `progress/session-057-tunit-decision.md`,
+  shipped in PR #113; #111 closed as completed.
+
 ## 2026-10-06 - session 053: M9.5 release checklist (wrapped Write-Error output)
 
 - Trigger: new CI gate script + self-test file (same class as session
