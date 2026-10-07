@@ -79,7 +79,7 @@ namespace SignalFish.Client.Tests.Transport
             Assert.That(close.Close.Code, Is.EqualTo(wireCode));
             Assert.That(close.Close.Kind, Is.EqualTo(expectedKind));
 
-            TransportClosedException thrown = Assert.ThrowsAsync<TransportClosedException>(
+            TransportClosedException thrown = await Assert.ThrowsAsync<TransportClosedException>(
                 (Func<Task>)(async () => await transport.ReceiveAsync(TestToken()))
             );
             Assert.That(thrown, Is.Not.Null);
@@ -258,7 +258,7 @@ namespace SignalFish.Client.Tests.Transport
                 CancellationTokenSource closedCts = new CancellationTokenSource(
                     TimeSpan.FromSeconds(5)
                 );
-                IOException? closed = Assert.ThrowsAsync<IOException>(
+                IOException? closed = await Assert.ThrowsAsync<IOException>(
                     (Func<Task>)(async () => await connection.ReceiveFrameAsync(closedCts.Token))
                 );
                 Assert.That(closed, Is.Not.Null);

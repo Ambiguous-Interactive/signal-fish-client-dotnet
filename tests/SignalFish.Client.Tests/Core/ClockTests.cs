@@ -79,15 +79,15 @@ namespace SignalFish.Client.Tests.Core
         }
 
         [Test]
-        public void VirtualClockDelayThrowsWhenCancelledInsteadOfAdvancing()
+        public async Task VirtualClockDelayThrowsWhenCancelledInsteadOfAdvancing()
         {
             VirtualClock clock = new VirtualClock();
             CancellationTokenSource cancellation = new CancellationTokenSource();
             Task delay = ((ISignalFishClock)clock).DelayAsync(1_000, cancellation.Token);
 
-            cancellation.Cancel();
+            await cancellation.CancelAsync();
 
-            Assert.ThrowsAsync<TaskCanceledException>((Func<Task>)(async () => await delay));
+            await Assert.ThrowsAsync<TaskCanceledException>((Func<Task>)(async () => await delay));
         }
     }
 }

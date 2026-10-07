@@ -90,7 +90,7 @@ namespace SignalFish.Client.Tests.Transport
             Assert.That(close.Close.Code, Is.EqualTo(4007));
             Assert.That(close.Close.Kind, Is.EqualTo(TransportCloseKind.Kicked));
 
-            TransportClosedException thrown = Assert.ThrowsAsync<TransportClosedException>(
+            TransportClosedException thrown = await Assert.ThrowsAsync<TransportClosedException>(
                 (Func<Task>)(async () => await transport.ReceiveAsync())
             );
             Assert.That(thrown, Is.Not.Null);
@@ -110,7 +110,7 @@ namespace SignalFish.Client.Tests.Transport
             Assert.That(close.IsClose, Is.True);
             Assert.That(close.Close.Kind, Is.EqualTo(TransportCloseKind.Abnormal));
 
-            TransportClosedException thrown = Assert.ThrowsAsync<TransportClosedException>(
+            TransportClosedException thrown = await Assert.ThrowsAsync<TransportClosedException>(
                 (Func<Task>)(async () => await transport.ReceiveAsync())
             );
             Assert.That(thrown, Is.Not.Null);
@@ -123,7 +123,7 @@ namespace SignalFish.Client.Tests.Transport
             await transport.ConnectAsync(FakeUri);
             transport.EnqueueClose(4000);
 
-            TransportClosedException thrown = Assert.ThrowsAsync<TransportClosedException>(
+            TransportClosedException thrown = await Assert.ThrowsAsync<TransportClosedException>(
                 (Func<Task>)(async () => await transport.SendAsync(Encoding.UTF8.GetBytes("{}")))
             );
             Assert.That(thrown, Is.Not.Null);

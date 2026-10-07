@@ -107,7 +107,9 @@ namespace SignalFish.Client.Tests.Async
             CancellationTokenSource cancellation = new CancellationTokenSource();
             Task<bool> awaited = queue.EnqueueAsync(99, cancellation.Token).AsTask();
             await cancellation.CancelAsync();
-            Assert.ThrowsAsync<TaskCanceledException>((Func<Task>)(async () => await awaited));
+            await Assert.ThrowsAsync<TaskCanceledException>(
+                (Func<Task>)(async () => await awaited)
+            );
 
             /*
                 The cancelled item never surfaces and the capacity is whole:
@@ -127,7 +129,7 @@ namespace SignalFish.Client.Tests.Async
             CancellationTokenSource cancellation = new CancellationTokenSource();
             Task<QueueRead<int>> read = queue.DequeueAsync(cancellation.Token).AsTask();
             await cancellation.CancelAsync();
-            Assert.ThrowsAsync<TaskCanceledException>((Func<Task>)(async () => await read));
+            await Assert.ThrowsAsync<TaskCanceledException>((Func<Task>)(async () => await read));
 
             Assert.That(queue.TryEnqueue(5), Is.True);
             Assert.That(queue.TryDequeue(out int actual), Is.True);
@@ -267,19 +269,23 @@ namespace SignalFish.Client.Tests.Async
         }
 
         [Test]
-        public void PreCancelledWaitsThrowImmediately()
+        public async Task PreCancelledWaitsThrowImmediately()
         {
             BoundedQueue<int> queue = new BoundedQueue<int>(1);
             CancellationTokenSource cancellation = new CancellationTokenSource();
-            cancellation.Cancel();
+            await cancellation.CancelAsync();
 
             Task<bool> enqueue = queue.EnqueueAsync(1, cancellation.Token).AsTask();
             Assert.That(enqueue.IsCompleted, Is.True);
-            Assert.ThrowsAsync<TaskCanceledException>((Func<Task>)(async () => await enqueue));
+            await Assert.ThrowsAsync<TaskCanceledException>(
+                (Func<Task>)(async () => await enqueue)
+            );
 
             Task<QueueRead<int>> dequeue = queue.DequeueAsync(cancellation.Token).AsTask();
             Assert.That(dequeue.IsCompleted, Is.True);
-            Assert.ThrowsAsync<TaskCanceledException>((Func<Task>)(async () => await dequeue));
+            await Assert.ThrowsAsync<TaskCanceledException>(
+                (Func<Task>)(async () => await dequeue)
+            );
         }
 
         private static void SpinUntilEnqueued(BoundedQueue<int> queue, int item)

@@ -53,7 +53,7 @@ namespace SignalFish.Client.Tests.Polling
         {
             (SignalFishPollingClient client, FakeTransport _, VirtualClock _) = BuildTimed();
             await client.ConnectAsync(Endpoint());
-            Assert.ThrowsAsync<InvalidOperationException>(
+            await Assert.ThrowsAsync<InvalidOperationException>(
                 (Func<Task>)(async () => await client.ConnectAsync(Endpoint()))
             );
         }
