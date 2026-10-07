@@ -19,7 +19,7 @@ change in the session file and improvement log).
 | Engine adapters | Wave 1: FishNet, Mirror, NGO + Unity Relay, generic BYOS sample. Wave 2: Fusion/PUN2, Steamworks (Facepunch + Steamworks.NET) |
 | Adapter validation depth | **Two-client loopback E2E** per adapter in local Unity via the MCP pipeline |
 | Language floor | C# 9 / `netstandard2.1` (Unity 2021.2+ compatible; `IsExternalInit` polyfill) |
-| Tooling defaults | NUnit, SharpFuzz, FsCheck, BenchmarkDotNet, MinVer, coverlet + ReportGenerator, CSharpier, mkdocs. All swappable |
+| Tooling defaults | **NUnit 5 on Microsoft.Testing.Platform** (`EnableNUnitRunner`, #112), SharpFuzz, FsCheck, BenchmarkDotNet, MinVer, coverlet.MTP + ReportGenerator, CSharpier, mkdocs. All swappable. **TUnit declined 2026-10-07 (#111)**: both motivators gone (#110 pin, #112 MTP landing); seconds-scale benefit vs days of assert-review churn on a frozen surface; revisit only if a conversion need returns — the MTP base is the conversion's own prerequisite |
 | Local working docs | `PLAN.md` and `GOAL.md` are gitignored, local-only docs (never published or linked from the site) |
 
 ## Product scope
