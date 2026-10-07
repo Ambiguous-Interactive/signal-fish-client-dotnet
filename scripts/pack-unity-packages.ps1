@@ -143,14 +143,18 @@ if (-not ($fleet | Where-Object { $_.Relative -eq $coreRelative })) {
 $syncScript = Join-Path $PSScriptRoot 'sync-unity-package.ps1'
 foreach ($package in $fleet) {
     if ($package.Relative -eq $coreRelative) {
+        # The sync script derives the tarball name from the core
+        # manifest itself; a drifted core id would otherwise ship a
+        # misnamed tarball silently. Pre-delete the expected name so
+        # the existence check below can only pass on a fresh stage.
+        $expected = Join-Path $OutDir "$($package.Name)-$($package.Version).tgz"
+        if (Test-Path -LiteralPath $expected) {
+            Remove-Item -LiteralPath $expected -Force
+        }
         & pwsh -NoProfile -File $syncScript -Pack -OutDir $OutDir -RepoRoot $RepoRoot
         if ($LASTEXITCODE -ne 0) {
             Stop-Pack "pack: core package staging failed (sync-unity-package.ps1 -Pack exited $LASTEXITCODE)."
         }
-        # The sync script derives the tarball name from the core
-        # manifest itself; a drifted core id would otherwise ship a
-        # misnamed tarball silently.
-        $expected = Join-Path $OutDir "$($package.Name)-$($package.Version).tgz"
         if (-not (Test-Path -LiteralPath $expected)) {
             Stop-Pack "pack: the staged core tarball is $((Get-ChildItem -LiteralPath $OutDir -File -Filter '*.tgz' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name), expected $($package.Name)-$($package.Version).tgz - check the core package name."
         }

@@ -172,6 +172,17 @@ try {
     Assert-True ($run.ExitCode -ne 0) 'a drifted core name fails the pack'
     Assert-OutputContains -Run $run -Pattern 'expected com\.ambiguous-interactive\.signalfish\.core-0\.1\.0\.tgz' 'the drifted core is named with the expected tarball'
     [System.IO.File]::WriteAllText($drifted, $manifestText)
+    # A stale artifact with the expected name cannot satisfy the check:
+    # the expected name is pre-deleted before staging.
+    $driftedSeed = Join-Path $dist 'com.ambiguous-interactive.signalfish.core-0.1.0.tgz'
+    Write-TestFile -Path $driftedSeed -Content 'junk'
+    [System.IO.File]::WriteAllText($drifted, $manifestText.Replace('com.ambiguous-interactive.signalfish"', 'com.ambiguous-interactive.signalfish.core"'))
+    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
+    Assert-True ($run.ExitCode -ne 0) 'a seeded stale tarball cannot satisfy the drifted-core check'
+    if (Test-Path -LiteralPath $driftedSeed) {
+        Remove-Item -LiteralPath $driftedSeed -Force
+    }
+    [System.IO.File]::WriteAllText($drifted, $manifestText)
     $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
     Assert-Equal 0 $run.ExitCode 'pack recovers once the core name matches again'
 

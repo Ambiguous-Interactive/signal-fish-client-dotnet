@@ -44,7 +44,8 @@ end-to-end" and reality:
   invalid JSON, JSON `null`, duplicate name, traversal name,
   non-semver version, empty fleet, missing core, `-OutDir` as a file)
   with manifest-named messages, a drifted core package name, a
-  relative `-RepoRoot` still staging the fresh mirror, the
+  relative `-RepoRoot` still staging the fresh mirror, a seeded stale
+  tarball cannot satisfy the drifted-core check, the
   fleet-count summary, and a run against the real repository fleet
   (9 tarballs, versions read from the manifests — never hard-coded,
   so the routine version-coupling PR cannot break the suite).
@@ -75,7 +76,7 @@ first pass so a malformed fleet writes zero artifacts.
   `.llm/improvement-log.md` (session 054): instrument the branch
   entry, not the branch body — a plausible wrong-branch result reads
   as a subtle right-branch failure.
-- Post-fix and post-review: 51/51. `scripts/tests/run-all.ps1` 18/18
+- Post-fix and post-review: 52/52. `scripts/tests/run-all.ps1` 18/18
   files.
 - The workflow's coupling step was exercised locally under the exact
   CI shell (`bash -eo pipefail`) with the new segment-exact glob:
@@ -151,6 +152,21 @@ state is now restored between failure modes.
   package claiming the core's name now fails the run).
 - **`run-all.ps1` unchanged** — it auto-discovers `test-*.ps1`; the
   new suite rides the existing convention.
+
+## Verification round (live-probe sub-agent, round 2)
+
+Verdict: **VERIFIED** — all six fixes reproduced working (exit codes +
+messages), both suites green, no real-fleet regression from the new
+guards, rc prereleases (`0.1.0-rc.1`, `+build`) still accepted by the
+semver guard, and the Samples~ near-miss parity proven in both gates.
+Two findings, both addressed or accepted: the LOW one (the
+expected-tarball check was a bare `Test-Path`, so a pre-seeded stale
+artifact with the expected name could false-pass a drifted core) is
+fixed by pre-deleting the expected name before staging, with a
+regression assertion; the INFO one (a caught drift leaves sync's
+mislabeled tarball on disk in the operator's OutDir) is accepted — the
+run fails closed before anything attaches to a release, and CI's dist
+is ephemeral.
 
 ## Verification
 
