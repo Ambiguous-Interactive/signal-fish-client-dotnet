@@ -21,7 +21,8 @@ directory — see [Skills Reference](#skills-reference).
 - **Protocol**: JSON over WebSocket, `{ "type": ..., "data": ... }` envelopes.
   The client handles signaling and relay only — the game owns simulation.
 - **Status**: feature-complete for the 0.1.0 milestone; the public surface
-  is not yet frozen by a tagged release.
+  is frozen at the tagged `v0.1.0` release and every PR is gated against
+  it by the api-compat check in `dotnet.yml`.
 
 ## Project Structure
 
