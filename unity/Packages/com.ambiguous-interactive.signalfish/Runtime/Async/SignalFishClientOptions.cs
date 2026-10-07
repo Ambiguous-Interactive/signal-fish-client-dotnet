@@ -145,7 +145,14 @@ namespace SignalFish.Client.Async
         /// automatic-reconnect <c>Authenticate</c> (<c>null</c> or
         /// <c>json</c> omits the field — the JSON text default; the
         /// caller's explicit handshake must carry the same token). Binary
-        /// sends require a non-JSON encoding the server advertises.
+        /// sends require a non-JSON encoding the server advertises. When
+        /// the server refuses the token it answers one
+        /// <c>Error(UNSUPPORTED_GAME_DATA_FORMAT)</c> downgrade notice
+        /// before <c>Authenticated</c> and pins the session to JSON: the
+        /// client surfaces the notice as a
+        /// <see cref="SignalFish.Client.Polling.PollEventKind.ServerError"/> event, negotiates JSON
+        /// regardless of the later advertisement, and refuses any repeat
+        /// notice per the violation policy.
         /// </summary>
         public string? GameDataFormat { get; }
 

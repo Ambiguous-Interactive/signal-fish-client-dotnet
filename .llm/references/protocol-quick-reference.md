@@ -107,8 +107,22 @@ Client                              Server
 `INVALID_DELIVERY_CLASS`, `GAME_START_NOT_READY`, `GAME_START_FORBIDDEN`,
 `INVALID_ROOM_STATE`, `RECONNECTION_FAILED`, `RECONNECTION_EXPIRED`,
 `RECONNECTION_TOKEN_INVALID`, `PLAYER_ALREADY_CONNECTED`, `NOT_IN_ROOM`,
-`SERVER_DRAINING`.
+`SERVER_DRAINING`, `UNSUPPORTED_GAME_DATA_FORMAT`.
 Full list: `docs/reference/error-codes.md` in the server repo.
+
+### UNSUPPORTED_GAME_DATA_FORMAT (downgrade notice)
+
+`Authenticate.game_data_format` naming an encoding the deployment does not
+support is refused with this error frame **before** `Authenticated`; the
+session then pins to JSON. The client consumes exactly one notice — a
+`ServerError` event, never fatal — and refuses per policy a repeat
+notice. Any other pre-auth error code keeps its existing handling
+(informational `ServerError`; the violation policy is never consulted),
+and auth refusals are `AuthenticationError` frames on a separate path.
+The refused token never re-selects at `ProtocolInfo`, even if the
+advertisement names it. On a legacy server that never sends
+`ProtocolInfo`, the pre-negotiation window spans the connection, so a
+second notice is out of contract there too.
 
 ## Rate limit shapes
 

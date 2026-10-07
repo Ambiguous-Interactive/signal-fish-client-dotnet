@@ -9,38 +9,37 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-07 - session 059: server-pinned downgrade-notice conformance
+
+- Trigger: a protocol-behavior change (mandatory loop).
+- Evidence: red `fast-check -Filter Downgrade` — 4 failed (the
+  requested token re-selected `message_pack` after the notice; a repeat
+  pre-negotiation notice silently accepted), then 942/942 green on both
+  TFMs. Server contract: `signal-fish-server` PR #742 (one
+  `Error(UNSUPPORTED_GAME_DATA_FORMAT)` before `Authenticated`, JSON
+  pinned, repeat fatal).
+- Findings: the gate accepted the handshake notice only by coincidence
+  of engine-swap timing (the initial v2-mode engine short-circuit
+  predates the pinned contract). Upstream client-contract pins must be
+  diffed against this client explicitly.
+- Applied: explicit pre-negotiation clause in
+  `DeliveryGate.ObserveUnsupportedFormatError` (accept-once, JSON pin,
+  repeat refuses per policy, latch reset in `ObserveTerminal`); 5 tests
+  (9 cases); pinned contract in `protocol-quick-reference.md`; Unity
+  mirror re-synced.
+- Open: none — watch the server repo for further client-contract pins.
+
 ## 2026-10-07 - session 057: #111 decision (announcement-only pass)
 
-- Trigger: a locked-decision edit (`project-decisions.md` tooling row)
-  is an `.llm` system change, so the loop ran as a lightweight pass.
-- Evidence: no failure to analyze — the change records the #111
-  outcome (TUnit declined; NUnit-on-MTP stays, #112). Drift check:
-  main green on all four workflows, no open PRs, Dependabot clean;
-  five merged-session local branches pruned.
-- Findings: none; the log stays findings-shaped — the decision's
-  rationale lives in the session file and the issue thread.
-- Applied: decision row + `progress/session-057-tunit-decision.md`,
-  shipped in PR #113; #111 closed as completed.
+(Pruned 2026-10-07: findings were none by design — a locked-decision
+edit; the rationale lives in `project-decisions.md` and
+`progress/session-057-tunit-decision.md`, shipped in PR #113.)
 
 ## 2026-10-06 - session 053: M9.5 release checklist (wrapped Write-Error output)
 
-- Trigger: new CI gate script + self-test file (same class as session
-  052; the reflect-improve loop applies).
-- Evidence: the empty-fleet guard of
-  `lint-unity-package-versions.ps1` used `Write-Error`; under
-  `pwsh -File` it rendered as a console-wrapped error record, so the
-  self-test's message-text assertions could not match the wrapped
-  lines. Rule 3 of powershell-tooling (report-all-then-fail) only
-  covered `Write-Error` inside violation loops, not early guards.
-- Findings: machine-readable lint failures need the `Write-Host` red +
-  `exit 1` form everywhere — a terminating error's wrapped rendering
-  defeats both humans and output assertions.
-- Applied: guard converted to the `Write-Host` form; powershell-tooling
-  rule 3 extended with the early-guard case and this evidence. Same
-  round: the windows-latest CI cell caught path-separator drift in the
-  new lint's diagnostics (backslash paths broke the self-tests' message
-  assertions); diagnostics normalize to forward slashes — cross-OS
-  asserted output must not leak platform separators.
+(Pruned 2026-10-07: knowledge graduated into powershell-tooling rule 3
+(early-guard case, forward-slash diagnostics) and the lint self-tests;
+originals in git history.)
 
 ## 2026-10-06 - session 052: M9.4 scheduled bench gate (argument-mode misbind, dispatch-before-default-branch)
 

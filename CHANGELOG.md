@@ -6,6 +6,15 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ## [Unreleased]
 
+### Fixed
+
+- A handshake that requests an unsupported `game_data_format` now honors
+  the server's pinned downgrade contract exactly: the refused encoding
+  can no longer be re-negotiated after the server's one downgrade
+  notice, and a repeated notice refuses per the violation policy
+  instead of passing silently. Sessions against a conforming server
+  behave as before (one notice, JSON fallback, connection stays open).
+
 ### Added
 
 - Releases now ship every Unity package as a tarball: a `v*` tag
