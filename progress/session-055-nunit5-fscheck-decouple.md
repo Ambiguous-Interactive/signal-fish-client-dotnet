@@ -71,7 +71,7 @@ end date. Three commits, each independently buildable:
   table; trust the package.
 - **The NUnit 5 break was the friendly kind**: the analyzer (NUnit2059)
   and the compiler flag every un-awaited async assert, so the sweep was
-  mechanically verifiable — 13 sites, zero judgement calls.
+  mechanically verifiable — 13 sites, zero judgment calls.
 - **The `E2E` project needed nothing** for NUnit 5 beyond the version
   bump: no async asserts, no removed APIs.
 
