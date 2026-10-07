@@ -95,7 +95,12 @@ try {
     $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
     Assert-True ($run.ExitCode -ne 0) 'invalid JSON fails the pack instead of crashing'
     Assert-OutputContains -Run $run -Pattern 'unity/Adapters/FishNet/package\.json' 'invalid JSON names the manifest'
-    # 5c. Two packages sharing a name: the second tarball would silently
+    # 5c. A JSON null manifest is a shape violation, not a crash.
+    Write-TestFile -Path (Join-Path $repo 'unity/Adapters/FishNet/package.json') -Content @('null')
+    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
+    Assert-True ($run.ExitCode -ne 0) 'a JSON null manifest fails the pack'
+    Assert-OutputContains -Run $run -Pattern 'must contain a JSON object' 'the JSON-null remedy names the shape'
+    # 5d. Two packages sharing a name: the second tarball would silently
     #     overwrite the first and one package would vanish from the release.
     Write-TestFile -Path (Join-Path $repo 'unity/Adapters/FishNet/package.json') -Content @(
         '{',
@@ -106,24 +111,87 @@ try {
     $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
     Assert-True ($run.ExitCode -ne 0) 'a duplicate package name fails the pack'
     Assert-OutputContains -Run $run -Pattern 'duplicate package name' 'the duplicate is named'
-    # 5d. Tree drift: an emptied fleet fails instead of passing vacuously.
-    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', (New-TestRepo), '-OutDir', $dist)
-    Assert-True ($run.ExitCode -ne 0) 'an empty fleet fails the pack'
-    Assert-OutputContains -Run $run -Pattern 'No package manifests found under unity/' 'the empty-fleet remedy names the glob'
-    # Restore the valid fleet.
+    # 5e. A name or version that could carry a separator into the
+    #     tarball filename (path traversal) is rejected before writing.
+    Write-TestFile -Path (Join-Path $repo 'unity/Adapters/FishNet/package.json') -Content @(
+        '{',
+        '    "name": "../evil",',
+        '    "version": "0.1.0"',
+        '}'
+    )
+    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
+    Assert-True ($run.ExitCode -ne 0) 'a traversal name fails the pack'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $repo 'evil-0.1.0.tgz'))) 'the traversal name writes nothing outside OutDir'
+    Write-TestFile -Path (Join-Path $repo 'unity/Adapters/FishNet/package.json') -Content @(
+        '{',
+        '    "name": "com.ambiguous-interactive.signalfish.transport.fishnet",',
+        '    "version": "1.2/x"',
+        '}'
+    )
+    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
+    Assert-True ($run.ExitCode -ne 0) 'a non-semver version fails the pack'
+    # Restore the valid fleet: the remaining failure modes below must be
+    # attributed to their own cause, not to this manifest.
     Write-TestFile -Path (Join-Path $repo 'unity/Adapters/FishNet/package.json') -Content @(
         '{',
         '    "name": "com.ambiguous-interactive.signalfish.transport.fishnet",',
         '    "version": "0.1.0"',
         '}'
     )
+    # 5f. Tree drift: an emptied fleet fails instead of passing vacuously.
+    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', (New-TestRepo), '-OutDir', $dist)
+    Assert-True ($run.ExitCode -ne 0) 'an empty fleet fails the pack'
+    Assert-OutputContains -Run $run -Pattern 'No package manifests found under unity/' 'the empty-fleet remedy names the glob'
+    # 5g. A missing core package is not a valid smaller fleet: the
+    #     adapters could never resolve their SDK dependency.
+    $capturedCore = Join-Path ([System.IO.Path]::GetTempPath()) ("core-" + [System.Guid]::NewGuid().ToString('N'))
+    Move-Item -LiteralPath (Join-Path $repo 'unity/Packages') -Destination $capturedCore
+    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
+    Assert-True ($run.ExitCode -ne 0) 'a fleet without the core package fails the pack'
+    Assert-OutputContains -Run $run -Pattern 'no core package manifest' 'the missing-core remedy names the expected path'
+    Move-Item -LiteralPath $capturedCore -Destination (Join-Path $repo 'unity/Packages')
+    # 5h. -OutDir that exists as a file.
+    $outFile = Join-Path $repo 'out-file'
+    Write-TestFile -Path $outFile -Content 'x'
+    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $outFile)
+    Assert-True ($run.ExitCode -ne 0) 'an OutDir that is a file fails the pack'
+    Remove-Item -LiteralPath $outFile -Force
     $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
     Assert-Equal 0 $run.ExitCode 'pack recovers once the fleet is valid again'
 
     # 6. The summary counts the packed fleet.
     Assert-OutputContains -Run $run -Pattern 'packed 3 UPM tarballs' 'the summary counts the fleet'
 
-    # 7. The real repository fleet: nine packages in lockstep at 0.1.0.
+    # 7. A drifted core package name fails instead of shipping a tarball
+    #    whose filename lies about the package inside (the sync script
+    #    names the staged tarball after its own hard-coded id).
+    $drifted = Join-Path $coreRoot 'package.json'
+    $manifestText = [System.IO.File]::ReadAllText($drifted)
+    [System.IO.File]::WriteAllText($drifted, $manifestText.Replace('com.ambiguous-interactive.signalfish"', 'com.ambiguous-interactive.signalfish.core"'))
+    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
+    Assert-True ($run.ExitCode -ne 0) 'a drifted core name fails the pack'
+    Assert-OutputContains -Run $run -Pattern 'expected com\.ambiguous-interactive\.signalfish\.core-0\.1\.0\.tgz' 'the drifted core is named with the expected tarball'
+    [System.IO.File]::WriteAllText($drifted, $manifestText)
+    $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', $repo, '-OutDir', $dist)
+    Assert-Equal 0 $run.ExitCode 'pack recovers once the core name matches again'
+
+    # 8. An explicitly relative -RepoRoot still routes the core through
+    #    the sync staging (absolute paths are what the routing compares).
+    Push-Location -LiteralPath $repo
+    try {
+        $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-RepoRoot', '.', '-OutDir', 'dist-rel')
+        Assert-Equal 0 $run.ExitCode 'pack succeeds with a relative RepoRoot'
+        $listing = (tar -tzf (Join-Path $repo 'dist-rel/com.ambiguous-interactive.signalfish-0.1.0.tgz')) -join "`n"
+        Assert-True ($listing -match 'Runtime/Core/A\.cs') 'a relative RepoRoot still stages the fresh mirror'
+    }
+    finally {
+        Pop-Location
+    }
+
+    # 9. The real repository fleet: nine packages in lockstep, one fleet
+    #    version read from the manifests (never hard-coded — the routine
+    #    version-coupling PR must not break this suite).
+    $realVersion = ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '../../unity/Packages/com.ambiguous-interactive.signalfish/package.json')) | ConvertFrom-Json).version
     $realDist = Join-Path ([System.IO.Path]::GetTempPath()) ("upmpack-" + [System.Guid]::NewGuid().ToString('N'))
     try {
         $run = Invoke-Pwsh -ScriptPath $pack -Arguments @('-OutDir', $realDist)
@@ -133,21 +201,23 @@ try {
             $tarballs = @(Get-ChildItem -LiteralPath $realDist -File -Filter '*.tgz')
         }
         Assert-Equal 9 $tarballs.Count 'every fleet package is packed'
-        Assert-Equal 9 @(Get-ChildItem -LiteralPath $realDist -File -Filter '*-0.1.0.tgz').Count 'every tarball carries the fleet version'
-        Assert-True ($null -ne ($tarballs | Where-Object { $_.Name -eq 'com.ambiguous-interactive.signalfish-0.1.0.tgz' })) 'the core tarball is present'
-        foreach ($name in @(
-                'com.ambiguous-interactive.signalfish.adapters.core-0.1.0.tgz',
-                'com.ambiguous-interactive.signalfish.adapters.facepunch-0.1.0.tgz',
-                'com.ambiguous-interactive.signalfish.adapters.fusion-0.1.0.tgz',
-                'com.ambiguous-interactive.signalfish.adapters.ngo-0.1.0.tgz',
-                'com.ambiguous-interactive.signalfish.adapters.pun2-0.1.0.tgz',
-                'com.ambiguous-interactive.signalfish.adapters.steamworksnet-0.1.0.tgz',
-                'com.ambiguous-interactive.signalfish.transport.fishnet-0.1.0.tgz',
-                'com.ambiguous-interactive.signalfish.transport.mirror-0.1.0.tgz'
-            )) {
-            Assert-True ($null -ne ($tarballs | Where-Object { $_.Name -eq $name })) "the $name tarball is present"
+        Assert-Equal 9 @(Get-ChildItem -LiteralPath $realDist -File -Filter "*-$realVersion.tgz").Count 'every tarball carries the fleet version'
+        $fleetNames = @(
+            'com.ambiguous-interactive.signalfish',
+            'com.ambiguous-interactive.signalfish.adapters.core',
+            'com.ambiguous-interactive.signalfish.adapters.facepunch',
+            'com.ambiguous-interactive.signalfish.adapters.fusion',
+            'com.ambiguous-interactive.signalfish.adapters.ngo',
+            'com.ambiguous-interactive.signalfish.adapters.pun2',
+            'com.ambiguous-interactive.signalfish.adapters.steamworksnet',
+            'com.ambiguous-interactive.signalfish.transport.fishnet',
+            'com.ambiguous-interactive.signalfish.transport.mirror'
+        )
+        foreach ($name in $fleetNames) {
+            $tarball = Join-Path $realDist "$name-$realVersion.tgz"
+            Assert-True (Test-Path -LiteralPath $tarball) "the $name tarball is present"
         }
-        $listing = (tar -tzf (Join-Path $realDist 'com.ambiguous-interactive.signalfish.transport.fishnet-0.1.0.tgz')) -join "`n"
+        $listing = (tar -tzf (Join-Path $realDist "com.ambiguous-interactive.signalfish.transport.fishnet-$realVersion.tgz")) -join "`n"
         Assert-True ($listing -match 'Runtime/FishNet/SignalFishFishNetTransport\.cs') 'the FishNet tarball ships the transport bridge'
     }
     finally {

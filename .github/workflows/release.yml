@@ -69,8 +69,11 @@ jobs:
           RELEASE="${VERSION%%+*}"
           # Capture first: the assignment propagates a find failure to
           # set -e, and the count guard keeps an empty result (tree
-          # drift, glob typo) from passing the gate vacuously.
-          manifests=$(find unity -type f -name package.json -not -path '*Samples~*')
+          # drift, glob typo) from passing the gate vacuously. The
+          # Samples~ exclusion is segment-exact, matching
+          # pack-unity-packages.ps1 — a near-miss directory name must
+          # stay a fleet member in both gates.
+          manifests=$(find unity -type f -name package.json -not -path '*/Samples~/*')
           count=0
           mismatch=0
           while IFS= read -r manifest; do

@@ -23,9 +23,10 @@ Built by [Ambiguous Interactive](https://github.com/Ambiguous-Interactive).
 Feature-complete for the 0.1.0 milestone: the v2 relay floor and the v3
 extensions (negotiation, classified delivery with accountability, binary
 game data, mesh signaling) are done and covered by unit, fuzz, and live
-E2E lanes. Tagged releases ship the NuGet package; the Unity UPM package
-`com.ambiguous-interactive.signalfish` installs from source today (the
-tarball lane lands with the release milestone). The
+E2E lanes. Tagged releases ship the NuGet package and all nine Unity UPM
+tarballs — `com.ambiguous-interactive.signalfish` installs from a
+release tarball or from source
+([Unity](docs/unity.md), [Releasing](docs/releasing.md)). The
 [documentation site](https://Ambiguous-Interactive.github.io/signal-fish-client-dotnet/)
 mirrors the Rust client's doc set.
 

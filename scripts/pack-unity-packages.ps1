@@ -12,9 +12,13 @@
     source package, so its directory is the tarball, verbatim.
 
     Fails (exit 1) instead of packing a partial fleet: an empty fleet
-    (tree drift), a manifest without a name/version string, invalid
-    JSON, two packages sharing a name (the second tarball would
-    silently overwrite the first), or any tar failure.
+    (tree drift), a missing core package, a manifest without a
+    name/version string (or with a shape unsafe for a filename),
+    invalid JSON, two packages sharing a name (the second tarball
+    would silently overwrite the first), or any tar failure. Existing
+    same-name tarballs are replaced; any other file in -OutDir is left
+    alone (a re-pack after a version bump leaves the old tarballs —
+    pack into a fresh directory when that matters).
 
 .PARAMETER OutDir
     Directory the .tgz files are written to. Created when missing.
@@ -37,7 +41,11 @@ Set-StrictMode -Version Latest
 if (-not $RepoRoot) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
-$RepoRoot = $RepoRoot.TrimEnd('/', '\')
+# Resolve even an explicitly relative root: Get-ChildItem returns
+# absolute paths, so every relative-path computation below depends on
+# $RepoRoot being absolute — a relative root would silently misroute
+# the core package to the verbatim adapter branch.
+$RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path.TrimEnd('/', '\')
 
 function Stop-Pack {
     param([string]$Message)
@@ -71,6 +79,10 @@ function Get-ManifestRelative {
 
 # First pass: validate every manifest, so a malformed fleet fails before
 # any artifact is written.
+$semver = '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+# UPM reverse-domain ids; the guard exists so name/version can never
+# carry a path separator into the tarball filename.
+$nameShape = '^[A-Za-z0-9][A-Za-z0-9._-]*$'
 $fleet = New-Object 'System.Collections.Generic.List[hashtable]'
 $names = @{}
 foreach ($path in $manifests) {
@@ -81,6 +93,9 @@ foreach ($path in $manifests) {
     catch {
         Stop-Pack "$relative : package.json is not valid JSON."
     }
+    if ($null -eq $json -or $json -isnot [System.Management.Automation.PSCustomObject]) {
+        Stop-Pack "$relative : package.json must contain a JSON object."
+    }
     $nameProperty = $json.PSObject.Properties['name']
     $versionProperty = $json.PSObject.Properties['version']
     if ($null -eq $nameProperty -or $nameProperty.Value -isnot [string] -or $nameProperty.Value -eq '') {
@@ -90,29 +105,54 @@ foreach ($path in $manifests) {
         Stop-Pack "$relative : package.json must carry a version string."
     }
     $name = $nameProperty.Value
+    $version = $versionProperty.Value
+    # The version shape mirrors lint-unity-package-versions.ps1 (semver)
+    # so the tarball filename can never carry a separator.
+    if ($name -notmatch $nameShape) {
+        Stop-Pack "$relative : package name '$name' is not a UPM id (letters, digits, '.', '_', '-')."
+    }
+    if ($version -notmatch $semver) {
+        Stop-Pack "$relative : version '$version' is not semver (MAJOR.MINOR.PATCH, optional -prerelease/+build)."
+    }
     if ($names.ContainsKey($name)) {
         Stop-Pack "$relative : duplicate package name $name (also in $($names[$name])) - the second tarball would overwrite the first."
     }
     $names[$name] = $relative
-    $fleet.Add(@{ Relative = $relative; Path = $path; Name = $name; Version = $versionProperty.Value })
+    $fleet.Add(@{ Relative = $relative; Path = $path; Name = $name; Version = $version })
 }
 
 if (-not (Test-Path -LiteralPath $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 }
+elseif (-not (Get-Item -LiteralPath $OutDir).PSIsContainer) {
+    Stop-Pack "pack: -OutDir '$OutDir' exists and is not a directory."
+}
 $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
+
+# The core package must be part of the fleet: without it the release
+# would ship adapters that cannot resolve their SDK dependency.
+$coreRelative = 'unity/Packages/com.ambiguous-interactive.signalfish/package.json'
+if (-not ($fleet | Where-Object { $_.Relative -eq $coreRelative })) {
+    Stop-Pack "pack: no core package manifest at $coreRelative - tree drift; the release would ship an unresolvable adapter set."
+}
 
 # Second pass: pack. The core package ships a mirrored library source;
 # sync-unity-package -Pack stages a fresh mirror and checks the shipped
 # asmdef graph, so the release tarball is exactly what a local -Pack
 # stages. Every adapter is verbatim.
 $syncScript = Join-Path $PSScriptRoot 'sync-unity-package.ps1'
-$coreRelative = 'unity/Packages/com.ambiguous-interactive.signalfish/package.json'
 foreach ($package in $fleet) {
     if ($package.Relative -eq $coreRelative) {
         & pwsh -NoProfile -File $syncScript -Pack -OutDir $OutDir -RepoRoot $RepoRoot
         if ($LASTEXITCODE -ne 0) {
             Stop-Pack "pack: core package staging failed (sync-unity-package.ps1 -Pack exited $LASTEXITCODE)."
+        }
+        # The sync script derives the tarball name from the core
+        # manifest itself; a drifted core id would otherwise ship a
+        # misnamed tarball silently.
+        $expected = Join-Path $OutDir "$($package.Name)-$($package.Version).tgz"
+        if (-not (Test-Path -LiteralPath $expected)) {
+            Stop-Pack "pack: the staged core tarball is $((Get-ChildItem -LiteralPath $OutDir -File -Filter '*.tgz' | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name), expected $($package.Name)-$($package.Version).tgz - check the core package name."
         }
         continue
     }

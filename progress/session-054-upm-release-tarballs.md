@@ -31,18 +31,23 @@ end-to-end" and reality:
   step (and the release step names all three artifact kinds); the
   "Future: UPM + NPM distribution" section is folded away — replaced
   by an honest "Future: OpenUPM + NPM listing" (artifacts ship today;
-  registry discovery is what remains). `docs/getting-started.md` no
-  longer says the tarball lane "lands with the release milestone" — it
-  landed. `scripts/sync-unity-package.ps1`'s `-Pack` comment now states
-  the release lane packs the same way (the comment claimed the
+  registry discovery is what remains). `docs/getting-started.md` and
+  `README.md` no longer say the tarball lane "lands with the release
+  milestone" — it landed; `docs/unity.md`'s Install section gains the
+  tarball route. `scripts/sync-unity-package.ps1`'s `-Pack` comment now
+  states the release lane packs the same way (the comment claimed the
   opposite until session 053 found it).
-- **`scripts/tests/test-pack-unity-packages.ps1`** — 38 fixture-driven
+- **`scripts/tests/test-pack-unity-packages.ps1`** — 51 fixture-driven
   assertions: core staging content (fresh mirror + asmdef + samples),
   adapter verbatim content (sample and sample-less), `Samples~` demo
-  manifests never packed, all four partial-fleet failures (missing
-  version, invalid JSON, duplicate name, empty fleet) with manifest-
-  named messages, the fleet-count summary, and a run against the real
-  repository fleet (9 tarballs at 0.1.0, FishNet bridge inside).
+  manifests never packed, the partial-fleet failures (missing version,
+  invalid JSON, JSON `null`, duplicate name, traversal name,
+  non-semver version, empty fleet, missing core, `-OutDir` as a file)
+  with manifest-named messages, a drifted core package name, a
+  relative `-RepoRoot` still staging the fresh mirror, the
+  fleet-count summary, and a run against the real repository fleet
+  (9 tarballs, versions read from the manifests — never hard-coded,
+  so the routine version-coupling PR cannot break the suite).
 - **`.gitignore`** gains `dist/` — both pack flows stage there now; a
   local pack run must not dirty the tree.
 - **`CHANGELOG.md`** — Unreleased entry: releases ship every Unity
@@ -70,10 +75,13 @@ first pass so a malformed fleet writes zero artifacts.
   `.llm/improvement-log.md` (session 054): instrument the branch
   entry, not the branch body — a plausible wrong-branch result reads
   as a subtle right-branch failure.
-- Post-fix: 38/38. `scripts/tests/run-all.ps1` 18/18 files.
+- Post-fix and post-review: 51/51. `scripts/tests/run-all.ps1` 18/18
+  files.
 - The workflow's coupling step was exercised locally under the exact
-  CI shell (`bash -eo pipefail`): green count at 9; a doctored
-  `v0.2.0-rc.1` against the `0.1.0` fleet fails (detection intact).
+  CI shell (`bash -eo pipefail`) with the new segment-exact glob:
+  green count at 9; a doctored `v0.2.0-rc.1` against the `0.1.0`
+  fleet fails (detection intact); a `Samples~Extra` near-miss
+  manifest joins the fleet (count 10, mismatch flagged).
 - `pack-unity-packages.ps1` run against the real repo: 9 tarballs,
   then removed (and `dist/` ignored so it can never leak into a diff).
 - markdownlint (changed files), typos v1.50.3 (whole repo, CI pin),
@@ -92,6 +100,43 @@ first pass so a malformed fleet writes zero artifacts.
   `dist/` into the tree; nobody had packed locally since the ignore
   list was last touched.
 
+## Adversarial review round (evidence-first sub-agent; every finding
+reproduced before reporting)
+
+Verdict: REQUEST CHANGES — 5 should-fix + 5 nits, all reproduced.
+Fixed: (1) a **missing core package** shipped a silent partial fleet —
+the packer now fails when no manifest sits at the core path (the
+release-lane coupling gate alone could not catch it: a renamed core
+just shrinks both gates' counts). (2) a **relative `-RepoRoot`**
+silently routed the core down the verbatim adapter branch (Get-ChildItem
+returns absolute paths, so every relative-path computation depends on
+an absolute root) — the root is now resolved unconditionally. (3) a
+**drifted core package name** shipped a tarball whose filename lied
+(the sync script names the staged tarball after its own hard-coded id)
+— the staged tarball is now checked against the manifest's name+version.
+(4) the real-fleet assertions **hard-coded `0.1.0`**, so the repo's own
+release-checklist version-coupling PR would have broken the suite —
+versions are read from the manifests. (5) the **README** carried the
+same stale "tarball lane lands with the release milestone" sentence the
+PR fixed in getting-started.md (plus `docs/unity.md`'s Install section
+now names the tarball route). Nits also fixed: name/version shape
+guards so a hostile manifest can never carry a separator into the
+tarball filename (path traversal out of `-OutDir`), a JSON `null`
+manifest now fails with the shape message instead of a StrictMode
+crash, `-OutDir`-is-a-file fails with the script's message instead of
+tar's, and the `release.yml` coupling gate's `Samples~` exclusion is
+segment-exact (`*/Samples~/*`), matching the packer — a `Samples~Extra`
+near-miss directory is now a fleet member in both gates (hand-probed:
+count 10, mismatch flagged). Declined with reason: dropping `shell:
+pwsh` from the workflow step (every script cell in `dotnet.yml` uses
+the same explicit form — consistency, and exit propagation is
+verified); pruning stale tarballs from `-OutDir` (documented in the
+script instead — CI runners are fresh and the nupkg flow has the same
+semantics). A test-hygiene bug of my own surfaced while adding the
+review assertions: an invalid manifest from an earlier failure case
+leaked into the missing-core case and the wrong guard fired — fixture
+state is now restored between failure modes.
+
 ## Deliberate scope cuts
 
 - **No OpenUPM/NPM listing** — discovery is a separate surface
@@ -109,9 +154,9 @@ first pass so a malformed fleet writes zero artifacts.
 
 ## Verification
 
-- `scripts/tests/run-all.ps1` 18/18 files (incl. the new 38).
-- markdownlint, typos (v1.50.3 = CI pin), mkdocs `--strict`,
-  yaml-lint, `lint-llm-instructions`, `lint-file-sizes`,
+- `scripts/tests/run-all.ps1` 18/18 files (incl. the new 51).
+- markdownlint (changed files), typos (v1.50.3 = CI pin), mkdocs
+  `--strict`, yaml-lint, `lint-llm-instructions`, `lint-file-sizes`,
   `sync -Check`, version-coupling lint — green.
 - Main CI green on `4dad8da` before branching (Docs + e2e finished
   green; dotnet + LLM Context in progress at session start — both
