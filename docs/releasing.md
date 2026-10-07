@@ -31,8 +31,10 @@ root; tag pushes only — it never runs on branches or PRs):
    without a name/version, a duplicated package name, or an empty
    fleet fails the run instead of shipping a partial set. Every
    tarball follows the npm pack layout (entries root at `package/`).
-5. Dry-runs `npm publish` on all nine tarballs: a tarball that is not
-   npm-publishable fails the run before anything publishes.
+5. Checks every UPM tarball is npm-ready before anything publishes:
+   the npm pack layout (entries root at `package/`, no `./` entries —
+   required by Unity's tarball installer) and an auth-free
+   `npm publish --dry-run`.
 6. Publishes the `.nupkg` to **GitHub Packages** (always).
 7. Publishes the `.nupkg` + `.snupkg` to **nuget.org** (only if
    `NUGET_API_KEY` is set — see below).
@@ -50,7 +52,7 @@ root; tag pushes only — it never runs on branches or PRs):
 | --- | --- | --- |
 | *(none)* | yes | `GITHUB_TOKEN` is provided by Actions automatically; it publishes to GitHub Packages and creates the Release. Nothing to configure. |
 | `NUGET_API_KEY` | optional | Enables nuget.org publishing. Create a key at [nuget.org/account/apikeys](https://www.nuget.org/account/apikeys) (package owner account, push scope), then add it under **Settings → Secrets and variables → Actions** ([guide](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions)). While absent, the nuget.org step skips itself; no failure, no other change. |
-| `NPM_TOKEN` | optional | Enables npm registry publishing (issue #109). Create an [access token](https://docs.npmjs.com/creating-and-viewing-access-tokens) (Granular, read-write, packages `com.ambiguous-interactive.*`) on an npm account that owns the package names, then add it as the `NPM_TOKEN` Actions secret. While absent, the npm step skips itself; no failure, no other change. |
+| `NPM_TOKEN` | optional | Enables npm registry publishing (issue #109). Create an [access token](https://docs.npmjs.com/creating-and-viewing-access-tokens) with read-write publish rights — for a fresh publisher the simplest is a classic **Automation** token (it publishes from CI and bypasses 2FA prompts); a Granular token restricted to specific packages can only be scoped after the names exist on npm. Add it as the `NPM_TOKEN` Actions secret. While absent, the npm step skips itself; no failure, no other change. |
 
 ## Cutting a release
 
@@ -100,8 +102,7 @@ version coupling is a reviewed change that lands **before** the tag.
   per [GitHub's package auth rules](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry)).
 - If `NUGET_API_KEY` was set, the package is live on nuget.org within a
   few minutes of the push step.
-- If `NPM_TOKEN` was set, the nine UPM packages are live on
-  [npmjs.com](https://www.npmjs.com/package/com.ambiguous-interactive.signalfish)
+- If `NPM_TOKEN` was set, the nine UPM packages are live on npmjs.com
   within a few minutes; Unity users resolve them through the package
   manager UI (see "Discovery: npm + OpenUPM" below).
 - The released package is now the **API-compat baseline**: every PR's
@@ -137,11 +138,13 @@ break ships, remove the stale entries — the new baseline covers them.
   The workflow uses `--skip-duplicate`, so this is reported but not fatal;
   NuGet package versions are immutable — never reuse a tag for different
   bits. Fix the version and cut a new tag.
-- **npm publish fails with 403** — that exact package version already
-  exists on npm; versions are immutable. The workflow skips such
-  versions via a registry lookup first, so a 403 means the lookup
-  raced a concurrent publish of the same version — benign for
-  identical bits, fatal otherwise: fix the version and cut a new tag.
+- **npm publish fails with 403** — the exact version already exists on
+  npm (versions are immutable; the workflow skips those via a registry
+  lookup first, so a 403 usually means something else): the token lacks
+  publish permission for that package name (typical on the very first
+  publish — check the token type and scopes), or the account enforces
+  2FA and the token cannot bypass it (Automation tokens can; see
+  "One-time setup").
 - **snupkg missing from GitHub Packages** — by design: GitHub Packages has
   no symbol endpoint. Symbols ride the Release assets (and nuget.org when
   enabled).
@@ -165,9 +168,10 @@ find and resolve the packages:
   from the next tag on, each package publishes under its UPM id (for
   example `com.ambiguous-interactive.signalfish`) and Unity's package
   manager resolves it by name.
-- **OpenUPM**: one-time, manual. Submit the repo on
-  [openupm.com](https://openupm.com/repos/add/) while signed in to
-  GitHub; OpenUPM's upstream resolver then serves the packages from
-  this repo's tag tree — no token, no workflow, and the existing
-  version-coupling gates keep the fleet consistent. No repo change is
-  needed or planned for this lane.
+- **OpenUPM**: one-time, manual, per package — a submission adds one
+  package name, and a multi-package repo like this one submits them
+  one by one ([adding a UPM package](https://openupm.com/docs/adding-upm-package.html);
+  signed in to GitHub). OpenUPM's build pipeline then serves the
+  packages from this repo's tag tree — no token, no workflow change —
+  and its rule that a tag's version must match each `package.json` is
+  already enforced here by the version-coupling gates.

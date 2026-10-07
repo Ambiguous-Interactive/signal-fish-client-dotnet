@@ -169,9 +169,8 @@ function New-PackageTarball {
 
     $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("upmpack-" + [System.Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
-    # npm/UPM tarball layout: entries must root at a 'package/' directory
-    # (what npm pack emits and npm publish and UPM's tarball installer
-    # expect), so the package contents stage under package/.
+    # npm pack layout: entries root at package/ (required by Unity's
+    # tarball installer).
     $stagePackage = Join-Path $stage 'package'
     New-Item -ItemType Directory -Path $stagePackage -Force | Out-Null
     try {

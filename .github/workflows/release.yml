@@ -113,14 +113,21 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/pack-unity-packages.ps1 -OutDir dist
 
-      # Issue #109: the UPM fleet is an npm package fleet. The dry-run
-      # (no auth needed) fails the release before anything publishes if
-      # a tarball is not npm-publishable; the real publish below is
-      # opt-in via the NPM_TOKEN secret.
+      # Issue #109: the UPM fleet is an npm package fleet. Two checks
+      # fail the release before anything publishes:
+      # - the layout greps pin the npm pack shape (package/package.json
+      #   at the root, no './' entries): npm publish tolerates other
+      #   shapes, Unity's tarball installer does not;
+      # - the dry-run (no auth needed) rejects tarballs npm cannot
+      #   publish at all. The real publish below is opt-in via
+      #   NPM_TOKEN.
       - name: Validate UPM tarballs publish to npm
         run: |
           for tgz in dist/*.tgz; do
-            npm publish "$tgz" --dry-run > /dev/null
+            listing=$(tar -tzf "$tgz")
+            echo "$listing" | grep -qx 'package/package.json'
+            ! echo "$listing" | grep -q '^\./'
+            npm publish "$tgz" --dry-run > /dev/null 2>&1
             echo "npm-publishable: $tgz"
           done
 
@@ -156,8 +163,7 @@ jobs:
       # the packages from the registry (discovery). Opt-in: runs only
       # when the NPM_TOKEN secret is populated, same shape as nuget.org
       # above. Versions are immutable on npm too, so each package is
-      # skipped when that exact version already exists (the registry
-      # read is anonymous; only the publish needs the token).
+      # skipped when that exact version already exists.
       - name: Publish UPM packages to npm
         if: env.NPM_TOKEN != ''
         run: |

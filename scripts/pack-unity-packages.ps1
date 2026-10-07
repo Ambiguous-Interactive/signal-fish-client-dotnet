@@ -21,8 +21,8 @@
     pack into a fresh directory when that matters).
 
     Every tarball follows the npm pack layout: entries root at a
-    'package/' directory (no './' entries), which is what npm publish
-    and UPM's tarball installer expect (issue #109).
+    'package/' directory (no './' entries) — the shape npm pack emits
+    and Unity's tarball installer requires (issue #109).
 
 .PARAMETER OutDir
     Directory the .tgz files are written to. Created when missing.
@@ -169,9 +169,8 @@ foreach ($package in $fleet) {
     if (Test-Path -LiteralPath $tarball) {
         Remove-Item -LiteralPath $tarball -Force
     }
-    # npm/UPM tarball layout: entries must root at a 'package/' directory
-    # (what npm pack emits and npm publish and UPM's tarball installer
-    # expect). The adapter directory is staged verbatim under package/.
+    # npm pack layout: entries root at package/ (required by Unity's
+    # tarball installer; see .DESCRIPTION for the full contract).
     $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("upmstage-" + [System.Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
     try {
