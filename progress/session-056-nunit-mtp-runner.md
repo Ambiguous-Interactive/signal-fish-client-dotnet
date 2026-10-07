@@ -61,5 +61,15 @@ runner direction without a 2,552-assert review.
   TRX + cobertura produced in `TestResults/`. E2E discovery listed its
   fixtures under MTP (live run is the e2e lane's job in CI). Fast lane
   re-measured warm: ~22 s full / ~8 s with `-Filter`.
+- **CI catch, swept**: the first PR run failed only the e2e lane —
+  `run-e2e.ps1`'s bare `--nologo` is forwarded by the native
+  `dotnet test` to the test app, which (at the pinned MTP 2.3.3)
+  registers only `--no-banner` and rejects the alias with exit 5.
+  Local bisect isolated it (no-args → 2 = real failures; `--nologo` →
+  5; `--report-trx` → 2). Fixed by moving banner suppression after
+  `--` as `--no-banner`; swept the repo — every other `--nologo` sits
+  on `dotnet build`, which owns the flag. `--report-trx` verified
+  producing the TRX artifact locally.
 - Convention lints (all six), CSharpier, `lint-llm-instructions`,
-  `lint-file-sizes`, tooling builds — green locally.
+  `lint-file-sizes`, tooling builds, all 18 script self-tests — green
+  locally.

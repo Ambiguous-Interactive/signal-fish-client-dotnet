@@ -127,10 +127,13 @@ try {
 
     $env:SIGNALFISH_E2E_URL = $ServerUrl
     Write-Host "Running the conformance suite against $ServerUrl..."
+    # MTP mode: extension/app options travel after `--`. The app knows
+    # `--no-banner` (a bare `--nologo` is forwarded to the app and
+    # rejected as unknown by the MTP version pinned here).
     dotnet test (Join-Path $repoRoot 'tests/SignalFish.Client.E2E') `
-        -c Release --nologo `
+        -c Release `
         --results-directory (Join-Path $repoRoot 'tests/SignalFish.Client.E2E/TestResults') `
-        -- --report-trx @DotNetTestArgs
+        -- --no-banner --report-trx @DotNetTestArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Conformance suite failed (exit $LASTEXITCODE)."
     }
