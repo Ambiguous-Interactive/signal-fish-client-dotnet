@@ -7,12 +7,14 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'scripts/**'
+      - 'global.json'
       - '.github/workflows/e2e.yml'
   pull_request:
     paths:
       - 'src/**'
       - 'tests/**'
       - 'scripts/**'
+      - 'global.json'
       - '.github/workflows/e2e.yml'
 
 concurrency:
@@ -56,7 +58,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
+          # The MTP mode of dotnet test (global.json) needs the .NET 10
+          # SDK; the E2E project still targets net8.0.
+          dotnet-version: 10.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v6

@@ -10,15 +10,16 @@
     the unit suite once: this script builds just the test project (which
     builds the library) for one framework in Debug without restore and
     without Roslyn analyzers (the gate and CI still run them), then runs
-    the suite via `dotnet vstest` on the built assembly (no msbuild in the
-    test step).
+    the suite by executing the built Microsoft.Testing.Platform test
+    application directly (no msbuild, no vstest console in the test step).
 
     By default the `TransportLoopback` fixture (real-socket WebSocket
     round-trips, ~5 s of the suite) skips itself via a fast-lane marker
     variable; pass -IncludeLoopback to run it. Everything always runs in
     the full `dotnet test` gate.
 
-    Measured cost on a warm tree: ~9-12 s end to end (~24 s before).
+    Measured cost on a warm tree: ~22 s end to end (~8 s with -Filter);
+    the Debug build dominates the suite's own ~1-16 s.
 
     This is the iteration aid, not the gate: run the full `dotnet test`,
     `scripts/lint-conventions.ps1`, and `dotnet tool run csharpier -- check .`
@@ -108,10 +109,14 @@ if (-not (Test-Path $testDll))
     throw "Built test assembly not found: $testDll"
 }
 
-$testArgs = @('vstest', $testDll, '--nologo')
+# The suite runs on Microsoft.Testing.Platform (global.json): the built
+# test project is an executable, so the fastest lane drives it directly
+# (`--filter` keeps the vstest TestCaseFilter syntax — the NUnit adapter
+# translates it).
+$testArgs = @('exec', $testDll, '--no-banner')
 if ($Filter)
 {
-    $filterArg = "--TestCaseFilter:$Filter"
+    $filterArg = "--filter:$Filter"
     $testArgs += $filterArg
 }
 
@@ -119,7 +124,7 @@ Write-Host "== Testing $Framework =="
 & dotnet @testArgs
 if ($LASTEXITCODE -ne 0)
 {
-    throw 'dotnet vstest failed.'
+    throw 'Test run failed.'
 }
 
 $stopwatch.Stop()

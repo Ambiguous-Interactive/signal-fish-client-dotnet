@@ -9,6 +9,7 @@ on:
       - 'scripts/**'
       - 'unity/**'
       - '.config/**'
+      - 'global.json'
       - 'Directory.Build.props'
       - 'Directory.Build.targets'
       - '.editorconfig'
@@ -22,6 +23,7 @@ on:
       - 'scripts/**'
       - 'unity/**'
       - '.config/**'
+      - 'global.json'
       - 'Directory.Build.props'
       - 'Directory.Build.targets'
       - '.editorconfig'
@@ -205,21 +207,23 @@ jobs:
         run: >
           dotnet test tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj
           --no-build -c Release -f ${{ matrix.framework }}
-          --logger trx --results-directory TestResults
-          --collect:"XPlat Code Coverage"
+          --results-directory TestResults
+          -- --report-trx --coverlet --coverlet-output-format cobertura
+          --coverlet-include-test-assembly
 
       - name: Test
         if: matrix.os != 'ubuntu-latest' || matrix.framework != 'net8.0'
         run: >
           dotnet test tests/SignalFish.Client.Tests/SignalFish.Client.Tests.csproj
           --no-build -c Release -f ${{ matrix.framework }}
-          --logger trx --results-directory TestResults
+          --results-directory TestResults
+          -- --report-trx
 
       - name: Generate coverage report
         if: matrix.os == 'ubuntu-latest' && matrix.framework == 'net8.0'
         run: >
           dotnet tool run reportgenerator
-          -reports:TestResults/**/coverage.cobertura.xml
+          -reports:TestResults/**/coverage.cobertura*.xml
           -targetdir:coverage-report
           -reporttypes:HtmlInline_AzurePipelines\;Cobertura
 
