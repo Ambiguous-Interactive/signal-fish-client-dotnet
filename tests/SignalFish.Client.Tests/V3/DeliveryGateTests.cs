@@ -22,6 +22,13 @@ namespace SignalFish.Client.Tests.V3
         /// <summary>The canonical v3 server advertisement (the golden ProtocolInfo).</summary>
         private static readonly string[] CanonicalFormats = { "json", "message_pack" };
 
+        private static readonly DeliveryViolationPolicy[] AllPolicies =
+        {
+            DeliveryViolationPolicy.Quarantine,
+            DeliveryViolationPolicy.Observe,
+            DeliveryViolationPolicy.Disconnect,
+        };
+
         [Test]
         public void V2RoomJoinedWithAnUnstampedRosterIsAccepted()
         {
@@ -246,6 +253,144 @@ namespace SignalFish.Client.Tests.V3
             Assert.That(verdict.Diagnostic, Is.Not.Null);
         }
 
+        [TestCaseSource(nameof(AllPolicies))]
+        public void PreNegotiationDowngradeNoticeIsAcceptedNonFatally(
+            DeliveryViolationPolicy policy
+        )
+        {
+            /*
+                Server-pinned handshake contract: an unsupported requested
+                game_data_format is refused with exactly one
+                Error(UNSUPPORTED_GAME_DATA_FORMAT) frame before
+                Authenticated, and the session downgrades to JSON. The
+                notice is a benign advisory, not a delivery violation —
+                even under the strictest policy.
+            */
+            DeliveryGate gate = new DeliveryGate(policy);
+            gate.NoteRequestedFormat("rkyv");
+
+            GateVerdict notice = gate.ObserveUnsupportedFormatError();
+            Assert.That(notice.Suppress, Is.False, notice.Diagnostic);
+            Assert.That(notice.Teardown, Is.False);
+            Assert.That(notice.Diagnostic, Is.Null);
+        }
+
+        [Test]
+        public void DowngradeNoticePinsJsonOverTheRequestedToken()
+        {
+            /*
+                The notice means the session IS JSON ("pinned wire
+                order"): a later advertisement naming the refused token
+                must not re-select it — the notice outranks the request.
+            */
+            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            gate.NoteRequestedFormat("message_pack");
+            _ = gate.ObserveUnsupportedFormatError();
+
+            Assert.That(gate.OnProtocolInfo(3, CanonicalFormats, out _), Is.True);
+            Assert.That(gate.NegotiatedEncoding, Is.EqualTo(GameDataFormatToken.Json));
+        }
+
+        [TestCaseSource(nameof(DowngradeRepeatRefusals))]
+        public void RepeatPreNegotiationDowngradeNoticeRefusesPerPolicy(
+            DeliveryViolationPolicy policy,
+            bool expectSuppress,
+            bool expectTeardown
+        )
+        {
+            /*
+                The server sends at most one notice per connection (the
+                handshake runs once); a repeat is out of contract and
+                refuses per the violation policy.
+            */
+            DeliveryGate gate = new DeliveryGate(policy);
+            _ = gate.ObserveUnsupportedFormatError();
+
+            GateVerdict repeat = gate.ObserveUnsupportedFormatError();
+            Assert.That(repeat.Suppress, Is.EqualTo(expectSuppress));
+            Assert.That(repeat.Teardown, Is.EqualTo(expectTeardown));
+            Assert.That(repeat.Diagnostic, Is.Not.Null);
+        }
+
+        [Test]
+        public void ObserveTerminalClearsTheDowngradeNoticeLatch()
+        {
+            /*
+                The notice is per physical connection: the fresh
+                connection's re-handshake may legitimately downgrade
+                again, so the latch cannot survive a terminal outcome.
+            */
+            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Disconnect);
+            _ = gate.ObserveUnsupportedFormatError();
+            gate.ObserveTerminal();
+
+            GateVerdict fresh = gate.ObserveUnsupportedFormatError();
+            Assert.That(fresh.Suppress, Is.False, fresh.Diagnostic);
+            Assert.That(fresh.Teardown, Is.False);
+        }
+
+        [Test]
+        public void PipelineHandshakeDowngradeSettlesJsonAndKeepsFlowing()
+        {
+            /*
+                The server's pinned handshake order for an unsupported
+                requested game_data_format: the downgrade notice, then
+                Authenticated, then ProtocolInfo (the gate is
+                Authenticated-blind, so the notice → negotiation pairing
+                is what this pins; the notice frame is hand-rolled — no
+                golden fixture predates the server's pin). The
+                translation must surface the notice as an ordinary
+                ServerError (no violation), settle JSON against an
+                advertisement that still names the refused token, and
+                keep the session facts flowing.
+            */
+            byte[] notice = Encoding.UTF8.GetBytes(
+                "{\"type\": \"Error\", \"data\": {\"message\": \"Requested game data"
+                    + " format 'message_pack' is not supported. Server supports:"
+                    + " json, message_pack. Falling back to JSON.\", "
+                    + "\"error_code\": \"UNSUPPORTED_GAME_DATA_FORMAT\"}}"
+            );
+            byte[] authenticated = Encoding.UTF8.GetBytes(
+                GoldenFixtures.ReadFirstLineOfType("v2-server-messages.jsonl", "Authenticated")
+            );
+            byte[] negotiation = Encoding.UTF8.GetBytes(
+                GoldenFixtures.ReadFirstLineOfType("v3-server-messages.jsonl", "ProtocolInfo")
+            );
+
+            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            SignalFishStateMachine machine = new SignalFishStateMachine();
+            gate.NoteRequestedFormat("message_pack");
+            FramePipeline.Translate(
+                MakeFrame(notice),
+                notice.Length,
+                gate,
+                machine,
+                out FrameTranslation noticed
+            );
+            Assert.That(noticed.HasViolation, Is.False, noticed.Violation.Diagnostic);
+            Assert.That(noticed.HasEvent, Is.True);
+            Assert.That(noticed.Event.Kind, Is.EqualTo(PollEventKind.ServerError));
+
+            FramePipeline.Translate(
+                MakeFrame(authenticated),
+                authenticated.Length,
+                gate,
+                machine,
+                out FrameTranslation handshake
+            );
+            Assert.That(handshake.HasViolation, Is.False, handshake.Violation.Diagnostic);
+
+            FramePipeline.Translate(
+                MakeFrame(negotiation),
+                negotiation.Length,
+                gate,
+                machine,
+                out FrameTranslation negotiated
+            );
+            Assert.That(negotiated.HasViolation, Is.False, negotiated.Violation.Diagnostic);
+            Assert.That(gate.NegotiatedEncoding, Is.EqualTo(GameDataFormatToken.Json));
+        }
+
         [Test]
         public void RoomLeftResetsTheRoomAndTheLatch()
         {
@@ -466,6 +611,19 @@ namespace SignalFish.Client.Tests.V3
                 sentToYou: 3,
                 droppedForYou: 0,
                 backpressureEvents: 0
+            );
+        }
+
+        private static IEnumerable<TestCaseData> DowngradeRepeatRefusals()
+        {
+            yield return new TestCaseData(DeliveryViolationPolicy.Quarantine, true, false).SetName(
+                "RepeatPreNegotiationDowngradeNoticeRefusesPerPolicy.Quarantine.Suppresses"
+            );
+            yield return new TestCaseData(DeliveryViolationPolicy.Observe, false, false).SetName(
+                "RepeatPreNegotiationDowngradeNoticeRefusesPerPolicy.Observe.Surfaces"
+            );
+            yield return new TestCaseData(DeliveryViolationPolicy.Disconnect, true, true).SetName(
+                "RepeatPreNegotiationDowngradeNoticeRefusesPerPolicy.Disconnect.TearsDown"
             );
         }
 

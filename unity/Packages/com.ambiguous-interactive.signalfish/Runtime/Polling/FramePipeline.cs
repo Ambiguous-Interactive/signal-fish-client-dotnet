@@ -354,10 +354,12 @@ namespace SignalFish.Client.Polling
         /// layer. <c>ProtocolInfo</c> settles the negotiated version (the
         /// per-connection engine swap); join/reconnect snapshots are the
         /// authoritative rebaselines; room exits reset the cursors; the
-        /// unsupported-format error arms its causality check. False means
-        /// the frame's payload failed the typed re-decode — the caller
-        /// surfaces the routed-fact wire violation instead (<paramref
-        /// name="verdict"/> is then a default, proceed verdict).
+        /// unsupported-format error is the pre-negotiation handshake
+        /// downgrade notice or arms the post-negotiation causality check.
+        /// False means the frame's payload failed the typed re-decode —
+        /// the caller surfaces the routed-fact wire violation instead
+        /// (<paramref name="verdict"/> is then a default, proceed
+        /// verdict).
         /// </summary>
         private static bool FeedSessionFact(
             DeliveryGate gate,

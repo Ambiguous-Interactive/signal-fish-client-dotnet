@@ -65,6 +65,7 @@ namespace SignalFish.Client.V3
         private bool _protocolInfoSeen;
         private bool _protocolV3;
         private bool _quarantined;
+        private bool _downgradeNoticeSeen;
         private string? _requestedFormatToken;
         private GameDataFormatToken _requestedFormat;
         private GameDataFormatToken _negotiatedFormat = GameDataFormatToken.Json;
@@ -87,6 +88,11 @@ namespace SignalFish.Client.V3
         /// <c>Authenticate</c> is queued, and the read side only acts on
         /// it before that frame's <c>ProtocolInfo</c> response can
         /// arrive, so the pairing is ordered by the wire conversation.
+        /// The receive loop itself writes the same fields when a
+        /// downgrade notice pins the session to JSON; in-contract flows
+        /// never interleave the two writers (one <c>Authenticate</c> per
+        /// connection precedes any inbound notice), and a torn
+        /// interleaving resolves toward the JSON default either way.
         /// </remarks>
         internal void NoteRequestedFormat(string? gameDataFormat)
         {
@@ -223,6 +229,7 @@ namespace SignalFish.Client.V3
             _protocolInfoSeen = false;
             _negotiatedFormat = GameDataFormatToken.Json;
             _requestedFormatToken = null;
+            _downgradeNoticeSeen = false;
         }
 
         /// <summary>Feeds a room snapshot (join) as the authoritative sender baseline.</summary>
@@ -365,11 +372,41 @@ namespace SignalFish.Client.V3
         }
 
         /// <summary>
-        /// Feeds an <c>Error(UNSUPPORTED_GAME_DATA_FORMAT)</c> advisory:
-        /// accepted only after a causal report armed the expectation.
+        /// Feeds an <c>Error(UNSUPPORTED_GAME_DATA_FORMAT)</c> frame.
+        /// Before <c>ProtocolInfo</c> settles the negotiation, the frame
+        /// is the server's pinned handshake downgrade notice (an
+        /// unsupported requested <c>game_data_format</c>, sent before
+        /// <c>Authenticated</c>): accepted exactly once — it pins the
+        /// session to JSON by clearing the requested token — and fatal
+        /// per policy on a repeat. After the negotiation it is the v3
+        /// relay's unsupported-format advisory, accepted only after a
+        /// causal report armed the expectation.
         /// </summary>
         internal GateVerdict ObserveUnsupportedFormatError()
         {
+            if (!_protocolInfoSeen)
+            {
+                if (_downgradeNoticeSeen)
+                {
+                    return Refuse(
+                        "delivery accountability violation: repeated"
+                            + " Error(UnsupportedGameDataFormat) handshake downgrade notice",
+                        baseline: false
+                    );
+                }
+
+                /*
+                    The notice outranks the request: the server pinned the
+                    session to JSON, so the refused token must not
+                    re-select at the ProtocolInfo resolution even if a
+                    broken server then advertises it.
+                */
+                _downgradeNoticeSeen = true;
+                _requestedFormatToken = null;
+                _requestedFormat = GameDataFormatToken.Json;
+                return default;
+            }
+
             return Settle(
                 _engine.ObserveUnsupportedFormatError(out string? diagnostic),
                 diagnostic
