@@ -58,9 +58,10 @@ namespace SignalFish.Client.Tests.Async
             (SignalFishClient client, FakeTransport transport, VirtualClock _) = BuildTimed();
             await client.ConnectAsync(Endpoint());
 
-            InvalidOperationException rejected = Assert.ThrowsAsync<InvalidOperationException>(
-                (Func<Task>)(async () => await client.ConnectAsync(Endpoint()))
-            );
+            InvalidOperationException rejected =
+                await Assert.ThrowsAsync<InvalidOperationException>(
+                    (Func<Task>)(async () => await client.ConnectAsync(Endpoint()))
+                );
             Assert.That(
                 rejected.Message,
                 Does.Contain("ConnectAsync"),

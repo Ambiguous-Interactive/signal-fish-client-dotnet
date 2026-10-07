@@ -273,7 +273,7 @@ namespace SignalFish.Client.Tests.Async
                 even while the graceful leave is still on the wire.
             */
             Assert.Throws<ObjectDisposedException>((Action)(() => client.SendGameData(Payload(0))));
-            Assert.ThrowsAsync<ObjectDisposedException>(
+            await Assert.ThrowsAsync<ObjectDisposedException>(
                 (Func<Task>)(async () => await client.SendGameDataReliableAsync(Payload(1)))
             );
 

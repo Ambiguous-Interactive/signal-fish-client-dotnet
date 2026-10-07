@@ -22,7 +22,7 @@ never ship with the library:
 
 | Use | Package |
 |-----|---------|
-| Unit tests | NUnit, NUnit3TestAdapter, NUnit.Analyzers, Microsoft.NET.Test.Sdk, coverlet.collector, FsCheck.NUnit |
+| Unit tests | NUnit, NUnit3TestAdapter, NUnit.Analyzers, Microsoft.NET.Test.Sdk, coverlet.collector, FsCheck |
 | Fuzz tests | SharpFuzz |
 | Benchmarks | BenchmarkDotNet |
 
