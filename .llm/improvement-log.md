@@ -9,31 +9,39 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
-## 2026-10-07 - session 059: server-pinned downgrade-notice conformance
+## 2026-10-07 - session 060: join_only on the frozen JoinRoomMessage surface
 
-- Trigger: a protocol-behavior change (mandatory loop).
-- Evidence: red `fast-check -Filter Downgrade` — 4 failed (the
-  requested token re-selected `message_pack` after the notice; a repeat
-  pre-negotiation notice silently accepted), then 942/942 green on both
-  TFMs. Server contract: `signal-fish-server` PR #742 (one
-  `Error(UNSUPPORTED_GAME_DATA_FORMAT)` before `Authenticated`, JSON
-  pinned, repeat fatal).
-- Findings: the gate accepted the handshake notice only by coincidence
-  of engine-swap timing (the initial v2-mode engine short-circuit
-  predates the pinned contract). Upstream client-contract pins must be
-  diffed against this client explicitly.
-- Applied: explicit pre-negotiation clause in
-  `DeliveryGate.ObserveUnsupportedFormatError` (accept-once, JSON pin,
-  repeat refuses per policy, latch reset in `ObserveTerminal`); 5 tests
-  (9 cases); pinned contract in `protocol-quick-reference.md`; Unity
-  mirror re-synced.
-- Open: none — watch the server repo for further client-contract pins.
+- Trigger: a protocol + public API surface change (mandatory loop); the
+  additive-field shape took three compile attempts.
+- Evidence: an in-place 8th defaulted ctor parameter removes the
+  v0.1.0-baseline ctor (api-compat gate); a second fully-defaulted
+  public ctor makes every previously-fine call ambiguous (CS0121 — C#
+  has no fewer-optional-parameters tie-break for constructors). The
+  working shape — get-only property + public fluent copy
+  (`AsJoinOnly()`, guards the server's INVALID_INPUT pairing at the
+  call site) + internal full ctor for decode — passed api-compat
+  untouched, 955/955 tests. The adversarial round also caught a
+  pre-existing wrong claim being cemented: the XML doc's wire order
+  said `game_name, player_name, room_code`; the writer and the server
+  serde emit `room_code` before `player_name`.
+- Findings: (1) extending a frozen-surface message struct: never touch
+  the public ctor and never add a second defaulted one — get-only
+  property, internal full ctor, fluent copy guard. (2) When extending
+  a doc sentence, re-verify its existing claims: an SSOT-chain error
+  hides inside prose until someone touches the line.
+- Applied: the `AsJoinOnly` shape shipped; the wire-order doc
+  corrected in both library copies. Open: the same shape decision
+  applies to the pending ProtocolInfo additive fields
+  (`implementation_version`, `game_data_limits` — #117).
 
-## 2026-10-07 - session 057: #111 decision (announcement-only pass)
+## 2026-10-07 - sessions 057/059 (stubs)
 
-(Pruned 2026-10-07: findings were none by design — a locked-decision
-edit; the rationale lives in `project-decisions.md` and
-`progress/session-057-tunit-decision.md`, shipped in PR #113.)
+(Both pruned 2026-10-07: 057's findings were none by design — a locked-
+decision edit; rationale in `project-decisions.md` and
+`progress/session-057-tunit-decision.md`, shipped in PR #113. 059's
+downgrade-notice contract graduated into
+`DeliveryGate.ObserveUnsupportedFormatError`, five delivery-gate tests,
+and the quick reference; the server-watch item moved to PLAN.md.)
 
 ## 2026-10-06 - session 053: M9.5 release checklist (wrapped Write-Error output)
 

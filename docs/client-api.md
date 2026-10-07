@@ -120,7 +120,7 @@ never wedges a fence.
 | Method | Payload | Answer events |
 |---|---|---|
 | `SendAuthenticate(in AuthenticateMessage)` | App identity + v3 advertisement | `Authenticated`, `ProtocolInfo` |
-| `SendJoinRoom(in JoinRoomMessage)` | Game name, player name, optional room code / limits / password | `RoomJoined` or `RoomJoinFailed` |
+| `SendJoinRoom(in JoinRoomMessage)` | Game name, player name, optional room code / limits / password; `.AsJoinOnly()` pins a code join to an existing room | `RoomJoined` or `RoomJoinFailed` |
 | `SendJoinAsSpectator(in JoinAsSpectatorMessage)` | Game name, room code, spectator name, optional password | `SpectatorJoined` or `SpectatorJoinFailed` |
 | `SendReconnect(in ReconnectMessage)` | Player id, room id, auth token | `Reconnected` or `ReconnectionFailed` |
 | `SendPlayerReady()` | — | `LobbyStateChanged` |

@@ -737,9 +737,9 @@ namespace SignalFish.Client.Protocol
     /// a room. <see cref="GameName"/> and <see cref="PlayerName"/> are
     /// required; everything else is optional (<see langword="null"/> omits
     /// the field). Omitting <see cref="RoomCode"/> creates a generated code.
-    /// Wire order: <c>game_name</c>, <c>player_name</c>, <c>room_code</c>,
+    /// Wire order: <c>game_name</c>, <c>room_code</c>, <c>player_name</c>,
     /// <c>max_players</c>, <c>supports_authority</c>,
-    /// <c>relay_transport</c>, <c>password</c>.
+    /// <c>relay_transport</c>, <c>password</c>, <c>join_only</c>.
     /// </summary>
     public readonly struct JoinRoomMessage : IEquatable<JoinRoomMessage>
     {
@@ -764,6 +764,20 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the password of an authority-sealed room.</summary>
         public string? Password { get; }
 
+        /// <summary>
+        /// Gets collision-safe admission (server 0.10.0, issue #625). With
+        /// <see langword="true"/>, a join naming an explicit
+        /// <see cref="RoomCode"/> that does not resolve is refused
+        /// <c>ROOM_NOT_FOUND</c> and never creates a room — a stale
+        /// directory entry surfaces as a refusal instead of silently
+        /// opening a duplicate room. Set it with <see cref="AsJoinOnly"/>;
+        /// the server refuses a codeless <c>join_only</c> join as
+        /// <c>INVALID_INPUT</c>. A server older than <c>join_only</c>
+        /// ignores the flag and creates the room; treat an unexpected
+        /// <c>RoomJoined</c> as version skew and re-resolve.
+        /// </summary>
+        public bool? JoinOnly { get; }
+
         /// <summary>Initializes a new <see cref="JoinRoomMessage"/> payload.</summary>
         public JoinRoomMessage(
             string gameName,
@@ -774,6 +788,27 @@ namespace SignalFish.Client.Protocol
             string? relayTransport = null,
             string? password = null
         )
+            : this(
+                gameName,
+                playerName,
+                roomCode,
+                maxPlayers,
+                supportsAuthority,
+                relayTransport,
+                password,
+                joinOnly: null
+            ) { }
+
+        internal JoinRoomMessage(
+            string gameName,
+            string playerName,
+            string? roomCode,
+            uint? maxPlayers,
+            bool? supportsAuthority,
+            string? relayTransport,
+            string? password,
+            bool? joinOnly
+        )
         {
             GameName = gameName;
             PlayerName = playerName;
@@ -782,6 +817,41 @@ namespace SignalFish.Client.Protocol
             SupportsAuthority = supportsAuthority;
             RelayTransport = relayTransport;
             Password = password;
+            JoinOnly = joinOnly;
+        }
+
+        /// <summary>
+        /// Returns a copy that must not create a room: with
+        /// <see cref="JoinOnly"/> set, an explicit <see cref="RoomCode"/>
+        /// that does not resolve is refused <c>ROOM_NOT_FOUND</c> instead
+        /// of silently opening a duplicate room (server 0.10.0, issue
+        /// #625). A join without <see cref="RoomCode"/> always creates a
+        /// generated code, so there is nothing to pin — the copy is
+        /// refused with this exception. A server older than
+        /// <c>join_only</c> ignores the flag and creates the room; treat
+        /// an unexpected <c>RoomJoined</c> as version skew and re-resolve.
+        /// </summary>
+        public JoinRoomMessage AsJoinOnly()
+        {
+            if (RoomCode is null)
+            {
+                throw new ArgumentException(
+                    "A join-only join must set \"room_code\" (a codeless join"
+                        + " always creates a generated code).",
+                    nameof(RoomCode)
+                );
+            }
+
+            return new JoinRoomMessage(
+                GameName,
+                PlayerName,
+                RoomCode,
+                MaxPlayers,
+                SupportsAuthority,
+                RelayTransport,
+                Password,
+                joinOnly: true
+            );
         }
 
         /// <inheritdoc />
@@ -792,7 +862,8 @@ namespace SignalFish.Client.Protocol
             && MaxPlayers == other.MaxPlayers
             && SupportsAuthority == other.SupportsAuthority
             && AuthenticateMessage.NullableStringEquals(RelayTransport, other.RelayTransport)
-            && AuthenticateMessage.NullableStringEquals(Password, other.Password);
+            && AuthenticateMessage.NullableStringEquals(Password, other.Password)
+            && JoinOnly == other.JoinOnly;
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is JoinRoomMessage other && Equals(other);
@@ -808,6 +879,7 @@ namespace SignalFish.Client.Protocol
             hash.Add(SupportsAuthority);
             hash.Add(RelayTransport);
             hash.Add(Password);
+            hash.Add(JoinOnly);
             return hash.ToHashCode();
         }
 
@@ -858,6 +930,7 @@ namespace SignalFish.Client.Protocol
                 password = null;
             uint? maxPlayers = null;
             bool? supportsAuthority = null;
+            bool? joinOnly = null;
 
             while (state == JsonMemberState.Member)
             {
@@ -948,6 +1021,21 @@ namespace SignalFish.Client.Protocol
                         return false;
                     }
                 }
+                else if (scanner.KeyIs(keyRaw, "join_only"))
+                {
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        joinOnly = null;
+                    }
+                    else if (!scanner.TryReadBoolean(valueRaw, out bool joinOnlyValue))
+                    {
+                        return false;
+                    }
+                    else
+                    {
+                        joinOnly = joinOnlyValue;
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -964,7 +1052,8 @@ namespace SignalFish.Client.Protocol
                 maxPlayers,
                 supportsAuthority,
                 relayTransport,
-                password
+                password,
+                joinOnly
             );
             return true;
         }

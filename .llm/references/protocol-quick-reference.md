@@ -53,8 +53,13 @@ Client                              Server
 ```
 
 - `JoinRoom` without `room_code` creates a room (6-char code); with a code
-  it joins (or creates with that code). `Authenticate` is required first in
-  allowlist mode, optional in open mode.
+  it joins (or creates with that code). Optional `join_only: true` pins a
+  code join to an existing room: an unknown code is refused
+  `ROOM_NOT_FOUND`, never creates (collision-safe directory joins;
+  server 0.10.0). `join_only` without `room_code` is refused
+  `INVALID_INPUT`; an older server ignores the flag — treat an
+  unexpected `RoomJoined` as version skew. `Authenticate` is required
+  first in allowlist mode, optional in open mode.
 - Readiness never auto-starts; `StartGame` is authority-gated.
 - Mandatory handling: `Error`/`*Failed` with `error_code`, `Ping`/`Pong`
   heartbeat, close-code reactions.
