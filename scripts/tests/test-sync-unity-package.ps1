@@ -96,13 +96,14 @@ try {
     $tarball = Join-Path $dist 'com.ambiguous-interactive.signalfish-0.1.0.tgz'
     Assert-True (Test-Path -LiteralPath $tarball) 'tarball is named after the package and version (.tgz for UPM)'
     $listing = (tar -tzf $tarball) -join "`n"
-    Assert-True ($listing -match 'package\.json') 'tarball contains package.json'
-    Assert-True ($listing -match 'link\.xml') 'tarball contains link.xml'
-    Assert-True ($listing -match 'Runtime/Core/A\.cs') 'tarball contains the fresh mirror'
+    Assert-True ($listing -match '(?m)^package/package\.json$') 'tarball roots package.json at package/ (npm pack layout)'
+    Assert-True ($listing -notmatch '(?m)^\./') 'tarball has no ./ entries'
+    Assert-True ($listing -match 'package/link\.xml') 'tarball contains link.xml'
+    Assert-True ($listing -match 'package/Runtime/Core/A\.cs') 'tarball contains the fresh mirror'
     Assert-True ($listing -notmatch 'Sub/B\.cs') 'tarball never resurrects removed sources'
-    Assert-True ($listing -match 'Samples~/PollingDriver/README\.md') 'tarball contains the samples'
-    Assert-True ($listing -match 'Runtime/SignalFish\.Client\.asmdef') 'tarball ships the hand-written Runtime asmdef'
-    Assert-True ($listing -match 'Plugins/WebGL/Test\.Plugin\.asmdef') 'tarball ships plugin asmdefs'
+    Assert-True ($listing -match 'package/Samples~/PollingDriver/README\.md') 'tarball contains the samples'
+    Assert-True ($listing -match 'package/Runtime/SignalFish\.Client\.asmdef') 'tarball ships the hand-written Runtime asmdef'
+    Assert-True ($listing -match 'package/Plugins/WebGL/Test\.Plugin\.asmdef') 'tarball ships plugin asmdefs'
 
     # 6. A dangling asmdef reference fails the pack: the tarball would not
     #    compile as a package (Unity resolves asmdef references by name).

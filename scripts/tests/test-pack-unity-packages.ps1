@@ -56,21 +56,26 @@ try {
     Assert-True (Test-Path -LiteralPath $fishnetTarball) 'second adapter tarball is named after the package and version'
 
     # 2. The core tarball is the sync -Pack staging: fresh mirror, hand-
-    #    written asmdef, samples.
+    #    written asmdef, samples — in the npm pack layout (entries root
+    #    at package/, no './' entries), which is what npm publish and
+    #    UPM's tarball installer both expect.
     $listing = (tar -tzf $coreTarball) -join "`n"
-    Assert-True ($listing -match 'package\.json') 'core tarball contains package.json'
-    Assert-True ($listing -match 'Runtime/Core/A\.cs') 'core tarball stages the fresh mirror'
-    Assert-True ($listing -match 'Runtime/SignalFish\.Client\.asmdef') 'core tarball ships the hand-written Runtime asmdef'
-    Assert-True ($listing -match 'Samples~/Demo/README\.md') 'core tarball contains the samples'
+    Assert-True ($listing -match '(?m)^package/package\.json$') 'core tarball roots package.json at package/'
+    Assert-True ($listing -notmatch '(?m)^\./') 'core tarball has no ./ entries'
+    Assert-True ($listing -match 'package/Runtime/Core/A\.cs') 'core tarball stages the fresh mirror'
+    Assert-True ($listing -match 'package/Runtime/SignalFish\.Client\.asmdef') 'core tarball ships the hand-written Runtime asmdef'
+    Assert-True ($listing -match 'package/Samples~/Demo/README\.md') 'core tarball contains the samples'
 
     # 3. An adapter tarball is the package directory verbatim: manifest,
     #    runtime sources, samples (UPM requires package.json at the root).
     $listing = (tar -tzf $coreAdapterTarball) -join "`n"
-    Assert-True ($listing -match 'package\.json') 'adapter tarball contains package.json at the root'
-    Assert-True ($listing -match 'Runtime/Adapter\.cs') 'adapter tarball contains the runtime sources'
-    Assert-True ($listing -match 'Samples~/Echo/README\.md') 'adapter tarball contains the samples'
+    Assert-True ($listing -match '(?m)^package/package\.json$') 'adapter tarball roots package.json at package/'
+    Assert-True ($listing -notmatch '(?m)^\./') 'adapter tarball has no ./ entries'
+    Assert-True ($listing -match 'package/Runtime/Adapter\.cs') 'adapter tarball contains the runtime sources'
+    Assert-True ($listing -match 'package/Samples~/Echo/README\.md') 'adapter tarball contains the samples'
     $listing = (tar -tzf $fishnetTarball) -join "`n"
-    Assert-True ($listing -match 'Runtime/Adapter\.cs') 'sample-less adapter tarball contains the runtime sources'
+    Assert-True ($listing -match '(?m)^package/package\.json$') 'sample-less adapter tarball roots package.json at package/'
+    Assert-True ($listing -match 'package/Runtime/Adapter\.cs') 'sample-less adapter tarball contains the runtime sources'
     Assert-True ($listing -notmatch 'Samples~') 'sample-less adapter ships no sample tree'
 
     # 4. A demo manifest under Samples~ is not a fleet member.
@@ -229,7 +234,9 @@ try {
             Assert-True (Test-Path -LiteralPath $tarball) "the $name tarball is present"
         }
         $listing = (tar -tzf (Join-Path $realDist "com.ambiguous-interactive.signalfish.transport.fishnet-$realVersion.tgz")) -join "`n"
-        Assert-True ($listing -match 'Runtime/FishNet/SignalFishFishNetTransport\.cs') 'the FishNet tarball ships the transport bridge'
+        Assert-True ($listing -match '(?m)^package/package\.json$') 'the real FishNet tarball roots package.json at package/'
+        Assert-True ($listing -notmatch '(?m)^\./') 'the real FishNet tarball has no ./ entries'
+        Assert-True ($listing -match 'package/Runtime/FishNet/SignalFishFishNetTransport\.cs') 'the FishNet tarball ships the transport bridge'
     }
     finally {
         Remove-Item -LiteralPath $realDist -Recurse -Force -ErrorAction SilentlyContinue

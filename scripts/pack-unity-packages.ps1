@@ -9,7 +9,7 @@
     install any package without a UPM registry. The core package is
     packed by scripts/sync-unity-package.ps1 -Pack (fresh source mirror
     plus the shipped-asmdef check); every adapter is a hand-authored
-    source package, so its directory is the tarball, verbatim.
+    source package, staged verbatim into the npm pack layout.
 
     Fails (exit 1) instead of packing a partial fleet: an empty fleet
     (tree drift), a missing core package, a manifest without a
@@ -19,6 +19,10 @@
     same-name tarballs are replaced; any other file in -OutDir is left
     alone (a re-pack after a version bump leaves the old tarballs —
     pack into a fresh directory when that matters).
+
+    Every tarball follows the npm pack layout: entries root at a
+    'package/' directory (no './' entries), which is what npm publish
+    and UPM's tarball installer expect (issue #109).
 
 .PARAMETER OutDir
     Directory the .tgz files are written to. Created when missing.
@@ -165,14 +169,25 @@ foreach ($package in $fleet) {
     if (Test-Path -LiteralPath $tarball) {
         Remove-Item -LiteralPath $tarball -Force
     }
-    tar -czf $tarball -C (Split-Path -Parent $package.Path) .
-    if ($LASTEXITCODE -ne 0) {
-        Stop-Pack "pack: tar failed for $($package.Relative) with exit code $LASTEXITCODE."
+    # npm/UPM tarball layout: entries must root at a 'package/' directory
+    # (what npm pack emits and npm publish and UPM's tarball installer
+    # expect). The adapter directory is staged verbatim under package/.
+    $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("upmstage-" + [System.Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $stage -Force | Out-Null
+    try {
+        Copy-Item -LiteralPath (Split-Path -Parent $package.Path) -Destination (Join-Path $stage 'package') -Recurse -Force
+        tar -czf $tarball -C $stage package
+        if ($LASTEXITCODE -ne 0) {
+            Stop-Pack "pack: tar failed for $($package.Relative) with exit code $LASTEXITCODE."
+        }
+        if (-not (Test-Path -LiteralPath $tarball) -or (Get-Item -LiteralPath $tarball).Length -eq 0) {
+            Stop-Pack "pack: tar produced no artifact for $($package.Relative)."
+        }
+        Write-Host "pack: $tarball"
     }
-    if (-not (Test-Path -LiteralPath $tarball) -or (Get-Item -LiteralPath $tarball).Length -eq 0) {
-        Stop-Pack "pack: tar produced no artifact for $($package.Relative)."
+    finally {
+        Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
     }
-    Write-Host "pack: $tarball"
 }
 
 Write-Host "pack: packed $($fleet.Count) UPM tarballs into $OutDir"
