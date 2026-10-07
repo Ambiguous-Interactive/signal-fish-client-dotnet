@@ -97,7 +97,13 @@ namespace SignalFish.Client.V3
         /// </remarks>
         internal void NoteRequestedFormat(string? gameDataFormat)
         {
-            if (_protocolInfoSeen)
+            /*
+                A downgrade notice pins the session to JSON for the whole
+                connection: a later request (the public API admits a late
+                handshake on a live connection) must not resurrect the
+                refused token.
+            */
+            if (_protocolInfoSeen || _downgradeNoticeSeen)
             {
                 return;
             }

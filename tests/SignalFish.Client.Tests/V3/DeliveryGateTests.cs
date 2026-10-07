@@ -291,6 +291,23 @@ namespace SignalFish.Client.Tests.V3
             Assert.That(gate.NegotiatedEncoding, Is.EqualTo(GameDataFormatToken.Json));
         }
 
+        [Test]
+        public void DowngradePinSurvivesAReArmedRequest()
+        {
+            /*
+                The public API admits a late handshake on a live
+                connection: a re-armed request must not resurrect the
+                refused token — the pin holds for the connection.
+            */
+            DeliveryGate gate = new DeliveryGate(DeliveryViolationPolicy.Quarantine);
+            gate.NoteRequestedFormat("message_pack");
+            _ = gate.ObserveUnsupportedFormatError();
+            gate.NoteRequestedFormat("message_pack");
+
+            Assert.That(gate.OnProtocolInfo(3, CanonicalFormats, out _), Is.True);
+            Assert.That(gate.NegotiatedEncoding, Is.EqualTo(GameDataFormatToken.Json));
+        }
+
         [TestCaseSource(nameof(DowngradeRepeatRefusals))]
         public void RepeatPreNegotiationDowngradeNoticeRefusesPerPolicy(
             DeliveryViolationPolicy policy,
