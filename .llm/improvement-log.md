@@ -192,6 +192,33 @@ Pruned 2026-10-04: the devcontainer rounds, the maintain-plan restructure, and t
   stop at the refusal (cursor continuity pinned). Open: a coverage-
   guided fuzz target for the MessagePack scanner (filed).
 
+## 2026-10-06 - session 054: UPM release tarballs (path-constant routing bug)
+
+- Trigger: reflect-improve after the release-lane change (fleet pack
+  script + `release.yml` step); the first self-test run failed on the
+  core tarball's content.
+- Evidence: `pack-unity-packages.ps1` routed the core package to the
+  sync-staging branch by comparing a manifest FILE path against a
+  package DIRECTORY constant — never equal, so the core was tarred
+  verbatim (no fresh mirror, no shipped-asmdef check) while still
+  producing a plausible, correctly named tarball. Every success-shaped
+  assertion passed (exit 0, tarball exists, fleet count); only the
+  fixture assertion on the artifact the staging branch uniquely
+  produces (`Runtime/Core/A.cs` in the core tarball) failed. Debugging
+  stalled on "why does staging misbehave" until an instrumentation
+  line at the top of the supposedly-running child script failed to
+  print — the branch never ran at all.
+- Findings: (1) a branch that routes on a path constant must be
+  compared in the same terms (file vs directory) and pinned by a test
+  that fails when the wrong branch is taken — assert the output only
+  that branch produces, not generic success. (2) When output looks
+  wrong, instrument the branch entry before the branch body: a plausible
+  wrong-branch result reads as a subtle right-branch failure.
+- Applied: the constant carries `/package.json`; the fresh-mirror and
+  asmdef assertions pin the staging branch; the real-fleet run pins
+  all nine tarball names.
+- Open: none.
+
 Entries pruned 2026-09-23 (sessions 011-014, 017b, 022-023, 025b-026):
 knowledge graduated into skills/rules; open items resolved or tracked as
 issues; originals in git history.

@@ -28,6 +28,9 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+# Pack staging (dotnet pack + sync/pack-unity-packages -OutDir default)
+dist/
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 

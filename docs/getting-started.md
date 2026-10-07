@@ -21,9 +21,9 @@ dotnet add package SignalFish.Client
 ```
 
 The package id is `SignalFish.Client`. Tagged releases publish the NuGet
-package — see [Releasing](releasing.md). The Unity UPM tarball lane lands
-with the release milestone; meanwhile install the package from source
-(see [Unity](unity.md)).
+package and attach the Unity UPM `.tgz` tarballs — see
+[Releasing](releasing.md). Unity projects install a package from its
+tarball or from source (see [Unity](unity.md)).
 
 ## Connect and join a room
 

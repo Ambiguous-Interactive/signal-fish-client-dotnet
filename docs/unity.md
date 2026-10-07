@@ -7,7 +7,12 @@ in this repository under
 
 ## Install
 
-- **From disk (current):** clone this repository and use
+- **From a release tarball:** download
+  `com.ambiguous-interactive.signalfish-<version>.tgz` from the
+  project's GitHub Releases and add it through Unity's package manager
+  (**Add package from tarball**). Every release ships the core package
+  and all adapters ([Releasing](releasing.md)).
+- **From disk:** clone this repository and use
   **Add package from disk** on the package folder — the `Runtime`
   folder mirrors `src/SignalFish.Client` exactly (enforced by CI), so a
   checkout is always a working package.

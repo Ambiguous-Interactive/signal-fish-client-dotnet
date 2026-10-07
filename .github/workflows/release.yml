@@ -1,10 +1,11 @@
 # Auto-release pipeline for signal-fish-client-dotnet
 #
-# Tag-driven only (v*): packs the library, publishes to GitHub Packages
-# (always) and nuget.org (when the NUGET_API_KEY secret is populated),
-# and attaches the .nupkg/.snupkg to a GitHub Release as a no-auth
-# fallback. Never runs on branches or PRs, so PR CI time stays flat.
-# Operator runbook: docs/releasing.md.
+# Tag-driven only (v*): packs the library and the nine Unity UPM
+# packages, publishes to GitHub Packages (always) and nuget.org (when
+# the NUGET_API_KEY secret is populated), and attaches the
+# .nupkg/.snupkg plus the UPM .tgz tarballs to a GitHub Release as a
+# no-auth fallback. Never runs on branches or PRs, so PR CI time stays
+# flat. Operator runbook: docs/releasing.md.
 
 name: Release
 
@@ -68,8 +69,11 @@ jobs:
           RELEASE="${VERSION%%+*}"
           # Capture first: the assignment propagates a find failure to
           # set -e, and the count guard keeps an empty result (tree
-          # drift, glob typo) from passing the gate vacuously.
-          manifests=$(find unity -type f -name package.json -not -path '*Samples~*')
+          # drift, glob typo) from passing the gate vacuously. The
+          # Samples~ exclusion is segment-exact, matching
+          # pack-unity-packages.ps1 — a near-miss directory name must
+          # stay a fleet member in both gates.
+          manifests=$(find unity -type f -name package.json -not -path '*/Samples~/*')
           count=0
           mismatch=0
           while IFS= read -r manifest; do
@@ -98,6 +102,13 @@ jobs:
           -p:MinVerVersionOverride=${{ env.VERSION }}
           -p:ContinuousIntegrationBuild=true
           -o dist
+
+      # Issue #106: every v* release ships the UPM fleet too — the core
+      # through the sync script's staging (fresh mirror + shipped-asmdef
+      # check), each adapter verbatim from its source tree.
+      - name: Pack UPM tarballs
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/pack-unity-packages.ps1 -OutDir dist
 
       - name: Publish to GitHub Packages
         run: >
@@ -132,7 +143,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           gh release create "${GITHUB_REF_NAME}"
-          dist/*.nupkg dist/*.snupkg
+          dist/*.nupkg dist/*.snupkg dist/*.tgz
           --verify-tag
           --generate-notes
           --title "SignalFish.Client ${{ env.VERSION }}"
