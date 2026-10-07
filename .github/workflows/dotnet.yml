@@ -209,6 +209,7 @@ jobs:
           --no-build -c Release -f ${{ matrix.framework }}
           --results-directory TestResults
           -- --report-trx --coverlet --coverlet-output-format cobertura
+          --coverlet-include-test-assembly
 
       - name: Test
         if: matrix.os != 'ubuntu-latest' || matrix.framework != 'net8.0'
