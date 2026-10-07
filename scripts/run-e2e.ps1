@@ -36,7 +36,8 @@ param(
     # Keep the booted container after the run (diagnostics).
     [switch]$KeepServer,
 
-    # Additional dotnet test arguments (e.g. --filter).
+    # Additional dotnet test arguments forwarded after the `--` separator
+    # (e.g. --filter).
     [string[]]$DotNetTestArgs = @()
 )
 
@@ -127,9 +128,9 @@ try {
     $env:SIGNALFISH_E2E_URL = $ServerUrl
     Write-Host "Running the conformance suite against $ServerUrl..."
     dotnet test (Join-Path $repoRoot 'tests/SignalFish.Client.E2E') `
-        -c Release --nologo --logger trx `
+        -c Release --nologo `
         --results-directory (Join-Path $repoRoot 'tests/SignalFish.Client.E2E/TestResults') `
-        @DotNetTestArgs
+        -- --report-trx @DotNetTestArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Conformance suite failed (exit $LASTEXITCODE)."
     }

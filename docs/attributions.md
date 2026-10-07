@@ -22,7 +22,8 @@ never ship with the library:
 
 | Use | Package |
 |-----|---------|
-| Unit tests | NUnit, NUnit3TestAdapter, NUnit.Analyzers, Microsoft.NET.Test.Sdk, coverlet.collector, FsCheck |
+| Unit tests | NUnit, NUnit3TestAdapter, NUnit.Analyzers, Microsoft.NET.Test.Sdk, Microsoft.Testing.Extensions.TrxReport, coverlet.MTP, FsCheck |
+| E2E tests | NUnit, NUnit3TestAdapter, NUnit.Analyzers, Microsoft.NET.Test.Sdk, Microsoft.Testing.Extensions.TrxReport |
 | Fuzz tests | SharpFuzz |
 | Benchmarks | BenchmarkDotNet |
 

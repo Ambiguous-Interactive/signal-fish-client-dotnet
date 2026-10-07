@@ -7,10 +7,24 @@
         <IsPackable>false</IsPackable>
         <IsTestProject>true</IsTestProject>
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+        <!-- Run on Microsoft.Testing.Platform (issue #111, the no-rewrite
+             middle path): global.json selects the MTP mode of dotnet test,
+             and the NUnit adapter (>= 5.0) ships the MTP runner behind
+             EnableNUnitRunner. The suite stays NUnit; only the runner
+             generation changes. -->
+        <OutputType>Exe</OutputType>
+        <EnableNUnitRunner>true</EnableNUnitRunner>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="coverlet.collector" Version="10.1.0" />
+        <!-- coverlet's MTP collector: same engine and version line as the
+             retired coverlet.collector, native to Microsoft.Testing.Platform
+             (the VSTest collector does not load in MTP mode). -->
+        <PackageReference Include="coverlet.MTP" Version="10.1.0" />
+        <!-- TRX output for CI test results; pinned to the adapter's
+             Microsoft.Testing.Platform (2.3.3) exactly. -->
+        <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.3.3" />
         <!-- FsCheck (core only, no FsCheck.NUnit): properties run through
              FsCheck's own runner inside plain [Test]s, so no adapter can pin
              the NUnit version (the FsCheck.NUnit 3.4.0 pin blocked NUnit 5). -->

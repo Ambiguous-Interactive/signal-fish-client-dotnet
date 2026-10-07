@@ -7,9 +7,18 @@
         <IsPackable>false</IsPackable>
         <IsTestProject>true</IsTestProject>
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+        <!-- Microsoft.Testing.Platform runner (issue #111, the no-rewrite
+             middle path), matching the unit-test project; global.json
+             selects the MTP mode of dotnet test. -->
+        <OutputType>Exe</OutputType>
+        <EnableNUnitRunner>true</EnableNUnitRunner>
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- TRX output for the e2e workflow's test-results artifact; pinned
+             to the adapter's Microsoft.Testing.Platform (2.3.3) exactly. -->
+        <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.3.3" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
         <PackageReference Include="NUnit" Version="5.0.0" />
         <PackageReference Include="NUnit.Analyzers" Version="4.15.0" />
