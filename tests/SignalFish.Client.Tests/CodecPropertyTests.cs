@@ -9,7 +9,6 @@ namespace SignalFish.Client.Tests
     using FsCheck.Fluent;
     using NUnit.Framework;
     using SignalFish.Client.Protocol;
-    using PropertyAttribute = FsCheck.NUnit.PropertyAttribute;
 
     /// <summary>
     /// FsCheck property suite for the hand-rolled codec (PLAN.md M1.4):
@@ -18,7 +17,10 @@ namespace SignalFish.Client.Tests
     /// however malformed, can throw), and known-type routing under arbitrary
     /// legal payloads. Generators are escape-heavy on purpose: quotes,
     /// backslashes, control characters, and non-ASCII text are the codec's
-    /// hard cases.
+    /// hard cases. Properties run through FsCheck's own runner
+    /// (QuickCheckThrowOnFailure shape) so the suite depends only on the
+    /// FsCheck core package, never on an FsCheck.&lt;framework&gt; adapter
+    /// whose NUnit pin blocks test-stack upgrades.
     /// </summary>
     [TestFixture]
     public class CodecPropertyTests
@@ -105,129 +107,146 @@ namespace SignalFish.Client.Tests
 
         // ---- Escape-aware string roundtrip ----------------------------------
 
-        [Property(MaxTest = 400, QuietOnSuccess = true)]
-        public Property MaterializeWriteArbitraryStringIdentity()
+        [Test]
+        public void MaterializeWriteArbitraryStringIdentity()
         {
-            return Prop.ForAll(
-                Arb.From(TextGen),
-                value =>
-                {
-                    byte[] rendered = RenderString(value);
-                    JsonScanner scanner = new JsonScanner(rendered);
-                    DecodeError err = scanner.ScanStringRaw(out Range raw, out bool hasEscapes);
-                    (int offset, int length) = raw.GetOffsetAndLength(rendered.Length);
-                    if (err != default(DecodeError) || offset != 0 || length != rendered.Length)
+            Prop.ForAll(
+                    Arb.From(TextGen),
+                    value =>
                     {
-                        return false;
-                    }
+                        byte[] rendered = RenderString(value);
+                        JsonScanner scanner = new JsonScanner(rendered);
+                        DecodeError err = scanner.ScanStringRaw(out Range raw, out bool hasEscapes);
+                        (int offset, int length) = raw.GetOffsetAndLength(rendered.Length);
+                        if (err != default(DecodeError) || offset != 0 || length != rendered.Length)
+                        {
+                            return false;
+                        }
 
-                    string materialized = JsonScanner.MaterializeString(
-                        rendered.AsSpan(1, length - 2),
-                        hasEscapes
-                    );
-                    return materialized == value;
-                }
-            );
+                        string materialized = JsonScanner.MaterializeString(
+                            rendered.AsSpan(1, length - 2),
+                            hasEscapes
+                        );
+                        return materialized == value;
+                    }
+                )
+                .Check(PropertyConfig(400));
         }
 
         // ---- Value-scan stability over writer output -------------------------
 
-        [Property(MaxTest = 250, QuietOnSuccess = true)]
-        public Property ScanRenderedValueIsByteStable()
+        [Test]
+        public void ScanRenderedValueIsByteStable()
         {
-            return Prop.ForAll(
-                Arb.From(AnyJson),
-                value =>
-                {
-                    byte[] rendered = RenderValue(value);
-                    JsonScanner scanner = new JsonScanner(rendered);
-                    DecodeError err = scanner.ScanValueRaw(
-                        1,
-                        EnvelopeReader.MaxDepth,
-                        out Range raw
-                    );
-                    (int offset, int length) = raw.GetOffsetAndLength(rendered.Length);
-                    return err == default(DecodeError) && offset == 0 && length == rendered.Length;
-                }
-            );
+            Prop.ForAll(
+                    Arb.From(AnyJson),
+                    value =>
+                    {
+                        byte[] rendered = RenderValue(value);
+                        JsonScanner scanner = new JsonScanner(rendered);
+                        DecodeError err = scanner.ScanValueRaw(
+                            1,
+                            EnvelopeReader.MaxDepth,
+                            out Range raw
+                        );
+                        (int offset, int length) = raw.GetOffsetAndLength(rendered.Length);
+                        return err == default(DecodeError)
+                            && offset == 0
+                            && length == rendered.Length;
+                    }
+                )
+                .Check(PropertyConfig(250));
         }
 
         // ---- Envelope decode totality ----------------------------------------
 
-        [Property(MaxTest = 1000, QuietOnSuccess = true)]
-        public Property DecodeArbitraryBytesNeverThrows()
+        [Test]
+        public void DecodeArbitraryBytesNeverThrows()
         {
-            return Prop.ForAll(
-                Arb.From(Gen.ArrayOf(Gen.Elements(BytePool))),
-                bytes => DecodeIsTotal(bytes)
-            );
+            Prop.ForAll(
+                    Arb.From(Gen.ArrayOf(Gen.Elements(BytePool))),
+                    bytes => DecodeIsTotal(bytes)
+                )
+                .Check(PropertyConfig(1000));
         }
 
-        [Property(MaxTest = 600, QuietOnSuccess = true)]
-        public Property DecodeMutatedCorpusFrameNeverThrows()
+        [Test]
+        public void DecodeMutatedCorpusFrameNeverThrows()
         {
-            return Prop.ForAll(
-                Arb.From(Gen.Choose(0, corpusFrames.Length - 1)),
-                Arb.From(Gen.Choose(0, 63)),
-                Arb.From(Gen.Elements(BytePool)),
-                (frameIndex, position, value) =>
-                {
-                    byte[] frame = corpusFrames[frameIndex];
-                    byte[] mutated = (byte[])frame.Clone();
-                    mutated[position % frame.Length] = value;
-                    return DecodeIsTotal(mutated);
-                }
-            );
+            Prop.ForAll(
+                    Arb.From(Gen.Choose(0, corpusFrames.Length - 1)),
+                    Arb.From(Gen.Choose(0, 63)),
+                    Arb.From(Gen.Elements(BytePool)),
+                    (frameIndex, position, value) =>
+                    {
+                        byte[] frame = corpusFrames[frameIndex];
+                        byte[] mutated = (byte[])frame.Clone();
+                        mutated[position % frame.Length] = value;
+                        return DecodeIsTotal(mutated);
+                    }
+                )
+                .Check(PropertyConfig(600));
         }
 
         // ---- Known-type routing under arbitrary legal payloads ----------------
 
-        [Property(MaxTest = 150, QuietOnSuccess = true)]
-        public Property DecodeKnownTypeArbitraryObjectPayloadRoutes()
+        [Test]
+        public void DecodeKnownTypeArbitraryObjectPayloadRoutes()
         {
-            return Prop.ForAll(
-                Arb.From(KnownKindGen),
-                Arb.From(AnyObject),
-                (kind, payload) =>
-                {
-                    string? wireName = MessageKindNames.ToWireName(kind);
-                    byte[] data = RenderValue(payload);
-                    byte[] frame = ComposeEnvelope(Encoding.ASCII.GetBytes(wireName!), data);
-                    EnvelopeEvent ev = EnvelopeReader.Decode(frame);
-                    return ev.Kind == EnvelopeEventKind.Message
-                        && ev.Message == kind
-                        && ev.Error == default(DecodeError)
-                        && ev.TypeText is null
-                        && ev.Data.Span.SequenceEqual(data);
-                }
-            );
+            Prop.ForAll(
+                    Arb.From(KnownKindGen),
+                    Arb.From(AnyObject),
+                    (kind, payload) =>
+                    {
+                        string? wireName = MessageKindNames.ToWireName(kind);
+                        byte[] data = RenderValue(payload);
+                        byte[] frame = ComposeEnvelope(Encoding.ASCII.GetBytes(wireName!), data);
+                        EnvelopeEvent ev = EnvelopeReader.Decode(frame);
+                        return ev.Kind == EnvelopeEventKind.Message
+                            && ev.Message == kind
+                            && ev.Error == default(DecodeError)
+                            && ev.TypeText is null
+                            && ev.Data.Span.SequenceEqual(data);
+                    }
+                )
+                .Check(PropertyConfig(150));
         }
 
-        [Property(MaxTest = 150, QuietOnSuccess = true)]
-        public Property DecodeUnknownTypeSurfacesForwardCompatibleEvent()
+        [Test]
+        public void DecodeUnknownTypeSurfacesForwardCompatibleEvent()
         {
-            return Prop.ForAll(
-                Arb.From(TextGen),
-                typeName =>
-                {
-                    ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>();
-                    JsonWriter writer = new JsonWriter(buffer);
-                    writer.WriteBytes(OpenEnvelopeNoQuote);
-                    writer.WriteString("Zz" + typeName);
-                    writer.WriteByte((byte)'}');
-                    writer.Flush();
-                    byte[] frame = buffer.WrittenSpan.ToArray();
-                    EnvelopeEvent ev = EnvelopeReader.Decode(frame);
-                    return ev.Kind == EnvelopeEventKind.UnknownMessage
-                        && ev.Message == default(MessageKind)
-                        && ev.Error == default(DecodeError)
-                        && ev.TypeText == "Zz" + typeName
-                        && ev.Data.IsEmpty;
-                }
-            );
+            Prop.ForAll(
+                    Arb.From(TextGen),
+                    typeName =>
+                    {
+                        ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>();
+                        JsonWriter writer = new JsonWriter(buffer);
+                        writer.WriteBytes(OpenEnvelopeNoQuote);
+                        writer.WriteString("Zz" + typeName);
+                        writer.WriteByte((byte)'}');
+                        writer.Flush();
+                        byte[] frame = buffer.WrittenSpan.ToArray();
+                        EnvelopeEvent ev = EnvelopeReader.Decode(frame);
+                        return ev.Kind == EnvelopeEventKind.UnknownMessage
+                            && ev.Message == default(MessageKind)
+                            && ev.Error == default(DecodeError)
+                            && ev.TypeText == "Zz" + typeName
+                            && ev.Data.IsEmpty;
+                    }
+                )
+                .Check(PropertyConfig(150));
         }
 
         // ---- Helpers -----------------------------------------------------------
+
+        /// <summary>
+        /// The [Property] attribute shape this suite used with FsCheck.NUnit,
+        /// expressed as a runner configuration: the given test count, quiet
+        /// on success, throwing (with the shrunk counterexample and replay
+        /// seed) on falsification.
+        /// </summary>
+        private static Config PropertyConfig(int maxTest) =>
+            Config.QuickThrowOnFailure.WithMaxTest(maxTest).WithQuietOnSuccess(true);
 
         private static bool DecodeIsTotal(byte[] frame)
         {
