@@ -30,8 +30,9 @@ under ~150 lines; the 300-line lint ceiling is the hard bound).
   non-final attempts; `rm -rf TestResults` per attempt (crashed-attempt
   artifacts cannot reach the coverage gate). All cells green on head
   65a451f.
-- Open: none here — the e2e-lane retry decision and the upstream
-  testfx report live in issue #120.
+- Open: none — the e2e-lane half shipped in session 063 (`run-e2e.ps1`
+  keeps the loop in PowerShell, avoiding this shell-pinning class);
+  the conditional upstream report lives in issue #120.
 
 ## 2026-10-08 - session 061: ProtocolInfo observability fields on the frozen surface
 

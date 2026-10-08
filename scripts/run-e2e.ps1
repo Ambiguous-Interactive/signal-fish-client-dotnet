@@ -15,6 +15,10 @@
     Pass -ServerUrl to skip the boot and test an already-running server
     (the e2e workflow does this against its service container).
 
+    The suite retries up to three attempts against MTP's transient
+    startup crash ("Zero tests ran", issue #120); a repeatable failure
+    still fails — the last exit code is re-raised.
+
 .EXAMPLE
     pwsh -NoProfile -File scripts/run-e2e.ps1
 
@@ -130,12 +134,36 @@ try {
     # MTP mode: extension/app options travel after `--`. The app knows
     # `--no-banner` (a bare `--nologo` is forwarded to the app and
     # rejected as unknown by the MTP version pinned here).
-    dotnet test (Join-Path $repoRoot 'tests/SignalFish.Client.E2E') `
-        -c Release `
-        --results-directory (Join-Path $repoRoot 'tests/SignalFish.Client.E2E/TestResults') `
-        -- --no-banner --report-trx @DotNetTestArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "Conformance suite failed (exit $LASTEXITCODE)."
+    #
+    # The MTP test app intermittently dies at startup before any test
+    # runs ("Zero tests ran"; issue #120, seen on both lanes that run
+    # it). Scenarios are re-run-safe against a shared server (fresh
+    # GUID-named rooms and connections per scenario), so the suite
+    # retries; each attempt's TRX accumulates in TestResults as
+    # evidence. When every attempt fails, the last exit code is
+    # re-raised.
+    $maxAttempts = 3
+    $exitCode = 1
+    foreach ($attempt in 1..$maxAttempts) {
+        dotnet test (Join-Path $repoRoot 'tests/SignalFish.Client.E2E') `
+            -c Release `
+            --results-directory (Join-Path $repoRoot 'tests/SignalFish.Client.E2E/TestResults') `
+            -- --no-banner --report-trx @DotNetTestArgs
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -eq 0) {
+            break
+        }
+
+        if ($attempt -lt $maxAttempts) {
+            Write-Host (
+                "::warning::Conformance suite attempt $attempt failed (exit $exitCode); " +
+                "retrying (transient MTP startup crashes are known: #120)"
+            )
+        }
+    }
+
+    if ($exitCode -ne 0) {
+        throw "Conformance suite failed (exit $exitCode) after $maxAttempts attempts."
     }
 
     Write-Host 'Conformance suite: green.'
