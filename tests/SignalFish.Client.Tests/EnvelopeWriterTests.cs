@@ -502,6 +502,137 @@ namespace SignalFish.Client.Tests
             );
         }
 
+        /*
+            join_only tail (server 0.10.0, issue #625): omitted when null,
+            written last after password, never before an existing field, so
+            every pre-existing canonical frame stays byte-identical.
+        */
+        [TestCase(true, null, "\"relay_transport\": null, \"join_only\": true}}")]
+        [TestCase(true, "pw", "\"password\": \"pw\", \"join_only\": true}}")]
+        [TestCase(null, "pw", "\"password\": \"pw\"}}")]
+        public void WriteJoinRoomJoinOnlyTailFollowsPassword(
+            bool? joinOnly,
+            string? password,
+            string expectedTail
+        )
+        {
+            JoinRoomMessage message = new JoinRoomMessage(
+                "my-game",
+                "Alice",
+                roomCode: "ABC123",
+                password: password
+            );
+            if (joinOnly is not null)
+            {
+                message = message.AsJoinOnly();
+            }
+
+            ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(128);
+            EnvelopeWriter.WriteJoinRoom(buffer, message);
+
+            string wire = Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray());
+            Assert.That(
+                wire,
+                Does.StartWith(
+                    "{\"type\": \"JoinRoom\", \"data\": {\"game_name\": \"my-game\","
+                        + " \"room_code\": \"ABC123\", \"player_name\": \"Alice\","
+                        + " \"max_players\": null, \"supports_authority\": null,"
+                        + " \"relay_transport\": null"
+                )
+            );
+            Assert.That(wire, Does.EndWith(expectedTail));
+        }
+
+        [Test]
+        public void WriteJoinRoomJoinOnlyRoundTrips()
+        {
+            JoinRoomMessage message = new JoinRoomMessage(
+                "my-game",
+                "Alice",
+                roomCode: "ABC123",
+                password: "s3cret!"
+            ).AsJoinOnly();
+
+            AssertRoundTrips(
+                MessageKind.JoinRoom,
+                message,
+                static (w, m) => EnvelopeWriter.WriteJoinRoom(w, in m)
+            );
+        }
+
+        [Test]
+        public void AsJoinOnlyWithoutRoomCodeRefusesImmediately()
+        {
+            /*
+                The server refuses join_only without room_code as
+                INVALID_INPUT; a codeless join always creates a generated
+                code, so the fluent guard refuses the copy at the call site.
+            */
+            JoinRoomMessage message = new JoinRoomMessage("my-game", "Alice");
+
+            Assert.That(
+                (Action)(() => message.AsJoinOnly()),
+                Throws
+                    .ArgumentException.With.Message.Contains("room_code")
+                    .And.With.Property("ParamName")
+                    .EqualTo("RoomCode")
+            );
+        }
+
+        [Test]
+        public void DecodeJoinOnlyFalseReEncodesExplicitFalse()
+        {
+            /*
+                false only arrives off the wire; the struct must preserve it
+                so a decoded frame re-encodes to the same message.
+            */
+            Assert.That(
+                JoinRoomMessage.TryDecode(
+                    Encoding.UTF8.GetBytes(
+                        "{\"game_name\": \"g\", \"player_name\": \"p\", \"room_code\": \"C\","
+                            + " \"join_only\": false}"
+                    ),
+                    out JoinRoomMessage decoded
+                ),
+                Is.True
+            );
+            Assert.That(decoded.JoinOnly, Is.False);
+
+            ArrayBufferWriter<byte> buffer = new ArrayBufferWriter<byte>(128);
+            EnvelopeWriter.WriteJoinRoom(buffer, decoded);
+            Assert.That(
+                Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()),
+                Does.EndWith("\"relay_transport\": null, \"join_only\": false}}")
+            );
+        }
+
+        [Test]
+        public void WriteRoomOperationJoinOnlyKeepsCanonicalTail()
+        {
+            RoomOperationMessage join = new RoomOperationMessage(
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                RoomOperationCommand.JoinRoom(
+                    new JoinRoomMessage("my-game", "Alice", roomCode: "ABC123").AsJoinOnly()
+                )
+            );
+
+            AssertRoundTrips(
+                MessageKind.RoomOperation,
+                join,
+                static (w, m) => EnvelopeWriter.WriteRoomOperation(w, in m)
+            );
+
+            Assert.That(
+                Encoding.UTF8.GetString(Written(MessageKind.RoomOperation, join)),
+                Does.EndWith(
+                    "\"operation\": {\"type\": \"JoinRoom\", \"data\": {\"game_name\": \"my-game\","
+                        + " \"room_code\": \"ABC123\", \"player_name\": \"Alice\","
+                        + " \"max_players\": null, \"supports_authority\": null,"
+                        + " \"relay_transport\": null, \"join_only\": true}}}}"
+                )
+            );
+        }
+
         [Test]
         public void WriteJoinAsSpectatorWithPasswordRoundTrips()
         {
@@ -938,12 +1069,46 @@ namespace SignalFish.Client.Tests
         [TestCase("{\"player_name\": \"p\"}")] // missing required field
         [TestCase("{\"game_name\": \"g\"")] // truncated
         [TestCase("{\"game_name\": \"g\", \"player_name\": \"p\",,}")] // malformed separator
+        [TestCase("{\"game_name\": \"g\", \"player_name\": \"p\", \"join_only\": \"yes\"}")] // wrong-typed join_only
         public void DecodeMalformedPayloadReturnsFalseWithoutThrowing(string payload)
         {
             Assert.That(
                 JoinRoomMessage.TryDecode(Encoding.UTF8.GetBytes(payload), out _),
                 Is.False
             );
+        }
+
+        [TestCase(
+            "{\"game_name\": \"g\", \"player_name\": \"p\", \"join_only\": true}",
+            true,
+            "explicit true"
+        )]
+        [TestCase(
+            "{\"game_name\": \"g\", \"player_name\": \"p\", \"join_only\": false}",
+            false,
+            "explicit false"
+        )]
+        [TestCase(
+            "{\"game_name\": \"g\", \"player_name\": \"p\", \"join_only\": null}",
+            null,
+            "explicit null"
+        )]
+        [TestCase("{\"game_name\": \"g\", \"player_name\": \"p\"}", null, "omitted")]
+        public void DecodeJoinOnlyWireFormsMatchTheServerContract(
+            string payload,
+            bool? expected,
+            string because
+        )
+        {
+            Assert.That(
+                JoinRoomMessage.TryDecode(
+                    Encoding.UTF8.GetBytes(payload),
+                    out JoinRoomMessage join
+                ),
+                Is.True,
+                because
+            );
+            Assert.That(join.JoinOnly, Is.EqualTo(expected), because);
         }
 
         [Test]

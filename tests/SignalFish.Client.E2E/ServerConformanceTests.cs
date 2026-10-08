@@ -516,6 +516,7 @@ namespace SignalFish.Client.E2E
             SignalFishPollingClient alice = await E2EHarness.ConnectAuthenticatedClientAsync();
             SignalFishPollingClient bob = await E2EHarness.ConnectAuthenticatedClientAsync();
             SignalFishPollingClient carol = await E2EHarness.ConnectAuthenticatedClientAsync();
+            SignalFishPollingClient dave = await E2EHarness.ConnectAuthenticatedClientAsync();
 
             // ROOM_FULL: the room's ceiling refuses the next seat.
             string gameName = E2EHarness.GameName();
@@ -529,6 +530,29 @@ namespace SignalFish.Client.E2E
                 e => e.Kind == PollEventKind.RoomJoinFailed
             );
             Assert.That(full.Failure.ErrorCode, Is.EqualTo("ROOM_FULL"));
+
+            /*
+                ROOM_NOT_FOUND: a join-only join pins an unknown code to an
+                existing room; the same code without the flag creates it, so
+                the refusal provably came from the flag (collision-safe
+                admission, server 0.10.0).
+            */
+            string joinOnlyCode = "JO" + new string(Guid.NewGuid().ToString("N").AsSpan(0, 4));
+            CommandSend daveJoinOnly = dave.SendJoinRoom(
+                new JoinRoomMessage(gameName, "dave", joinOnlyCode).AsJoinOnly()
+            );
+            Assert.That(daveJoinOnly.Accepted, Is.True);
+            PollEvent notFound = await E2EHarness.WaitForEventAsync(
+                dave,
+                e => e.Kind == PollEventKind.RoomJoinFailed
+            );
+            Assert.That(notFound.Failure.ErrorCode, Is.EqualTo("ROOM_NOT_FOUND"));
+
+            CommandSend daveCreate = dave.SendJoinRoom(
+                new JoinRoomMessage(gameName, "dave", joinOnlyCode)
+            );
+            Assert.That(daveCreate.Accepted, Is.True);
+            await E2EHarness.WaitForEventAsync(dave, e => e.Kind == PollEventKind.RoomJoined);
 
             // ROOM_NOT_FOUND: spectators join existing rooms only.
             string missingCode = "NF" + new string(Guid.NewGuid().ToString("N").AsSpan(0, 4));
@@ -545,6 +569,7 @@ namespace SignalFish.Client.E2E
             await alice.DisposeAsync();
             await bob.DisposeAsync();
             await carol.DisposeAsync();
+            await dave.DisposeAsync();
         }
 
         /// <summary>

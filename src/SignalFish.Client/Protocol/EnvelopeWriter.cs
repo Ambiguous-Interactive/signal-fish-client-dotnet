@@ -72,6 +72,7 @@ namespace SignalFish.Client.Protocol
             );
             internal static readonly byte[] GameName = Encoding.ASCII.GetBytes("game_name");
             internal static readonly byte[] Generation = Encoding.ASCII.GetBytes("generation");
+            internal static readonly byte[] JoinOnly = Encoding.ASCII.GetBytes("join_only");
             internal static readonly byte[] Key = Encoding.ASCII.GetBytes("key");
             internal static readonly byte[] MaxPlayers = Encoding.ASCII.GetBytes("max_players");
             internal static readonly byte[] Operation = Encoding.ASCII.GetBytes("operation");
@@ -955,6 +956,13 @@ namespace SignalFish.Client.Protocol
                 writer.WriteBytes(CommaSpace);
                 writer.WriteKey(FieldNames.Password);
                 writer.WriteString(message.Password);
+            }
+
+            if (message.JoinOnly is not null)
+            {
+                writer.WriteBytes(CommaSpace);
+                writer.WriteKey(FieldNames.JoinOnly);
+                writer.WriteBoolean(message.JoinOnly.GetValueOrDefault());
             }
         }
 

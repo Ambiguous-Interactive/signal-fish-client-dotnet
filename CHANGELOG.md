@@ -6,17 +6,13 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ## [Unreleased]
 
-### Fixed
-
-- A handshake that requests an unsupported `game_data_format` now honors
-  the server's pinned downgrade contract exactly: the refused encoding
-  can no longer be re-negotiated after the server's one downgrade
-  notice, and a repeated notice refuses per the violation policy
-  instead of passing silently. Sessions against a conforming server
-  behave as before (one notice, JSON fallback, connection stays open).
-
 ### Added
 
+- `JoinRoomMessage.AsJoinOnly()` sends the optional `join_only` flag
+  (server 0.10.0): a directory-driven join naming an explicit room code
+  that no longer resolves is refused `ROOM_NOT_FOUND` instead of
+  silently creating a duplicate room. A codeless join refuses the flag
+  at the call site (the server refuses it as `INVALID_INPUT`).
 - Releases now ship every Unity package as a tarball: a `v*` tag
   attaches all nine UPM `.tgz` files (the core SDK package plus the
   engine adapters) to the GitHub Release next to the NuGet packages,
@@ -33,6 +29,15 @@ changes (CI, tests, tooling, docs) are not listed.
   from earlier releases (entries at `./`) keep working everywhere
   they already worked, but new installs from a tarball should use
   the new artifacts.
+
+### Fixed
+
+- A handshake that requests an unsupported `game_data_format` now honors
+  the server's pinned downgrade contract exactly: the refused encoding
+  can no longer be re-negotiated after the server's one downgrade
+  notice, and a repeated notice refuses per the violation policy
+  instead of passing silently. Sessions against a conforming server
+  behave as before (one notice, JSON fallback, connection stays open).
 
 ## [0.1.0] - 2026-10-06
 
