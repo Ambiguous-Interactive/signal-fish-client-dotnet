@@ -46,11 +46,12 @@ level.
 ## What shipped
 
 - `.github/workflows/dotnet.yml`: both `Test` steps now retry up to
-  **3 attempts**, each failed attempt annotated `::warning::`. A real
-  test failure still fails the lane (every attempt must pass); the
-  suite is ~2-3 min, so the retry budget fits the 15-min job timeout.
-  YAML-linted; loop semantics verified under `bash -e` (GitHub's
-  default shell).
+  **3 attempts** (`shell: bash` — the Windows default is pwsh), warn
+  via `::warning::` on each non-final attempt, wipe `TestResults/`
+  before each attempt, and re-raise the last exit code on exhaustion.
+  A repeatable test failure still fails the lane; the suite is ~2-3
+  min, so the retry budget fits the 15-min job timeout. YAML-linted;
+  loop semantics verified under `bash -e`.
 - Issue #120 records the RCA, the run links, and two follow-ups: the
   `e2e` lane uses the same MTP runtime (`run-e2e.ps1`) but has no
   observed occurrence and unverified scenario idempotence (deliberate
@@ -68,7 +69,17 @@ level.
 
 ## Verification
 
-- `bash -e` semantics: exhaust -> exit 1; first success -> exit 0.
+- `bash -e` semantics (Linux default shell): exhaust -> last exit code
+  re-raised (139 preserved); first success -> exit 0; warnings only on
+  non-final attempts.
 - Workflow YAML validated.
+- **Adversarial review caught a blocker in the first cut**: the loop
+  was bash but the steps pinned no shell, and GitHub's default on
+  Windows is pwsh — the Windows cell failed to parse the loop and never
+  ran `dotnet test` (caught red on this PR's own CI). Fixed by pinning
+  `shell: bash` on both Test steps; review also drove the exit-code
+  preservation, the warning gate on the final attempt, the per-attempt
+  `rm -rf TestResults` (no stale TRX/partial cobertura from a crashed
+  attempt in the report or artifact), and the "repeatable" wording.
 - CI on the PR: all checks green (the retry itself exercised by the
   regular runs).
