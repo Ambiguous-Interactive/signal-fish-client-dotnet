@@ -219,7 +219,7 @@ jobs:
                 --coverlet-include-test-assembly; then
               exit 0
             fi
-            echo "::warning::dotnet test failed on attempt $attempt/3 (known intermittent MTP startup crash); retrying"
+            echo "::warning::dotnet test failed on attempt $attempt/3; retrying (transient MTP startup crashes are known: #120)"
           done
           exit 1
 
@@ -233,7 +233,7 @@ jobs:
                 -- --report-trx; then
               exit 0
             fi
-            echo "::warning::dotnet test failed on attempt $attempt/3 (known intermittent MTP startup crash); retrying"
+            echo "::warning::dotnet test failed on attempt $attempt/3; retrying (transient MTP startup crashes are known: #120)"
           done
           exit 1
 
