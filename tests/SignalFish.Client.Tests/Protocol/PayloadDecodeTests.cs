@@ -19,6 +19,8 @@ namespace SignalFish.Client.Tests
     {
         private static readonly string[] StunOnlyUrls = { "stun:stun.l.google.com:19302" };
 
+        private static readonly string[] JsonOnlyFormats = { "json" };
+
         private static readonly TestCaseData[] SealedRoomFailureWires =
         {
             new TestCaseData(
@@ -69,6 +71,8 @@ namespace SignalFish.Client.Tests
             Assert.That(message.MaxProtocolVersion, Is.Null);
             Assert.That(message.Transports, Is.Null);
             Assert.That(message.MaxOutboundMessageSize, Is.Null);
+            Assert.That(message.ImplementationVersion, Is.Null);
+            Assert.That(message.GameDataLimits, Is.Null);
         }
 
         [Test]
@@ -93,6 +97,12 @@ namespace SignalFish.Client.Tests
             Assert.That(message.Transports, Has.Count.EqualTo(1));
             Assert.That(message.Transports[0], Is.EqualTo("websocket"));
             Assert.That(message.MaxOutboundMessageSize, Is.EqualTo(8388608u));
+            Assert.That(message.ImplementationVersion, Is.EqualTo("0.10.0"));
+            /*
+                The limits list only appears when the deployment configures
+                per-encoding caps; the sample deployment configures none.
+            */
+            Assert.That(message.GameDataLimits, Is.Null);
         }
 
         // --- v3 negotiation-field decode policies -------------------------------
@@ -113,6 +123,42 @@ namespace SignalFish.Client.Tests
             TestName = "NegativeMaxOutboundMessageSize"
         )]
         [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"implementation_version\": 10}",
+            TestName = "WrongTypedImplementationVersion"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": {}}",
+            TestName = "WrongTypedGameDataLimits"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": [{}]}",
+            TestName = "LimitMissingBothFields"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": [{\"encoding\": \"json\"}]}",
+            TestName = "LimitMissingMaxBytes"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": [{\"encoding\": \"json\", \"max_bytes\": \"65536\"}]}",
+            TestName = "WrongTypedLimitMaxBytes"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": [{\"encoding\": \"json\", \"max_bytes\": -1}]}",
+            TestName = "NegativeLimitMaxBytes"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": [{\"encoding\": 1, \"max_bytes\": 65536}]}",
+            TestName = "WrongTypedLimitEncoding"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": [{\"encoding\": \"json\", \"max_bytes\": 65536, \"max_bytes\": 1}]}",
+            TestName = "RepeatedLimitMaxBytesKey"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": [{\"encoding\": \"json\", \"encoding\": \"message_pack\", \"max_bytes\": 65536}]}",
+            TestName = "RepeatedLimitEncodingKey"
+        )]
+        [TestCase(
             "{\"capabilities\": [], \"game_data_formats\": [], \"protocol_version\": 3, \"protocol_version\": 2}",
             TestName = "RepeatedProtocolVersionKey"
         )]
@@ -123,6 +169,14 @@ namespace SignalFish.Client.Tests
         [TestCase(
             "{\"capabilities\": [], \"game_data_formats\": [], \"transports\": null, \"transports\": [\"websocket\"]}",
             TestName = "RepeatedTransportsKeyAfterNull"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"implementation_version\": \"0.10.0\", \"implementation_version\": \"0.10.1\"}",
+            TestName = "RepeatedImplementationVersionKey"
+        )]
+        [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": null, \"game_data_limits\": []}",
+            TestName = "RepeatedGameDataLimitsKeyAfterNull"
         )]
         public void ProtocolInfoWithMalformedV3FieldRejectsDecode(string wire)
         {
@@ -142,7 +196,8 @@ namespace SignalFish.Client.Tests
                     "{\"capabilities\": [\"reconnection\"], \"game_data_formats\": [\"json\"], "
                         + "\"protocol_version\": null, \"min_protocol_version\": null, "
                         + "\"max_protocol_version\": null, \"transports\": null, "
-                        + "\"max_outbound_message_size\": null}"
+                        + "\"max_outbound_message_size\": null, "
+                        + "\"implementation_version\": null, \"game_data_limits\": null}"
                 ),
                 out ProtocolInfoMessage message
             );
@@ -150,6 +205,98 @@ namespace SignalFish.Client.Tests
             Assert.That(message.ProtocolVersion, Is.Null);
             Assert.That(message.Transports, Is.Null);
             Assert.That(message.MaxOutboundMessageSize, Is.Null);
+            Assert.That(message.ImplementationVersion, Is.Null);
+            Assert.That(message.GameDataLimits, Is.Null);
+        }
+
+        [Test]
+        public void ProtocolInfoWithImplementationVersionAndGameDataLimitsDecodesThem()
+        {
+            /*
+                Server 0.10.0 (#631, #634): both fields are additive v3
+                observability disclosed behind authentication. The limits
+                list is decoded verbatim in canonical order — every entry
+                decodes whatever encoding token it names, so future opt-in
+                encodings surface forward-compatibly.
+            */
+            bool decoded = ProtocolInfoMessage.TryDecode(
+                Bytes(
+                    "{\"capabilities\": [], \"game_data_formats\": [\"json\"], "
+                        + "\"implementation_version\": \"0.10.0\", "
+                        + "\"game_data_limits\": ["
+                        + "{\"encoding\": \"json\", \"max_bytes\": 65536}, "
+                        + "{\"encoding\": \"message_pack\", \"max_bytes\": 131072}, "
+                        + "{\"encoding\": \"rkyv\", \"max_bytes\": 262144}, "
+                        + "{\"encoding\": \"protobuf\", \"max_bytes\": 524288}]}"
+                ),
+                out ProtocolInfoMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.ImplementationVersion, Is.EqualTo("0.10.0"));
+            Assert.That(message.GameDataLimits, Has.Count.EqualTo(4));
+            string[] encodings = { "json", "message_pack", "rkyv", "protobuf" };
+            uint[] maxBytes = { 65536u, 131072u, 262144u, 524288u };
+            for (int i = 0; i < encodings.Length; i++)
+            {
+                Assert.That(
+                    message.GameDataLimits[i],
+                    Is.EqualTo(new GameDataLimit(encodings[i], maxBytes[i]))
+                );
+            }
+
+            ProtocolInfoMessage equalPayload = new ProtocolInfoMessage(
+                Array.Empty<string>(),
+                JsonOnlyFormats,
+                protocolVersion: null,
+                minProtocolVersion: null,
+                maxProtocolVersion: null,
+                transports: null,
+                maxOutboundMessageSize: null,
+                implementationVersion: "0.10.0",
+                gameDataLimits: message.GameDataLimits
+            );
+            Assert.That(
+                message,
+                Is.EqualTo(equalPayload),
+                "equal payloads must compare equal across the new fields"
+            );
+        }
+
+        [Test]
+        public void ProtocolInfoWithEmptyGameDataLimitsDecodesAsPresentButEmpty()
+        {
+            /*
+                The server never sends an empty list (it omits the field
+                when no cap applies), but a present empty array must still
+                decode as an empty list, not as absent — the client cannot
+                distinguish and must not invent absence.
+            */
+            bool decoded = ProtocolInfoMessage.TryDecode(
+                Bytes(
+                    "{\"capabilities\": [], \"game_data_formats\": [], "
+                        + "\"game_data_limits\": []}"
+                ),
+                out ProtocolInfoMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.GameDataLimits, Is.Not.Null.And.Empty);
+        }
+
+        [Test]
+        public void ProtocolInfoLimitEntryWithUnknownFieldStillDecodes()
+        {
+            bool decoded = ProtocolInfoMessage.TryDecode(
+                Bytes(
+                    "{\"capabilities\": [], \"game_data_formats\": [], "
+                        + "\"game_data_limits\": ["
+                        + "{\"encoding\": \"json\", \"max_bytes\": 65536, "
+                        + "\"future_v4_field\": true}]}"
+                ),
+                out ProtocolInfoMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.GameDataLimits, Has.Count.EqualTo(1));
+            Assert.That(message.GameDataLimits[0], Is.EqualTo(new GameDataLimit("json", 65536)));
         }
 
         [Test]

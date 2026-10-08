@@ -7,22 +7,26 @@ or fix upstream.
 
 - Source: <https://github.com/Ambiguous-Interactive/signal-fish-server>
 - Upstream path: `.llm/code-samples/protocol/`
-- Pinned commit: `07a6fd087ea924034dfec126cf9acb8357858aa9`
-- Last synced: 2026-09-21 (UTC)
+- Pinned commit: `44c90905db4a7fc57a50ceed171278ad7d144732`
+- Last synced: 2026-10-08 (UTC)
 
 ## Files
 
 | File | Lines |
 | --- | --- |
-| `v2-client-messages.jsonl` | 13 |
+| `v2-client-messages.jsonl` | 15 |
 | `v2-server-messages.jsonl` | 24 |
-| `v3-client-messages.jsonl` | 9 |
-| `v3-server-messages.jsonl` | 16 |
+| `v3-client-messages.jsonl` | 10 |
+| `v3-server-messages.jsonl` | 17 |
 
 ## Coverage gaps (at this pin)
 
 The corpus is verbatim upstream and covers only what the server publishes.
-At pin `07a6fd08` (server 0.9.2) the full mandatory v2 floor has wire
-samples, including `GameStarting`, `RoomLeft`, and the `*Failed`
-family. If a future floor message lacks a sample here, request it upstream;
-never hand-vendor replacements.
+At pin `44c90905` (server 0.10.0) the mandatory v2 floor has wire samples,
+including `GameStarting`, `RoomLeft`, and the `*Failed` family, plus
+the additive `JoinRoom.join_only` and
+`ProtocolInfo.implementation_version` shapes. `game_data_limits` has no
+upstream sample (the field only appears when the deployment configures
+per-encoding caps), so its decode policy is pinned by inline wire strings in
+the payload tests. If a future floor message lacks a sample here, request it
+upstream; never hand-vendor replacements.

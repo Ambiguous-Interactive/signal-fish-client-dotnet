@@ -9,30 +9,34 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-08 - session 061: ProtocolInfo observability fields on the frozen surface
+
+- Trigger: a protocol + public API surface change (mandatory loop).
+- Evidence: appending two optional parameters to the public
+  `ProtocolInfoMessage` ctor *replaced* the released 7-param signature
+  (api-compat CP0002 — compiled consumers would miss the symbol), the
+  exact trap session 060 recorded for `JoinRoomMessage`; the recipe's
+  "additive optional properties" wording invited it. Fixed shape:
+  released ctor stays and delegates; new fields ride an all-required
+  9-param overload (no defaults → no CS0121). Gate green after.
+- Findings: (1) on any released struct, an optional-param append is
+  signature-replacing — keep the released ctor and put additive fields
+  on a fully-required overload (decode-only structs) or a fluent copy
+  (two-way structs, session 060); run `check-api-compat.ps1` locally
+  before pushing. (2) Mirror disclosure scope exactly: the server
+  sends `game_data_limits` as configured caps ∩ negotiable encodings —
+  scope claims like "including encodings the SDK never requests" were
+  wrong in doc/changelog/test until review caught them.
+- Applied: overload shape shipped; docs right-sized (XML, CHANGELOG,
+  quick-reference, events.md); repeated-key + unknown-entry-field
+  decode holes pinned by tests. Open: none.
+
 ## 2026-10-07 - session 060: join_only on the frozen JoinRoomMessage surface
 
-- Trigger: a protocol + public API surface change (mandatory loop); the
-  additive-field shape took three compile attempts.
-- Evidence: an in-place 8th defaulted ctor parameter removes the
-  v0.1.0-baseline ctor (api-compat gate); a second fully-defaulted
-  public ctor makes every previously-fine call ambiguous (CS0121 — C#
-  has no fewer-optional-parameters tie-break for constructors). The
-  working shape — get-only property + public fluent copy
-  (`AsJoinOnly()`, guards the server's INVALID_INPUT pairing at the
-  call site) + internal full ctor for decode — passed api-compat
-  untouched, 955/955 tests. The adversarial round also caught a
-  pre-existing wrong claim being cemented: the XML doc's wire order
-  said `game_name, player_name, room_code`; the writer and the server
-  serde emit `room_code` before `player_name`.
-- Findings: (1) extending a frozen-surface message struct: never touch
-  the public ctor and never add a second defaulted one — get-only
-  property, internal full ctor, fluent copy guard. (2) When extending
-  a doc sentence, re-verify its existing claims: an SSOT-chain error
-  hides inside prose until someone touches the line.
-- Applied: the `AsJoinOnly` shape shipped; the wire-order doc
-  corrected in both library copies. Open: the same shape decision
-  applies to the pending ProtocolInfo additive fields
-  (`implementation_version`, `game_data_limits` — #117).
+(Pruned 2026-10-08: the fluent-copy shape and the re-verify-doc-claims
+lesson graduated into the 061 entry and the shipped XML docs; the Open
+ProtocolInfo shape decision resolved in session 061. Rationale in
+`progress/session-060-join-only-collision-safe-joins.md`.)
 
 ## 2026-10-07 - sessions 057/059 (stubs)
 
@@ -51,46 +55,9 @@ originals in git history.)
 
 ## 2026-10-06 - session 052: M9.4 scheduled bench gate (argument-mode misbind, dispatch-before-default-branch)
 
-- Trigger: the reflect-improve loop after the second
-  CI-infrastructure change (new gate script + scheduled workflow +
-  self-test file).
-- Evidence: (1) the first self-test run failed 6 assertions: the test
-  passed `[regex]::Escape($x)` as a named-parameter argument, and
-  PowerShell argument mode bound the literal string `[regex]::Escape`
-  to the parameter and shifted `$x` into the name position — silent,
-  no error, wrong assertion names. (2) `gh workflow run bench.yml`
-  404s until the workflow file exists on the default branch, so the
-  first CI baseline could not be recorded from the PR by dispatch.
-  (3) The devcontainer is Arm64, CI runners are x64 — a locally
-  recorded baseline would fail every scheduled run on incomparable
-  medians. (4) The adversarial review round found three holes the
-  first round's tests missed: a zero/negative run median passed the
-  gate (only the baseline side was guarded), `Set-StrictMode` turned
-  every missing-field guard into a raw property-not-found throw
-  (friendly remedies were dead code), and the baseline timestamp used
-  the ambient culture (Hijri under ar-SA).
-- Findings: expression arguments to named parameters need parens
-  (`-P ([regex]::Escape($x))`); argument mode evaluates them as typed
-  strings otherwise. Platform gates shape bootstrap paths: `gh workflow
-  run` 404s until the workflow is on the default branch, and a
-  temporary push trigger + record-if-absent shim recorded the first
-  baseline on the target hardware. `hashFiles` in a step-`if` is
-  evaluated when the step starts, not at workflow parse: a record step
-  that creates the file flips a later hashFiles-gated step to true
-  (benign here — the extra compare validated the fresh baseline
-  in-place — but the shim was removed rather than kept). Environment
-  facts that gate comparability (architecture) belong in the artifact
-  itself, not the docs.
-- Applied: parens in the test file; architecture pinned in the
-  baseline schema with a named failure message; shim and trigger
-  removed after the baseline landed; the re-record flow documented in
-  `docs/benchmarks.md`. Review round: run-median positivity guard,
-  `PSObject.Properties` existence guards so the friendly messages
-  actually fire under StrictMode, InvariantCulture timestamp, BDN
-  version-drift warning. CI self-comparison data: max run-to-run
-  median ratio 1.15 on ubuntu-latest (ChannelsTryRoundtrip), inside
-  the 1.30 budget with headroom.
-- Open: none.
+(Pruned 2026-10-08: Open was none; knowledge graduated into
+`docs/benchmarks.md`, the bench self-test, and the baseline schema.
+Originals in git history.)
 
 Entries pruned 2026-10-06 (sessions 042, 042-bugbot, 048, 049, 051):
 knowledge graduated into `author-engine-adapter`, `address-pr-feedback`,

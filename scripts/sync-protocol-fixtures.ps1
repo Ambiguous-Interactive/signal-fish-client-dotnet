@@ -33,7 +33,7 @@
 param(
     # Upstream commit the vendored corpus must match. Bump via -Sync after
     # reviewing the upstream diff between the old and new pins.
-    [string]$PinnedCommit = '07a6fd087ea924034dfec126cf9acb8357858aa9',
+    [string]$PinnedCommit = '44c90905db4a7fc57a50ceed171278ad7d144732',
 
     # Repository root. Defaults to the parent of the scripts directory.
     [string]$RepoRoot,
@@ -203,10 +203,14 @@ $fileTable
 ## Coverage gaps (at this pin)
 
 The corpus is verbatim upstream and covers only what the server publishes.
-At pin ``07a6fd08`` (server 0.9.2) the full mandatory v2 floor has wire
-samples, including ``GameStarting``, ``RoomLeft``, and the ``*Failed``
-family. If a future floor message lacks a sample here, request it upstream;
-never hand-vendor replacements.
+At pin ``44c90905`` (server 0.10.0) the mandatory v2 floor has wire samples,
+including ``GameStarting``, ``RoomLeft``, and the ``*Failed`` family, plus
+the additive ``JoinRoom.join_only`` and
+``ProtocolInfo.implementation_version`` shapes. ``game_data_limits`` has no
+upstream sample (the field only appears when the deployment configures
+per-encoding caps), so its decode policy is pinned by inline wire strings in
+the payload tests. If a future floor message lacks a sample here, request it
+upstream; never hand-vendor replacements.
 "@
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($provenancePath, "$provenance`n", $utf8NoBom)

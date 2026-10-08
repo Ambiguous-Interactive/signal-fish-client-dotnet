@@ -136,6 +136,24 @@ second notice is out of contract there too.
 budgets (`max_relay_bytes` 256 MiB/sender/window,
 `max_room_relay_bytes` 1 GiB/room/window).
 
+## ProtocolInfo payload
+
+- Required: `capabilities`, `game_data_formats` (both lists; may be
+  empty).
+- Negotiated v3 adds: `protocol_version`, `min_protocol_version`,
+  `max_protocol_version`, `transports`, `max_outbound_message_size`,
+  `implementation_version` — the exact server release (e.g. `"0.10.0"`)
+  disclosed behind authentication, so a client can pin the deployment it
+  tested against — and `game_data_limits`: one
+  `{ "encoding": ..., "max_bytes": ... }` entry per capped encoding the
+  connection can negotiate, in canonical encoding order. The limits list
+  appears only when the deployment configures
+  `security.max_game_data_bytes`; an over-cap payload is refused
+  `MESSAGE_TOO_LARGE` at admission, so treat the caps as pre-flight
+  advice.
+- Every v3 addition is absent on a negotiated v2 connection (frozen v2
+  wire shape); an explicit JSON `null` decodes as absent.
+
 ## Environment
 
 - Server env nesting uses double underscores:

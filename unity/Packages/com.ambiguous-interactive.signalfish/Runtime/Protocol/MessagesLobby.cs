@@ -247,6 +247,113 @@ namespace SignalFish.Client.Protocol
     }
 
     /// <summary>
+    /// One per-encoding game-data payload ceiling disclosed by
+    /// <c>ProtocolInfo</c> (server 0.10.0, issue #634). <see cref="MaxBytes"/>
+    /// bounds the sender-controlled payload bytes in the encoding's own
+    /// measure: raw bytes for binary encodings, canonical JSON bytes for the
+    /// <c>json</c> text lane. Advisory: the server checks the cap at
+    /// admission and refuses an over-cap payload with
+    /// <c>MESSAGE_TOO_LARGE</c>.
+    /// </summary>
+    public readonly struct GameDataLimit : IEquatable<GameDataLimit>
+    {
+        /// <summary>
+        /// Gets the encoding wire token the cap applies to
+        /// (<c>json</c>, <c>message_pack</c>, <c>rkyv</c>, <c>protobuf</c>).
+        /// </summary>
+        public string Encoding { get; }
+
+        /// <summary>Gets the payload ceiling in bytes.</summary>
+        public uint MaxBytes { get; }
+
+        /// <summary>Initializes a new <see cref="GameDataLimit"/> value.</summary>
+        public GameDataLimit(string encoding, uint maxBytes)
+        {
+            Encoding = encoding;
+            MaxBytes = maxBytes;
+        }
+
+        /// <inheritdoc />
+        public bool Equals(GameDataLimit other) =>
+            AuthenticateMessage.NullableStringEquals(Encoding, other.Encoding)
+            && MaxBytes == other.MaxBytes;
+
+        /// <inheritdoc />
+        public override bool Equals(object? obj) => obj is GameDataLimit other && Equals(other);
+
+        /// <inheritdoc />
+        public override int GetHashCode()
+        {
+            HashCode hash = default;
+            hash.Add(Encoding);
+            hash.Add(MaxBytes);
+            return hash.ToHashCode();
+        }
+
+        /// <inheritdoc />
+        public static bool operator ==(GameDataLimit left, GameDataLimit right) =>
+            left.Equals(right);
+
+        /// <inheritdoc />
+        public static bool operator !=(GameDataLimit left, GameDataLimit right) =>
+            !left.Equals(right);
+
+        /// <summary>
+        /// Decodes one <c>game_data_limits</c> entry (a sliced sub-object of
+        /// a payload). Unknown fields are skipped; a repeated key or a
+        /// wrong-typed value is rejected. Returns
+        /// <see langword="false"/> for malformed input or a missing
+        /// required field.
+        /// </summary>
+        internal static bool TryDecode(ReadOnlyMemory<byte> data, out GameDataLimit limit)
+        {
+            limit = default;
+            JsonScanner scanner = new JsonScanner(data.Span);
+            JsonMemberState state = scanner.BeginObject();
+
+            string? encoding = null;
+            uint maxBytes = 0;
+            bool maxBytesSeen = false;
+
+            while (state == JsonMemberState.Member)
+            {
+                state = scanner.ScanMember(out Range keyRaw, out Range valueRaw);
+                if (state != JsonMemberState.Member)
+                {
+                    return false;
+                }
+
+                if (scanner.KeyIs(keyRaw, "encoding"))
+                {
+                    if (encoding is not null || !scanner.TryReadString(valueRaw, out encoding))
+                    {
+                        return false;
+                    }
+                }
+                else if (scanner.KeyIs(keyRaw, "max_bytes"))
+                {
+                    if (maxBytesSeen || !scanner.TryReadUInt32(valueRaw, out maxBytes))
+                    {
+                        return false;
+                    }
+
+                    maxBytesSeen = true;
+                }
+
+                state = scanner.EndMember();
+            }
+
+            if (state != JsonMemberState.EndObject || encoding is null || !maxBytesSeen)
+            {
+                return false;
+            }
+
+            limit = new GameDataLimit(encoding, maxBytes);
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Payload of the inbound <c>ProtocolInfo</c> message (S→C): the
     /// protocol capability tokens and the game-data formats the endpoint
     /// supports. Both lists are required but may be empty. The v3
@@ -255,7 +362,8 @@ namespace SignalFish.Client.Protocol
     /// <c>capabilities</c>, <c>game_data_formats</c>,
     /// <c>protocol_version</c>, <c>min_protocol_version</c>,
     /// <c>max_protocol_version</c>, <c>transports</c>,
-    /// <c>max_outbound_message_size</c>.
+    /// <c>max_outbound_message_size</c>, <c>implementation_version</c>,
+    /// <c>game_data_limits</c>.
     /// </summary>
     public readonly struct ProtocolInfoMessage : IEquatable<ProtocolInfoMessage>
     {
@@ -284,6 +392,24 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the outbound per-message byte bound (v3; optional).</summary>
         public uint? MaxOutboundMessageSize { get; }
 
+        /// <summary>
+        /// Gets the exact release string of the serving server
+        /// implementation (v3; optional; disclosed behind authentication),
+        /// so a client can pin the deployment it tested against.
+        /// </summary>
+        public string? ImplementationVersion { get; }
+
+        /// <summary>
+        /// Gets the per-encoding game-data payload ceilings the deployment
+        /// disclosed (v3; optional; absent unless the deployment configures
+        /// caps): one entry per configured cap on an encoding the
+        /// connection can negotiate — a subset of
+        /// <see cref="GameDataFormats"/> — in canonical encoding order.
+        /// Advisory: the server refuses an over-cap payload with
+        /// <c>MESSAGE_TOO_LARGE</c> at admission.
+        /// </summary>
+        public IReadOnlyList<GameDataLimit>? GameDataLimits { get; }
+
         /// <summary>Initializes a new <see cref="ProtocolInfoMessage"/> payload.</summary>
         public ProtocolInfoMessage(
             IReadOnlyList<string> capabilities,
@@ -294,6 +420,33 @@ namespace SignalFish.Client.Protocol
             IReadOnlyList<string>? transports = null,
             uint? maxOutboundMessageSize = null
         )
+            : this(
+                capabilities,
+                gameDataFormats,
+                protocolVersion,
+                minProtocolVersion,
+                maxProtocolVersion,
+                transports,
+                maxOutboundMessageSize,
+                implementationVersion: null,
+                gameDataLimits: null
+            ) { }
+
+        /// <summary>
+        /// Initializes a new <see cref="ProtocolInfoMessage"/> payload with
+        /// the server 0.10.0 observability fields.
+        /// </summary>
+        public ProtocolInfoMessage(
+            IReadOnlyList<string> capabilities,
+            IReadOnlyList<string> gameDataFormats,
+            uint? protocolVersion,
+            uint? minProtocolVersion,
+            uint? maxProtocolVersion,
+            IReadOnlyList<string>? transports,
+            uint? maxOutboundMessageSize,
+            string? implementationVersion,
+            IReadOnlyList<GameDataLimit>? gameDataLimits
+        )
         {
             Capabilities = capabilities;
             GameDataFormats = gameDataFormats;
@@ -302,6 +455,8 @@ namespace SignalFish.Client.Protocol
             MaxProtocolVersion = maxProtocolVersion;
             Transports = transports;
             MaxOutboundMessageSize = maxOutboundMessageSize;
+            ImplementationVersion = implementationVersion;
+            GameDataLimits = gameDataLimits;
         }
 
         /// <inheritdoc />
@@ -312,7 +467,12 @@ namespace SignalFish.Client.Protocol
             && MinProtocolVersion == other.MinProtocolVersion
             && MaxProtocolVersion == other.MaxProtocolVersion
             && AuthenticateMessage.SequenceEquals(Transports, other.Transports)
-            && MaxOutboundMessageSize == other.MaxOutboundMessageSize;
+            && MaxOutboundMessageSize == other.MaxOutboundMessageSize
+            && AuthenticateMessage.NullableStringEquals(
+                ImplementationVersion,
+                other.ImplementationVersion
+            )
+            && SequenceEquals(GameDataLimits, other.GameDataLimits);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) =>
@@ -329,6 +489,8 @@ namespace SignalFish.Client.Protocol
             hash.Add(MaxProtocolVersion);
             hash.Add(SequenceHashCode(Transports));
             hash.Add(MaxOutboundMessageSize);
+            hash.Add(ImplementationVersion);
+            hash.Add(SequenceHashCode(GameDataLimits));
             return hash.ToHashCode();
         }
 
@@ -362,11 +524,15 @@ namespace SignalFish.Client.Protocol
             uint? maxProtocolVersion = null;
             IReadOnlyList<string>? transports = null;
             uint? maxOutboundMessageSize = null;
+            string? implementationVersion = null;
+            IReadOnlyList<GameDataLimit>? gameDataLimits = null;
             bool protocolVersionSeen = false;
             bool minProtocolVersionSeen = false;
             bool maxProtocolVersionSeen = false;
             bool transportsSeen = false;
             bool maxOutboundMessageSizeSeen = false;
+            bool implementationVersionSeen = false;
+            bool gameDataLimitsSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -506,6 +672,49 @@ namespace SignalFish.Client.Protocol
                         maxOutboundMessageSize = parsed;
                     }
                 }
+                else if (scanner.KeyIs(keyRaw, "implementation_version"))
+                {
+                    if (implementationVersionSeen)
+                    {
+                        return false;
+                    }
+
+                    implementationVersionSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (!scanner.TryReadString(valueRaw, out string parsed))
+                        {
+                            return false;
+                        }
+
+                        implementationVersion = parsed;
+                    }
+                }
+                else if (scanner.KeyIs(keyRaw, "game_data_limits"))
+                {
+                    if (gameDataLimitsSeen)
+                    {
+                        return false;
+                    }
+
+                    gameDataLimitsSeen = true;
+                    if (!scanner.TryReadNull(valueRaw))
+                    {
+                        if (
+                            !ProtocolArrays.TryReadObjectArray(
+                                data,
+                                valueRaw,
+                                GameDataLimit.TryDecode,
+                                out IReadOnlyList<GameDataLimit> parsed
+                            )
+                        )
+                        {
+                            return false;
+                        }
+
+                        gameDataLimits = parsed;
+                    }
+                }
 
                 state = scanner.EndMember();
             }
@@ -526,7 +735,9 @@ namespace SignalFish.Client.Protocol
                 minProtocolVersion,
                 maxProtocolVersion,
                 transports,
-                maxOutboundMessageSize
+                maxOutboundMessageSize,
+                implementationVersion,
+                gameDataLimits
             );
             return true;
         }
@@ -545,6 +756,48 @@ namespace SignalFish.Client.Protocol
             }
 
             return hash.ToHashCode();
+        }
+
+        private static int SequenceHashCode(IReadOnlyList<GameDataLimit>? values)
+        {
+            if (values is null)
+            {
+                return 0;
+            }
+
+            HashCode hash = default;
+            for (int i = 0; i < values.Count; i++)
+            {
+                hash.Add(values[i]);
+            }
+
+            return hash.ToHashCode();
+        }
+
+        private static bool SequenceEquals(
+            IReadOnlyList<GameDataLimit>? left,
+            IReadOnlyList<GameDataLimit>? right
+        )
+        {
+            if (left is null || right is null)
+            {
+                return left is null && right is null;
+            }
+
+            if (left.Count != right.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < left.Count; i++)
+            {
+                if (left[i] != right[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 

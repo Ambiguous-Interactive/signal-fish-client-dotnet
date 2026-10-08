@@ -131,7 +131,7 @@ types themselves:
 | Payload type | Properties | Carried by |
 |---|---|---|
 | `AuthenticatedMessage` | `AppName`, `Organization`, `RateLimits` (`PerMinute`, `PerHour`, `PerDay`) | `Authenticated` |
-| `ProtocolInfoMessage` | `Capabilities`, `GameDataFormats`, `ProtocolVersion?`, `MinProtocolVersion?`, `MaxProtocolVersion?`, `Transports?`, `MaxOutboundMessageSize?` | `ProtocolInfo` |
+| `ProtocolInfoMessage` | `Capabilities`, `GameDataFormats`, `ProtocolVersion?`, `MinProtocolVersion?`, `MaxProtocolVersion?`, `Transports?`, `MaxOutboundMessageSize?`, `ImplementationVersion?`, `GameDataLimits?` (of `GameDataLimit`: `Encoding`, `MaxBytes`) | `ProtocolInfo` |
 | `RoomMembership` | `Role`, `PlayerId`, `RoomId`, `RoomCode`, `IsPresent` | `RoomJoined`, `SpectatorJoined`, `Reconnected` |
 | `RoomSnapshot` | `GameName?`, `MaxPlayers`, `SupportsAuthority`, `IsAuthority`, `LobbyState?`, `RelayType?`, `ReadyPlayers?`, `CurrentPlayers`, `CurrentSpectators`, `IceServers` | the membership-confirming kinds; fields the frame omitted stay at their default — the server tailors the snapshot per audience |
 | `FailureMessage` | `Reason`, `ErrorCode` | `RoomJoinFailed`, `SpectatorJoinFailed`, `ReconnectionFailed`, `ServerError` |
