@@ -9,6 +9,26 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-08 - session 064: merge-on-green codified
+
+- Trigger: a `.llm` system change (mandatory loop); driver issue #124.
+- Evidence: the merge endgame was tribal knowledge — the repo's
+  squash-only settings (title = PR title, body = PR body,
+  delete-branch-on-merge, auto-merge on) were stated nowhere, and
+  session 031 recorded the stale-local-main-after-squash failure mode
+  in this log while the fix lived in no durable artifact.
+- Findings: (1) a parked green PR rots — the base moves, checks go
+  stale on an old SHA, and the next session pays re-discovery. (2)
+  Post-squash local sync is time-critical: `branch -d` refuses a
+  squashed branch (its commits are not ancestors of main) and a stale
+  main grows duplicate content.
+- Applied: [merge-green-pr](./skills/merge-green-pr/SKILL.md) — green
+  gate on the head SHA, squash merge under the repo settings,
+  immediate `--ff-only` resync plus prune, main-green verification on
+  the squash commit; context.md rule 23 and GOAL.md point at it.
+- Open: none — session 031's finding (1) graduated into the skill; its
+  decoder finding (2) remains logged under its own header.
+
 ## 2026-10-08 - session 062: CI retry loop broke the Windows cell
 
 - Trigger: a test-infrastructure change (mandatory loop).
@@ -179,30 +199,13 @@ Pruned 2026-10-04: the devcontainer rounds, the maintain-plan restructure, and t
 
 ## 2026-10-02 - session 031: M6.4 binary game data + stale-main convergence
 
-- Trigger: session start found local main 5 commits ahead / 1 behind
-  origin/main mid-merge with four both-added conflicts — session 030's
-  work had landed as squash #67 while local main kept the pre-review
-  iteration; the branch then gained adversarial-review findings on its
-  own fresh code.
-- Evidence: tree equality checks (`git diff` against the squash and the
-  PR branch tip) proved local main held zero unique content; the merge
-  was abandoned and main reset to origin/main — no resolution commit
-  needed. On the new work, the adversarial reviewer confirmed a
-  silent-corruption blocker with a scratch probe: both `from_player`
-  and `payload` bound to one slice local, so any MessagePack key order
-  but the server's delivered the UUID bytes as the payload.
-- Findings: (1) when a squash merge lands, reset local main
-  immediately — a stale local main duplicates the squash content and
-  turns the next sync into both-added conflict archaeology; verify
-  with tree-diff, not commit log. (2) In a keyed map decoder, every
-  field binds to its own storage: shared locals turn key order into
-  data corruption, and a test suite that only builds one key order
-  cannot see it — permutation tests are the regression pin.
-- Applied: main converged to origin/main (session opened clean); the
-  decoder uses a dedicated sender slice pinned by
-  `AnyKeyOrderDecodesTheSameFrame`; admission-refused Observe frames
-  stop at the refusal (cursor continuity pinned). Open: a coverage-
-  guided fuzz target for the MessagePack scanner (filed).
+(Trimmed 2026-10-08: finding (1) - reset local main immediately after
+every squash merge, verify with tree-diff, not commit log - graduated
+into [merge-green-pr](./skills/merge-green-pr/SKILL.md). Finding (2)
+stays: in a keyed map decoder, every field binds to its own storage -
+shared locals turn key order into data corruption, and a suite that
+builds one key order cannot see it; permutation tests are the
+regression pin (`AnyKeyOrderDecodesTheSameFrame`).)
 
 ## 2026-10-06 - session 054: UPM release tarballs (path-constant routing bug)
 
