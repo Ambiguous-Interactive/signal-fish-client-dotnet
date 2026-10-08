@@ -401,10 +401,11 @@ namespace SignalFish.Client.Protocol
         /// <summary>
         /// Gets the per-encoding game-data payload ceilings the deployment
         /// disclosed (v3; optional; absent unless the deployment configures
-        /// caps). Entries appear in canonical encoding order and cover every
-        /// encoding the connection can negotiate, including opt-in encodings
-        /// this SDK never requests. Advisory: the server refuses an
-        /// over-cap payload with <c>MESSAGE_TOO_LARGE</c> at admission.
+        /// caps): one entry per configured cap on an encoding the
+        /// connection can negotiate — a subset of
+        /// <see cref="GameDataFormats"/> — in canonical encoding order.
+        /// Advisory: the server refuses an over-cap payload with
+        /// <c>MESSAGE_TOO_LARGE</c> at admission.
         /// </summary>
         public IReadOnlyList<GameDataLimit>? GameDataLimits { get; }
 
@@ -416,9 +417,34 @@ namespace SignalFish.Client.Protocol
             uint? minProtocolVersion = null,
             uint? maxProtocolVersion = null,
             IReadOnlyList<string>? transports = null,
-            uint? maxOutboundMessageSize = null,
-            string? implementationVersion = null,
-            IReadOnlyList<GameDataLimit>? gameDataLimits = null
+            uint? maxOutboundMessageSize = null
+        )
+            : this(
+                capabilities,
+                gameDataFormats,
+                protocolVersion,
+                minProtocolVersion,
+                maxProtocolVersion,
+                transports,
+                maxOutboundMessageSize,
+                implementationVersion: null,
+                gameDataLimits: null
+            ) { }
+
+        /// <summary>
+        /// Initializes a new <see cref="ProtocolInfoMessage"/> payload with
+        /// the server 0.10.0 observability fields.
+        /// </summary>
+        public ProtocolInfoMessage(
+            IReadOnlyList<string> capabilities,
+            IReadOnlyList<string> gameDataFormats,
+            uint? protocolVersion,
+            uint? minProtocolVersion,
+            uint? maxProtocolVersion,
+            IReadOnlyList<string>? transports,
+            uint? maxOutboundMessageSize,
+            string? implementationVersion,
+            IReadOnlyList<GameDataLimit>? gameDataLimits
         )
         {
             Capabilities = capabilities;

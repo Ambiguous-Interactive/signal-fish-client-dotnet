@@ -151,6 +151,10 @@ namespace SignalFish.Client.Tests
             TestName = "WrongTypedLimitEncoding"
         )]
         [TestCase(
+            "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": [{\"encoding\": \"json\", \"max_bytes\": 65536, \"max_bytes\": 1}]}",
+            TestName = "RepeatedLimitMaxBytesKey"
+        )]
+        [TestCase(
             "{\"capabilities\": [], \"game_data_formats\": [], \"game_data_limits\": [{\"encoding\": \"json\", \"encoding\": \"message_pack\", \"max_bytes\": 65536}]}",
             TestName = "RepeatedLimitEncodingKey"
         )]
@@ -211,9 +215,9 @@ namespace SignalFish.Client.Tests
             /*
                 Server 0.10.0 (#631, #634): both fields are additive v3
                 observability disclosed behind authentication. The limits
-                list follows canonical encoding order and is decoded
-                verbatim — entries for encodings this SDK never requests
-                (rkyv, protobuf) still surface, forward-compatible.
+                list is decoded verbatim in canonical order — every entry
+                decodes whatever encoding token it names, so future opt-in
+                encodings surface forward-compatibly.
             */
             bool decoded = ProtocolInfoMessage.TryDecode(
                 Bytes(
@@ -243,6 +247,11 @@ namespace SignalFish.Client.Tests
             ProtocolInfoMessage equalPayload = new ProtocolInfoMessage(
                 Array.Empty<string>(),
                 JsonOnlyFormats,
+                protocolVersion: null,
+                minProtocolVersion: null,
+                maxProtocolVersion: null,
+                transports: null,
+                maxOutboundMessageSize: null,
                 implementationVersion: "0.10.0",
                 gameDataLimits: message.GameDataLimits
             );
@@ -271,6 +280,23 @@ namespace SignalFish.Client.Tests
             );
             Assert.That(decoded, Is.True);
             Assert.That(message.GameDataLimits, Is.Not.Null.And.Empty);
+        }
+
+        [Test]
+        public void ProtocolInfoLimitEntryWithUnknownFieldStillDecodes()
+        {
+            bool decoded = ProtocolInfoMessage.TryDecode(
+                Bytes(
+                    "{\"capabilities\": [], \"game_data_formats\": [], "
+                        + "\"game_data_limits\": ["
+                        + "{\"encoding\": \"json\", \"max_bytes\": 65536, "
+                        + "\"future_v4_field\": true}]}"
+                ),
+                out ProtocolInfoMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.GameDataLimits, Has.Count.EqualTo(1));
+            Assert.That(message.GameDataLimits[0], Is.EqualTo(new GameDataLimit("json", 65536)));
         }
 
         [Test]
