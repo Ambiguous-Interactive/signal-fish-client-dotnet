@@ -149,6 +149,59 @@ namespace SignalFish.Client.E2E
             }
         }
 
+        /// <summary>
+        /// Connects a v3 negotiation client whose whole socket path runs
+        /// through a fresh in-process partition proxy. The caller drops the
+        /// client by disposing the proxy: both relay legs close, so the
+        /// socket dies with a plain TCP close and no WebSocket close frame —
+        /// exactly the drop the server's reconnection flow arms a token
+        /// for. The full handshake completes before returning.
+        /// </summary>
+        internal static async Task<(
+            SignalFishPollingClient Client,
+            PartitionProxy Proxy
+        )> ConnectProxiedV3ClientAsync(
+            string[] transports,
+            string[] topologies,
+            PollingClientOptions? options = null
+        )
+        {
+            PartitionProxy proxy = PartitionProxy.Start(E2EEnvironment.BaseUrl);
+            SignalFishPollingClient client = new SignalFishPollingClient(
+                new WebSocketTransport(),
+                SystemClock.Instance,
+                options
+            );
+            try
+            {
+                await client.ConnectAsync(proxy.ClientV3Endpoint()).ConfigureAwait(false);
+                CommandSend send = client.SendAuthenticate(
+                    new AuthenticateMessage(
+                        appId: "e2e-dotnet-app",
+                        protocolVersion: 3,
+                        supportedTransports: transports,
+                        supportedTopologies: topologies
+                    )
+                );
+                if (!send.Accepted)
+                {
+                    throw new InvalidOperationException($"Authenticate refused: {send.Refusal}");
+                }
+
+                await WaitForEventAsync(client, e => e.Kind == PollEventKind.Authenticated)
+                    .ConfigureAwait(false);
+                await WaitForEventAsync(client, e => e.Kind == PollEventKind.ProtocolInfo)
+                    .ConfigureAwait(false);
+                return (client, proxy);
+            }
+            catch
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+                await proxy.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+
         /// <summary>Polls until the matching event arrives; a timeout fails with the phase.</summary>
         internal static async Task<PollEvent> WaitForEventAsync(
             SignalFishPollingClient client,
@@ -397,30 +450,41 @@ namespace SignalFish.Client.E2E
         /// </summary>
         internal static async Task<SignalFishPollingClient> ConnectV3ClientAsync(
             string[] transports,
-            string[] topologies
+            string[] topologies,
+            PollingClientOptions? options = null
         )
         {
-            SignalFishPollingClient client = await ConnectClientAsync(E2EEnvironment.V3Endpoint())
-                .ConfigureAwait(false);
-            CommandSend send = client.SendAuthenticate(
-                new AuthenticateMessage(
-                    appId: "e2e-dotnet-app",
-                    protocolVersion: 3,
-                    supportedTransports: transports,
-                    supportedTopologies: topologies
+            SignalFishPollingClient client = await ConnectClientAsync(
+                    E2EEnvironment.V3Endpoint(),
+                    options
                 )
-            );
-            if (!send.Accepted)
+                .ConfigureAwait(false);
+            try
+            {
+                CommandSend send = client.SendAuthenticate(
+                    new AuthenticateMessage(
+                        appId: "e2e-dotnet-app",
+                        protocolVersion: 3,
+                        supportedTransports: transports,
+                        supportedTopologies: topologies
+                    )
+                );
+                if (!send.Accepted)
+                {
+                    throw new InvalidOperationException($"Authenticate refused: {send.Refusal}");
+                }
+
+                await WaitForEventAsync(client, e => e.Kind == PollEventKind.Authenticated)
+                    .ConfigureAwait(false);
+                await WaitForEventAsync(client, e => e.Kind == PollEventKind.ProtocolInfo)
+                    .ConfigureAwait(false);
+                return client;
+            }
+            catch
             {
                 await client.DisposeAsync().ConfigureAwait(false);
-                throw new InvalidOperationException($"Authenticate refused: {send.Refusal}");
+                throw;
             }
-
-            await WaitForEventAsync(client, e => e.Kind == PollEventKind.Authenticated)
-                .ConfigureAwait(false);
-            await WaitForEventAsync(client, e => e.Kind == PollEventKind.ProtocolInfo)
-                .ConfigureAwait(false);
-            return client;
         }
 
         /// <summary>

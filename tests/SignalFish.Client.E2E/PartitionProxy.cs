@@ -30,6 +30,7 @@ namespace SignalFish.Client.E2E
         private readonly object _gate = new object();
         private readonly List<Task> _relays = new List<Task>();
         private readonly List<TcpClient> _downstreams = new List<TcpClient>();
+        private readonly List<TcpClient> _upstreams = new List<TcpClient>();
 
         private PartitionProxy(string targetHost, int targetPort)
         {
@@ -38,7 +39,12 @@ namespace SignalFish.Client.E2E
             _listener = new TcpListener(IPAddress.Loopback, 0);
         }
 
-        /// <summary>Stops listening and tears down every relayed connection.</summary>
+        /// <summary>
+        /// Stops listening and tears down every relayed connection — both
+        /// legs of each relay, so the far-end socket dies immediately (a
+        /// plain TCP close, no WebSocket frame) instead of idling until the
+        /// far side's own reaper fires.
+        /// </summary>
         public async ValueTask DisposeAsync()
         {
             try
@@ -57,6 +63,11 @@ namespace SignalFish.Client.E2E
                 foreach (TcpClient downstream in _downstreams)
                 {
                     CloseQuietly(downstream);
+                }
+
+                foreach (TcpClient upstream in _upstreams)
+                {
+                    CloseQuietly(upstream);
                 }
 
                 running = _relays.ToArray();
@@ -92,6 +103,13 @@ namespace SignalFish.Client.E2E
             return new Uri($"ws://127.0.0.1:{port}/v2/ws");
         }
 
+        /// <summary>Gets the v3 negotiation WebSocket endpoint served through the proxy.</summary>
+        internal Uri ClientV3Endpoint()
+        {
+            int port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+            return new Uri($"ws://127.0.0.1:{port}/v3/ws");
+        }
+
         private async Task AcceptLoopAsync()
         {
             while (true)
@@ -125,6 +143,11 @@ namespace SignalFish.Client.E2E
             {
                 upstream = new TcpClient();
                 await upstream.ConnectAsync(_targetHost, _targetPort).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    _upstreams.Add(upstream);
+                }
+
                 Task toServer = PumpAsync(
                     downstream.GetStream(),
                     upstream.GetStream(),
@@ -143,6 +166,14 @@ namespace SignalFish.Client.E2E
             }
             finally
             {
+                if (upstream is not null)
+                {
+                    lock (_gate)
+                    {
+                        _upstreams.Remove(upstream);
+                    }
+                }
+
                 /*
                     After both pumps ended: disposing the client closes its
                     socket and the stream the pumps read from.
