@@ -77,20 +77,29 @@ against the squash, not the commit log, proved the duplication).
 
 ```bash
 git checkout main
-git pull --ff-only       # fails loudly instead of inventing a merge commit
-git branch -D <branch>   # -d refuses a squashed branch; skip if absent locally
+git pull --ff-only       # refuses if local main diverged - see guard 2
 git fetch --prune        # drop stale remote-tracking refs
-git status               # expect: up to date with origin/main, clean tree
 ```
 
-Two guards make it safe:
+Both guards compare against the PR's squash commit (the mergeCommit),
+not origin/main - other PRs may have moved main in the meantime:
 
-- Before `-D`, `git diff <branch> origin/main --stat` must print
-  nothing - that proves every local commit reached the PR. Non-empty
-  means unpushed work exists: stop and sort it out first.
-- If `--ff-only` refuses, local main diverged (the session-031 trap).
-  Tree-diff the branch against the squash commit to prove zero unique
-  content, then `git reset --hard origin/main` and continue.
+1. **Prove the branch holds nothing unpushed** before deleting it:
+   `git diff <branch> "$(gh pr view <N> --json mergeCommit -q .mergeCommit.oid)" --stat`
+   must print nothing. Non-empty means local commits the PR never saw:
+   stop and sort it out first.
+2. **If `--ff-only` refused**, local main diverged (the session-031
+   trap). `git diff main origin/main --stat` printing nothing proves
+   local main's tree already matches origin/main - zero unique content
+   - so `git reset --hard origin/main` discards nothing. Non-empty:
+   inspect before discarding anything.
+
+Then finish:
+
+```bash
+git branch -D <branch>   # -d refuses a squashed branch; skip if absent locally
+git status               # expect: up to date with origin/main, clean tree
+```
 
 Do this at merge time, not at the next session start - the stale window
 is where the damage happens.
