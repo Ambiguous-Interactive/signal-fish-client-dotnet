@@ -78,18 +78,30 @@ lines exactly.
 ## Verification
 
 - RED first: new assertions failed to compile (no properties).
-- GREEN: 980/980 Release net8.0 (full suite, loopback included);
-  fast-check 953 passed / 27 loopback-skipped; csharpier clean; six
-  convention lints clean; lint-file-sizes + PLAN budget; fixture
-  verify-mode byte-identical at the new pin; E2E/Perf/Fuzz build
-  `-warnaserror`; all 18 script self-tests pass; Unity mirror fresh.
+- GREEN: 982/982 Release net8.0 (full suite, loopback included);
+  fast-check 980 total / 27 loopback-skipped; csharpier clean; six
+  convention lints clean; **api-compat gate clean vs the released
+  `v0.1.0` package**; fixture verify-mode byte-identical at the new
+  pin; E2E/Perf/Fuzz build `-warnaserror`; all 18 script self-tests
+  pass; Unity mirror fresh (`-Check` clean after sync); PLAN + `.llm`
+  file-size budgets hold.
 
 ## Adversarial loop
 
-One sub-agent round found: a CA1861 analyzer error (constant array as
-ctor argument in the equality assert — hoisted to locals/statics) and
-a `lint-comment-form` violation (2-line `//` → `/* */` block); both
-fixed and re-verified. Second round confirmed zero remaining issues.
+Two rounds. Round 1 caught a **BLOCKER**: appending the two optional
+parameters to the public constructor *replaced* the released 7-param
+signature — the api-compat gate rejected it (compiled consumers would
+miss the symbol), the exact trap session 060 documented for
+`JoinRoomMessage`. Fixed with the additive shape: the released ctor
+stays and delegates; the new fields ride a fully-required 9-param
+overload (no defaults → no CS0121 ambiguity). Round 1 also found the
+`GameDataLimits` doc/CHANGELOG over-claim (the server discloses
+configured caps on negotiated encodings only — `configured ∩
+negotiable`, not "everything"), the missed `docs/events.md` payload
+row, and two unpinned decode holes (repeated `max_bytes` rejects,
+unknown entry field skips). Round 2 verified every fix with evidence,
+confirmed overload resolution is unambiguous per C# normal-form rules,
+and re-ran all gates: **SHIP**, zero issues.
 
 ## Leftover / notes
 
@@ -98,5 +110,10 @@ fixed and re-verified. Second round confirmed zero remaining issues.
   downgrade notice in 059, these two fields here).
 - #115 (npm activation) and #80 (mkdocs extensions) stay open,
   operator-gated / dormant.
+- `GameDataLimit.MaxBytes` is `uint` for the server's `usize` —
+  consistent with the shipped `MaxOutboundMessageSize` mapping; a
+  contract-legal cap above `uint.MaxValue` would refuse the whole
+  decode, which is unreachable while caps bound frames that must fit
+  the outbound message cap.
 - `lint-conventions` takes >3 min locally (fine on CI); not a
   regression from this session.
