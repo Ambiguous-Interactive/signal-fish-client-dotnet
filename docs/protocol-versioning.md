@@ -40,10 +40,14 @@ Negotiation is one round trip layered onto the existing handshake:
 2. The server caps the advertised version at its ceiling and echoes the
    result in `ProtocolInfo` (`ProtocolInfoMessage`): `protocol_version`
    (the client's advertisement capped down), `min_protocol_version`,
-   `max_protocol_version`, `transports`, and
-   `max_outbound_message_size`. A v2 negotiation omits these fields
-   entirely; an explicit JSON `null` decodes as absent. The always-present
-   `capabilities` and `game_data_formats` lists remain.
+   `max_protocol_version`, `transports`,
+   `max_outbound_message_size`, `implementation_version` (the exact
+   server release, so a session can pin the deployment it tested
+   against), and `game_data_limits` (per-encoding payload ceilings,
+   present only when the deployment configures caps). A v2 negotiation
+   omits these fields entirely; an explicit JSON `null` decodes as
+   absent. The always-present `capabilities` and `game_data_formats`
+   lists remain.
 3. The client stores the echo verbatim: the `ProtocolInfo` session event
    sets `NegotiatedProtocolVersion` in the state machine and on the
    client snapshot. A re-echo replaces; the value is per connection and

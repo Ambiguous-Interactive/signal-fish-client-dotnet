@@ -8,6 +8,15 @@ changes (CI, tests, tooling, docs) are not listed.
 
 ### Added
 
+- `ProtocolInfoMessage` surfaces the server 0.10.0 advertisement fields
+  `ImplementationVersion` and `GameDataLimits`: a session can pin the
+  exact server release it was tested against (disclosed behind
+  authentication on v3) and pre-flight game-data payloads against the
+  deployment's per-encoding ceilings instead of learning
+  `MESSAGE_TOO_LARGE` from a refusal. Both decode as absent on a v2
+  negotiation or when the server omits them; the limits list is advisory
+  (the server enforces the caps at admission) and is decoded verbatim,
+  including entries for encodings this SDK never requests.
 - `JoinRoomMessage.AsJoinOnly()` sends the optional `join_only` flag
   (server 0.10.0): a directory-driven join naming an explicit room code
   that no longer resolves is refused `ROOM_NOT_FOUND` instead of

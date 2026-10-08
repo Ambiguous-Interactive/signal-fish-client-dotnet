@@ -1467,6 +1467,7 @@ namespace SignalFish.Client.Tests
                         appId: OptionalString(data, "app_id"),
                         sdkVersion: OptionalString(data, "sdk_version"),
                         platform: OptionalString(data, "platform"),
+                        gameDataFormat: OptionalString(data, "game_data_format"),
                         protocolVersion: OptionalUInt32(data, "protocol_version"),
                         supportedTransports: OptionalArray(data, "supported_transports"),
                         supportedTopologies: OptionalArray(data, "supported_topologies"),
@@ -1491,6 +1492,10 @@ namespace SignalFish.Client.Tests
                         relayTransport: OptionalString(data, "relay_transport"),
                         password: OptionalString(data, "password")
                     );
+                    if (OptionalBool(data, "join_only") == true)
+                    {
+                        message = message.AsJoinOnly();
+                    }
                     return new FixtureMessage(
                         wire,
                         MessageKind.JoinRoom,
