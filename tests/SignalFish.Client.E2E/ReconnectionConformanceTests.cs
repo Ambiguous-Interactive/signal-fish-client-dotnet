@@ -26,9 +26,11 @@ namespace SignalFish.Client.E2E
         private static readonly string[] RelayOnlyTopologies = { "relay" };
 
         /*
-            The anchor outlives every wait in its drill, and the CI server
-            reaps inbound-silent connections after ~3 s — the pings keep it
-            fed no matter how a slow runner stretches a phase.
+            The anchor witnesses the whole drill, and the CI server reaps
+            inbound-silent connections after ~3 s. Pings fire only while
+            the harness polls the anchor, so every phase boundary waits
+            on the anchor, and the 500 ms cadence feeds it through a
+            stalled phase.
         */
         private static readonly PollingClientOptions AnchorOptions = new PollingClientOptions(
             heartbeatIntervalMilliseconds: 500,
@@ -131,6 +133,19 @@ namespace SignalFish.Client.E2E
                         gameName,
                         "carol",
                         roomCode: bobSeat.RoomCode
+                    );
+
+                    /*
+                        The anchor's mid-gap join witness: it proves the
+                        roster broadcast reaches the surviving seats and
+                        keeps the anchor fed before bob2's handshake and
+                        reclaim stretch (see AnchorOptions).
+                    */
+                    await E2EHarness.WaitForEventAsync(
+                        alice,
+                        e =>
+                            e.Kind == PollEventKind.PlayerJoined
+                            && e.PlayerJoined.Player.Id == carolSeat.PlayerId
                     );
 
                     Assert.That(
@@ -312,6 +327,18 @@ namespace SignalFish.Client.E2E
                         rotated,
                         Is.Not.EqualTo(wireToken),
                         "the consumed token must not be re-issued"
+                    );
+
+                    /*
+                        The anchor witnesses the first reclaim, which also
+                        keeps it fed before the re-drop and its
+                        PlayerLeft wait (see AnchorOptions).
+                    */
+                    await E2EHarness.WaitForEventAsync(
+                        alice,
+                        e =>
+                            e.Kind == PollEventKind.PlayerReconnected
+                            && e.LeftPlayerId == bobSeat.PlayerId
                     );
 
                     await secondProxy.DisposeAsync();
