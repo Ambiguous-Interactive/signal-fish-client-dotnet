@@ -157,11 +157,11 @@ the outcome in [improvement-log.md](./improvement-log.md) (see rule 15).
     [project-decisions](./references/project-decisions.md). Follow
     [maintain-plan](./skills/maintain-plan/SKILL.md) when updating it.
 23. **A fully green PR merges in the same session, then local git
-    re-syncs with the remote.** Green means every CI check passing on
+    re-syncs with the remote.** Green means every CI check green on
     the head SHA and no unaddressed review feedback. Merge under the
     repo's squash policy, converge local main (`--ff-only` pull, prune
-    merged branches), and verify main is green on the merge commit (see
-    [merge-green-pr](./skills/merge-green-pr/SKILL.md)).
+    merged branches), and verify main is green on the squash commit
+    (see [merge-green-pr](./skills/merge-green-pr/SKILL.md)).
 
 ## Protocol Essentials
 

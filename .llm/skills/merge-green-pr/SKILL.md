@@ -1,6 +1,6 @@
 ---
 name: merge-green-pr
-description: Merge a fully green PR (every CI check passing on the head SHA, no unaddressed review feedback) and re-sync local git with the remote - the green gate, this repo's squash-only merge policy, the post-merge sync steps, and the main-green verification. Use when a session's PR is ready to land or after merging any PR.
+description: Merge a fully green PR (every CI check green on the head SHA, no unaddressed review feedback) and re-sync local git with the remote - the green gate, this repo's squash-only merge policy, the post-merge sync steps, and the main-green verification. Use when a session's PR is ready to land or after merging any PR.
 metadata:
   category: core
 ---
@@ -8,14 +8,14 @@ metadata:
 # Merge a Green PR
 
 A session's deliverable is merged work, not a parked PR. `GOAL.md`
-aggregates one session into one PR; the session that drove the PR green
-also merges it, then converges local git with origin so the next session
-starts clean.
+(local-only, gitignored, like PLAN.md) aggregates one session into one
+PR; the session that drove the PR green also merges it, then converges
+local git with origin so the next session starts clean.
 
 ## When to Use
 
-- A PR reached full green: every required CI check passes on the head
-  SHA and all review feedback is addressed (see
+- A PR reached full green: every CI check green on the head SHA and all
+  review feedback is addressed (see
   [address-pr-feedback](../address-pr-feedback/SKILL.md)).
 
 ## When NOT to Use
@@ -28,12 +28,17 @@ starts clean.
 
 ## The green gate (verify, then merge)
 
-1. **Green on the head SHA**, not an older commit:
-   `gh pr view <N> --json headRefOid,statusCheckRollup` - the check
-   conclusions must belong to the current head.
-2. **Mergeable**: `mergeStateStatus` is `CLEAN` (`BLOCKED` means a
-   required check or review is missing; `UNSTABLE` means a check is
-   failing).
+1. **Green on the head SHA, not an older commit.** Compare the SHA you
+   pushed against `headRefOid`, then read the rollup:
+   `gh pr view <N> --json headRefOid,statusCheckRollup`. Green means
+   every rollup entry with a real conclusion is `SUCCESS` - the four
+   main workflows (dotnet, e2e, Docs, LLM Context) plus the PR lint
+   jobs. `SKIPPED` entries (Deploy Pages on PRs, for one) and advisory
+   bot checks are not gates; a bot check still `IN_PROGRESS` is
+   pending, not failing - wait for it.
+2. **Mergeable**: `mergeStateStatus` is `CLEAN`. `UNSTABLE` means a
+   non-required check is pending or failing. This repo has no branch
+   protection, so the required-check `BLOCKED` state cannot occur.
 3. **Feedback clear**: no unresolved threads; the finding-to-fix map
    (when a round produced one) is posted.
 4. **Not a draft.**
@@ -45,12 +50,17 @@ The repo settings are the policy; do not work around them:
 - Squash-only - merge commits and rebase merges are disabled.
 - Squash commit title = PR title, body = PR body (so keep the PR title
   and body clean; they become the history entry).
-- Delete-branch-on-merge is on; auto-merge is allowed.
+- Delete-branch-on-merge is on; auto-merge is allowed in settings but
+  inert here (see below).
 
 ```bash
-gh pr merge <N> --squash          # settings supply the title/body
-gh pr merge <N> --squash --auto   # checks still running: GitHub merges when green
+gh pr merge <N> --squash   # settings supply the title/body
 ```
+
+If checks are still running, wait for them (gate 1). `--auto` needs a
+branch-protection rule to attach to, which this repo does not have, so
+it is not an option - there is no required-check "green" for GitHub to
+wait for.
 
 Never bypass: no `--admin`, no protection overrides, no merging over a
 red base. A red merge is a liability, not a shortcut - the base's red is
@@ -72,16 +82,33 @@ git fetch --prune        # drop stale remote-tracking refs
 git status               # expect: up to date with origin/main, clean tree
 ```
 
+Two guards make it safe:
+
+- Before `-D`, `git diff <branch> origin/main --stat` must print
+  nothing - that proves every local commit reached the PR. Non-empty
+  means unpushed work exists: stop and sort it out first.
+- If `--ff-only` refuses, local main diverged (the session-031 trap).
+  Tree-diff the branch against the squash commit to prove zero unique
+  content, then `git reset --hard origin/main` and continue.
+
 Do this at merge time, not at the next session start - the stale window
 is where the damage happens.
 
-## Verify main went green on the merge commit
+## Verify main went green on the squash commit
 
-The merge is not done until main's CI is green on the squash commit
-(`gh run list --branch main --limit 1`). If it goes red, fixing it
-becomes the top priority - root-cause and fix forward per `GOAL.md`; a
-revert is an honest fix when the root cause exceeds the remaining
-session budget.
+The merge is not done until main's CI is green on the squash commit.
+Pin the SHA so an older commit's green cannot impersonate it:
+
+```bash
+gh run list --branch main --commit "$(git rev-parse main)" \
+  --json workflowName,status,conclusion
+```
+
+Expect the four main workflows (dotnet, e2e, Docs, LLM Context), all
+`completed` / `success`. Fewer entries means the runs have not
+registered yet - wait and re-check. If one goes red, fixing it becomes
+the top priority: root-cause and fix forward; a revert is an honest fix
+when the root cause exceeds the remaining session budget.
 
 ## Related Skills
 

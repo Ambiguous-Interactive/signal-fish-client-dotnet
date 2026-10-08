@@ -201,11 +201,14 @@ Pruned 2026-10-04: the devcontainer rounds, the maintain-plan restructure, and t
 
 (Trimmed 2026-10-08: finding (1) - reset local main immediately after
 every squash merge, verify with tree-diff, not commit log - graduated
-into [merge-green-pr](./skills/merge-green-pr/SKILL.md). Finding (2)
-stays: in a keyed map decoder, every field binds to its own storage -
-shared locals turn key order into data corruption, and a suite that
-builds one key order cannot see it; permutation tests are the
-regression pin (`AnyKeyOrderDecodesTheSameFrame`).)
+into [merge-green-pr](./skills/merge-green-pr/SKILL.md), including the
+diverged-main recovery. Finding (2) stays: in a keyed map decoder,
+every field binds to its own storage - shared locals turn key order
+into data corruption, and a suite that builds one key order cannot see
+it; permutation tests are the regression pin
+(`AnyKeyOrderDecodesTheSameFrame`). Originals in git history; the full
+rationale lives in `progress/session-031-m64-binary-game-data.md`, and
+the filed fuzz target was superseded by the msgpack-frame fuzz corpus.)
 
 ## 2026-10-06 - session 054: UPM release tarballs (path-constant routing bug)
 
