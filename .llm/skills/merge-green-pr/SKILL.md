@@ -31,11 +31,12 @@ local git with origin so the next session starts clean.
 1. **Green on the head SHA, not an older commit.** Compare the SHA you
    pushed against `headRefOid`, then read the rollup:
    `gh pr view <N> --json headRefOid,statusCheckRollup`. Green means
-   every rollup entry with a real conclusion is `SUCCESS` - the four
-   main workflows (dotnet, e2e, Docs, LLM Context) plus the PR lint
-   jobs. `SKIPPED` entries (Deploy Pages on PRs, for one) and advisory
-   bot checks are not gates; a bot check still `IN_PROGRESS` is
-   pending, not failing - wait for it.
+   every rollup entry with a real conclusion is `SUCCESS`. Workflows
+   run per their path filters, so a narrow PR triggers only the
+   workflows whose paths it touches. `SKIPPED` entries (Deploy Pages
+   on PRs, for one) and advisory bot checks are excluded regardless of
+   conclusion; a bot check still `IN_PROGRESS` is pending, not failing
+   - wait for it.
 2. **Mergeable**: `mergeStateStatus` is `CLEAN`. `UNSTABLE` means a
    non-required check is pending or failing. This repo has no branch
    protection, so the required-check `BLOCKED` state cannot occur.
@@ -77,7 +78,7 @@ against the squash, not the commit log, proved the duplication).
 ```bash
 git checkout main
 git pull --ff-only       # fails loudly instead of inventing a merge commit
-git branch -D <branch>   # -d refuses a squashed branch; the content IS in main
+git branch -D <branch>   # -d refuses a squashed branch; skip if absent locally
 git fetch --prune        # drop stale remote-tracking refs
 git status               # expect: up to date with origin/main, clean tree
 ```
@@ -104,11 +105,16 @@ gh run list --branch main --commit "$(git rev-parse main)" \
   --json workflowName,status,conclusion
 ```
 
-Expect the four main workflows (dotnet, e2e, Docs, LLM Context), all
-`completed` / `success`. Fewer entries means the runs have not
-registered yet - wait and re-check. If one goes red, fixing it becomes
-the top priority: root-cause and fix forward; a revert is an honest fix
-when the root cause exceeds the remaining session budget.
+Every returned run must be `completed` / `success` - that is the gate.
+Workflows run per path filters, so a narrow commit (docs- or
+`.llm`-only) triggers only Docs plus the workflows whose paths it
+touches; fewer than four entries is normal, not a registration delay.
+Docs has no path filter and runs on every push, so at minimum expect
+it - missing Docs a few minutes after the merge means the runs have
+not registered yet; wait and re-check. Ignore `Dependabot Updates`
+entries. If a run goes red, fixing it becomes the top priority:
+root-cause and fix forward; a revert is an honest fix when the root
+cause exceeds the remaining session budget.
 
 ## Related Skills
 
