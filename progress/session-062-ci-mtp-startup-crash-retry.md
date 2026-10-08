@@ -69,9 +69,10 @@ level.
 
 ## Verification
 
-- `bash -e` semantics (Linux default shell): exhaust -> last exit code
-  re-raised (139 preserved); first success -> exit 0; warnings only on
-  non-final attempts.
+- Retry semantics under `bash -e -o pipefail` (what `shell: bash`
+  pins on both OSes): exhaust -> last exit code re-raised (139
+  preserved); first success -> exit 0; warnings only on non-final
+  attempts.
 - Workflow YAML validated.
 - **Adversarial review caught a blocker in the first cut**: the loop
   was bash but the steps pinned no shell, and GitHub's default on
