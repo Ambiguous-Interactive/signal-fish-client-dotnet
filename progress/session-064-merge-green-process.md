@@ -53,6 +53,46 @@ Issue: #124
   logged verbatim).
 - Skills index regenerated (17 skills).
 
+## Adversarial review findings applied
+
+The adversarial pass verified every command live against the repo and
+found two broken gates plus three gaps:
+
+- The main-green check (`run list --limit 1`) saw 1 of 4 workflows and
+  no SHA pin - a previous commit's green could impersonate the new one.
+  Now pins `--commit "$(git rev-parse main)"` and names the four
+  expected workflows; fewer entries means runs have not registered
+  yet.
+- `--auto` is inert here: auto-merge needs a branch-protection rule to
+  attach to and this repo has none, so the skill says to wait instead.
+- The state gloss was wrong: live, `UNSTABLE` showed with zero failing
+  checks (a bot check still `IN_PROGRESS`); pending is not failing,
+  `SKIPPED` entries are not gates, and with no branch protection the
+  required-check `BLOCKED` state cannot occur. Green is now defined as
+  every rollup entry with a real conclusion being `SUCCESS`.
+- The resync had no recovery path: added the pre-`-D` guard
+  (`git diff <branch> origin/main --stat` must be empty) and the
+  diverged-main recipe (tree-diff vs the squash, then
+  `git reset --hard origin/main`).
+- GOAL.md is annotated local-only at the skill's first mention; rule
+  23 and GOAL.md say "squash commit", not "merge commit".
+- Round 2: path filters broke the four-workflow expectation — dotnet,
+  e2e, and LLM Context trigger only on their paths, so this PR's own
+  `.llm`-only squash runs just Docs + LLM Context and the old gate
+  would deadlock ("fewer entries" was misread as not-registered-yet).
+  The gate is now "every returned run completed/success", with Docs
+  (no path filter) the floor; Dependabot entries ignored; advisory bot
+  checks excluded regardless of conclusion; `branch -D` skips an
+  absent local branch.
+- Bugbot round (on c78580e; two findings verified and fixed, three
+  already closed by later commits): the diverged-main recovery
+  tree-diffed the branch against the squash and then hard-reset main -
+  the wrong ref; session 031's proof was local main vs origin/main
+  (empty diff, nothing to discard). The pre-delete guard diffed the
+  branch against origin/main, which false-alarms once other PRs move
+  the base - it now diffs against the PR's mergeCommit, and both
+  guards precede the deletion snippet.
+
 ## Verification
 
 - `lint-file-sizes` (29 files ok; context.md 237, log 265 — both under
