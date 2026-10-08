@@ -9,6 +9,30 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-08 - session 062: CI retry loop broke the Windows cell
+
+- Trigger: a test-infrastructure change (mandatory loop).
+- Evidence: the first cut of the `dotnet.yml` retry loop used bash
+  syntax with no `shell:` pin. Linux cells ran green, but GitHub's
+  default shell on Windows is pwsh — the Windows `Test` step failed to
+  parse in 0s and `dotnet test` never ran (PR run 37728249104, job
+  113151437983). Caught by adversarial review of the PR's own checks,
+  not by my local verification.
+- Findings: (1) a `run:` block in a matrix workflow must pin `shell:`
+  explicitly — the unpinned default is per-OS (pwsh on Windows), so a
+  script can silently never execute on a cell that local validation
+  cannot see. (2) A workflow change is not verified until **every
+  matrix cell** is green on the PR; one green cell proves only that
+  cell. (3) In bash, `$?` after an `if` whose condition failed is 0 —
+  capture the real exit code inside the `else` branch.
+- Applied: `shell: bash` on both Test steps; exit code preserved via
+  `else code=$?` and re-raised on exhaustion; warnings gated to
+  non-final attempts; `rm -rf TestResults` per attempt (crashed-attempt
+  artifacts cannot reach the coverage gate). All cells green on head
+  65a451f.
+- Open: none here — the e2e-lane retry decision and the upstream
+  testfx report live in issue #120.
+
 ## 2026-10-08 - session 061: ProtocolInfo observability fields on the frozen surface
 
 - Trigger: a protocol + public API surface change (mandatory loop).
