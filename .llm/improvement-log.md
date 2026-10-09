@@ -231,3 +231,23 @@ it; permutation tests are the regression pin
 (`AnyKeyOrderDecodesTheSameFrame`). Originals in git history; the full
 rationale lives in `progress/session-031-m64-binary-game-data.md`, and
 the filed fuzz target was superseded by the msgpack-frame fuzz corpus.)
+
+## 2026-10-09 - session 067: bench fleet rotates CPU SKUs; records assert only verified facts
+
+(1) Shared-runner medians are not comparable across CPU models: the
+bench fleet handed out three EPYC SKUs (9V74/7763/9V45) in one week,
+identical code spanning ~2.5x with byte-identical allocations. Any
+cross-SKU median gate false-reds no matter which baseline is committed.
+Graduated into `scripts/run-bench.ps1` (cpuModel pinning, CPU-SKIP
+verdicts, record-time refusal) and `docs/benchmarks.md`; data table in
+issue #132. Corollary for every scheduled lane: when a red needs
+evidence, dispatch the lane on the branch — PR checks never exercise
+schedule-only workflows.
+
+(2) A record written ahead of its evidence is a bug: twice this
+session the session log claimed a run "green" before it finished (once
+caught by the adversarial sub-agent, once by self-review). Rule: a
+record asserts only verified facts; forward-looking statements stay
+prospective ("run dispatched, outcome pending") until the artifact
+exists, then are amended with the run ID. Same discipline as the
+merge-green gate: pin the SHA, then claim the result.
