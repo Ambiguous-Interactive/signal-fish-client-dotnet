@@ -174,7 +174,7 @@ advanced inspection (empty for synthetic events).
 | `ReconnectAbandoned` | `Reconnect` | Async client only: the attempt budget ran out; the session ends after it. |
 | `DeliveryReport` | `DeliveryReport` | Per-class delivery accounting + gap report (v3). |
 | `RelayStats` | `RelayStats` | Per-interval relay accounting (v3). |
-| `GoingAway` | `GoingAway` | Server draining notice: deadline + retry-after. |
+| `GoingAway` | `GoingAway` | Server draining notice: deadline + optional retry-after. |
 | `SessionPlan` | `SessionPlan` | The per-recipient authoritative session plan (v3). |
 | `NewPeer` | `NewPeer` | An additive WebRTC peer directive (v3). |
 | `PeerTransportStatus` | `PeerTransportStatus` | A peer's reported data-path transport state (v3). |

@@ -6,19 +6,27 @@ namespace SignalFish.Client.Protocol
 
     /// <summary>
     /// Payload of the inbound <c>SpectatorLeft</c> message (S→C): a
-    /// spectator left a room (voluntarily or by removal). All fields are
-    /// required. Wire order: <c>room_id</c>, <c>room_code</c>,
-    /// <c>reason</c>, <c>current_spectators</c>.
+    /// spectator left a room (voluntarily or by removal).
+    /// <see cref="CurrentSpectators"/> is required;
+    /// <see cref="RoomId"/>, <see cref="RoomCode"/>, and
+    /// <see cref="Reason"/> are optional (the server omits them when it
+    /// cannot attribute the departure). Wire order: <c>room_id</c>,
+    /// <c>room_code</c>, <c>reason</c>, <c>current_spectators</c>.
     /// </summary>
     public readonly struct SpectatorLeftMessage : IEquatable<SpectatorLeftMessage>
     {
-        /// <summary>Gets the server-assigned room identity (required).</summary>
+        /// <summary>
+        /// Gets the server-assigned room identity
+        /// (<see cref="Guid.Empty"/> when the server omits it).
+        /// </summary>
         public Guid RoomId { get; }
 
-        /// <summary>Gets the human-shareable room code (required).</summary>
+        /// <summary>
+        /// Gets the human-shareable room code (empty when the server omits it).
+        /// </summary>
         public string RoomCode { get; }
 
-        /// <summary>Gets the leave reason token (required).</summary>
+        /// <summary>Gets the leave reason token (empty when the server omits it).</summary>
         public string Reason { get; }
 
         /// <summary>Gets the spectators that remain (required; may be empty).</summary>
@@ -86,6 +94,8 @@ namespace SignalFish.Client.Protocol
             string? reason = null;
             IReadOnlyList<SpectatorInfo>? currentSpectators = null;
             bool roomSeen = false;
+            bool roomCodeSeen = false;
+            bool reasonSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -97,23 +107,47 @@ namespace SignalFish.Client.Protocol
 
                 if (scanner.KeyIs(keyRaw, "room_id"))
                 {
-                    if (roomSeen || !scanner.TryReadGuid(valueRaw, out roomId))
+                    if (roomSeen)
                     {
                         return false;
                     }
 
                     roomSeen = true;
+                    if (
+                        !scanner.TryReadNull(valueRaw) && !scanner.TryReadGuid(valueRaw, out roomId)
+                    )
+                    {
+                        return false;
+                    }
                 }
                 else if (scanner.KeyIs(keyRaw, "room_code"))
                 {
-                    if (roomCode is not null || !scanner.TryReadString(valueRaw, out roomCode))
+                    if (roomCodeSeen)
+                    {
+                        return false;
+                    }
+
+                    roomCodeSeen = true;
+                    if (
+                        !scanner.TryReadNull(valueRaw)
+                        && !scanner.TryReadString(valueRaw, out roomCode)
+                    )
                     {
                         return false;
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "reason"))
                 {
-                    if (reason is not null || !scanner.TryReadString(valueRaw, out reason))
+                    if (reasonSeen)
+                    {
+                        return false;
+                    }
+
+                    reasonSeen = true;
+                    if (
+                        !scanner.TryReadNull(valueRaw)
+                        && !scanner.TryReadString(valueRaw, out reason)
+                    )
                     {
                         return false;
                     }
@@ -139,18 +173,17 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (
-                state != JsonMemberState.EndObject
-                || !roomSeen
-                || roomCode is null
-                || reason is null
-                || currentSpectators is null
-            )
+            if (state != JsonMemberState.EndObject || currentSpectators is null)
             {
                 return false;
             }
 
-            message = new SpectatorLeftMessage(roomId, roomCode, reason, currentSpectators);
+            message = new SpectatorLeftMessage(
+                roomId,
+                roomCode ?? string.Empty,
+                reason ?? string.Empty,
+                currentSpectators
+            );
             return true;
         }
 
@@ -173,7 +206,9 @@ namespace SignalFish.Client.Protocol
 
     /// <summary>
     /// Payload of the inbound <c>NewSpectatorJoined</c> message (S→C): a new
-    /// spectator joined the room. All fields are required. Wire order:
+    /// spectator joined the room. <see cref="Spectator"/> and
+    /// <see cref="CurrentSpectators"/> are required;
+    /// <see cref="Reason"/> is optional. Wire order:
     /// <c>spectator</c>, <c>current_spectators</c>, <c>reason</c>.
     /// </summary>
     public readonly struct NewSpectatorJoinedMessage : IEquatable<NewSpectatorJoinedMessage>
@@ -184,7 +219,7 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the spectators now in the room, including the newcomer (required; may be empty).</summary>
         public IReadOnlyList<SpectatorInfo> CurrentSpectators { get; }
 
-        /// <summary>Gets the join reason token (required).</summary>
+        /// <summary>Gets the join reason token (empty when the server omits it).</summary>
         public string Reason { get; }
 
         /// <summary>Initializes a new <see cref="NewSpectatorJoinedMessage"/> payload.</summary>
@@ -251,6 +286,7 @@ namespace SignalFish.Client.Protocol
             IReadOnlyList<SpectatorInfo>? currentSpectators = null;
             string? reason = null;
             bool spectatorSeen = false;
+            bool reasonSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -300,7 +336,16 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "reason"))
                 {
-                    if (reason is not null || !scanner.TryReadString(valueRaw, out reason))
+                    if (reasonSeen)
+                    {
+                        return false;
+                    }
+
+                    reasonSeen = true;
+                    if (
+                        !scanner.TryReadNull(valueRaw)
+                        && !scanner.TryReadString(valueRaw, out reason)
+                    )
                     {
                         return false;
                     }
@@ -309,17 +354,16 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (
-                state != JsonMemberState.EndObject
-                || !spectatorSeen
-                || currentSpectators is null
-                || reason is null
-            )
+            if (state != JsonMemberState.EndObject || !spectatorSeen || currentSpectators is null)
             {
                 return false;
             }
 
-            message = new NewSpectatorJoinedMessage(spectator, currentSpectators, reason);
+            message = new NewSpectatorJoinedMessage(
+                spectator,
+                currentSpectators,
+                reason ?? string.Empty
+            );
             return true;
         }
 
@@ -342,7 +386,9 @@ namespace SignalFish.Client.Protocol
 
     /// <summary>
     /// Payload of the inbound <c>SpectatorDisconnected</c> message (S→C): a
-    /// spectator's connection dropped. All fields are required. Wire order:
+    /// spectator's connection dropped.
+    /// <see cref="SpectatorId"/> and <see cref="CurrentSpectators"/> are
+    /// required; <see cref="Reason"/> is optional. Wire order:
     /// <c>spectator_id</c>, <c>reason</c>, <c>current_spectators</c>.
     /// </summary>
     public readonly struct SpectatorDisconnectedMessage : IEquatable<SpectatorDisconnectedMessage>
@@ -350,7 +396,7 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the spectator identity that dropped (required).</summary>
         public Guid SpectatorId { get; }
 
-        /// <summary>Gets the disconnect reason token (required).</summary>
+        /// <summary>Gets the disconnect reason token (empty when the server omits it).</summary>
         public string Reason { get; }
 
         /// <summary>Gets the spectators that remain (required; may be empty).</summary>
@@ -420,6 +466,7 @@ namespace SignalFish.Client.Protocol
             string? reason = null;
             IReadOnlyList<SpectatorInfo>? currentSpectators = null;
             bool spectatorSeen = false;
+            bool reasonSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -440,7 +487,16 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "reason"))
                 {
-                    if (reason is not null || !scanner.TryReadString(valueRaw, out reason))
+                    if (reasonSeen)
+                    {
+                        return false;
+                    }
+
+                    reasonSeen = true;
+                    if (
+                        !scanner.TryReadNull(valueRaw)
+                        && !scanner.TryReadString(valueRaw, out reason)
+                    )
                     {
                         return false;
                     }
@@ -466,17 +522,16 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (
-                state != JsonMemberState.EndObject
-                || !spectatorSeen
-                || reason is null
-                || currentSpectators is null
-            )
+            if (state != JsonMemberState.EndObject || !spectatorSeen || currentSpectators is null)
             {
                 return false;
             }
 
-            message = new SpectatorDisconnectedMessage(spectatorId, reason, currentSpectators);
+            message = new SpectatorDisconnectedMessage(
+                spectatorId,
+                reason ?? string.Empty,
+                currentSpectators
+            );
             return true;
         }
 

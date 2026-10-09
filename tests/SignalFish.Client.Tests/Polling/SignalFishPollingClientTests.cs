@@ -780,7 +780,32 @@ namespace SignalFish.Client.Tests.Polling
             PollEvent pollEvent = Single(client);
             Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.GoingAway));
             Assert.That(pollEvent.GoingAway.DeadlineMs, Is.EqualTo(1700000000000ul));
+            Assert.That(pollEvent.GoingAway.HasRetryAfterSecs, Is.True);
             Assert.That(pollEvent.GoingAway.RetryAfterSecs, Is.EqualTo(30ul));
+        }
+
+        [Test]
+        public async Task GoingAwayFrameWithoutRetryHintSurfacesGoingAwayEvent()
+        {
+            /*
+                The default graceful drain (server-connection.rs) omits
+                retry_after_secs entirely; the advisory must still surface.
+            */
+            (SignalFishPollingClient client, FakeTransport transport, VirtualClock _) =
+                BuildTimed();
+            await ConnectAndAuthenticate(client, transport);
+
+            EnqueueWire(
+                transport,
+                "{\"type\": \"GoingAway\", \"data\": {\"deadline_ms\": 1700000000000}}"
+            );
+            Assert.That(client.Poll(), Is.EqualTo(1));
+
+            PollEvent pollEvent = Single(client);
+            Assert.That(pollEvent.Kind, Is.EqualTo(PollEventKind.GoingAway));
+            Assert.That(pollEvent.GoingAway.DeadlineMs, Is.EqualTo(1700000000000ul));
+            Assert.That(pollEvent.GoingAway.HasRetryAfterSecs, Is.False);
+            Assert.That(pollEvent.GoingAway.RetryAfterSecs, Is.EqualTo(0ul));
         }
 
         [Test]

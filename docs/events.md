@@ -130,7 +130,7 @@ types themselves:
 
 | Payload type | Properties | Carried by |
 |---|---|---|
-| `AuthenticatedMessage` | `AppName`, `Organization`, `RateLimits` (`PerMinute`, `PerHour`, `PerDay`) | `Authenticated` |
+| `AuthenticatedMessage` | `AppName`, `Organization` (empty when the deployment has none), `RateLimits` (`PerMinute`, `PerHour`, `PerDay`) | `Authenticated` |
 | `ProtocolInfoMessage` | `Capabilities`, `GameDataFormats`, `ProtocolVersion?`, `MinProtocolVersion?`, `MaxProtocolVersion?`, `Transports?`, `MaxOutboundMessageSize?`, `ImplementationVersion?`, `GameDataLimits?` (of `GameDataLimit`: `Encoding`, `MaxBytes`) | `ProtocolInfo` |
 | `RoomMembership` | `Role`, `PlayerId`, `RoomId`, `RoomCode`, `IsPresent` | `RoomJoined`, `SpectatorJoined`, `Reconnected` |
 | `RoomSnapshot` | `GameName?`, `MaxPlayers`, `SupportsAuthority`, `IsAuthority`, `LobbyState?`, `RelayType?`, `ReadyPlayers?`, `CurrentPlayers`, `CurrentSpectators`, `IceServers` | the membership-confirming kinds; fields the frame omitted stay at their default — the server tailors the snapshot per audience |
@@ -139,16 +139,16 @@ types themselves:
 | `ReconnectStatus` | `Attempt`, `BackoffMilliseconds`, `LastReason?` | `Reconnecting`, `ReconnectAbandoned` |
 | `LobbyStateChangedMessage` | `LobbyState`, `ReadyPlayers`, `AllReady` | `LobbyStateChanged` |
 | `PlayerJoinedMessage` | `Player` (`PlayerInfo`: `Id`, `Name`, `IsAuthority`, `IsReady`, `ConnectedAt?`, `Epoch?`, `Seq?`) | `PlayerJoined` |
-| `GameStartingMessage` | `PeerConnections` (`PeerConnection`: `PlayerId`, `PlayerName`, `IsAuthority`, `RelayType`, `ConnectionInfo?`) | `GameStarting` |
+| `GameStartingMessage` | `PeerConnections` (`PeerConnection`: `PlayerId`, `PlayerName`, `IsAuthority`, `RelayType`, `ConnectionInfo?` — a five-variant union: `direct`, `unity_relay`, `relay`, `webrtc`, `custom`; only a variant's own fields are populated) | `GameStarting` |
 | `AuthorityResponseMessage` | `Granted`, `Reason?` | `AuthorityResponse` |
 | `AuthorityChangedMessage` | `AuthorityPlayer?`, `YouAreAuthority` | `AuthorityChanged` |
 | `IncomingGameData` | `FromPlayer`, `Payload` (verbatim, as UTF-8 bytes), `Class`, `Key`, `Seq?`, `Epoch?` | `GameData` |
-| `SpectatorLeftMessage` | `RoomId`, `RoomCode`, `Reason`, `CurrentSpectators` | `SpectatorLeft` |
-| `NewSpectatorJoinedMessage` | `Spectator` (`SpectatorInfo`: `Id`, `Name`, `ConnectedAt?`), `CurrentSpectators`, `Reason` | `NewSpectatorJoined` |
-| `SpectatorDisconnectedMessage` | `SpectatorId`, `Reason`, `CurrentSpectators` | `SpectatorDisconnected` |
+| `SpectatorLeftMessage` | `RoomId?`, `RoomCode?`, `Reason?`, `CurrentSpectators` | `SpectatorLeft` |
+| `NewSpectatorJoinedMessage` | `Spectator` (`SpectatorInfo`: `Id`, `Name`, `ConnectedAt?`), `CurrentSpectators`, `Reason?` | `NewSpectatorJoined` |
+| `SpectatorDisconnectedMessage` | `SpectatorId`, `Reason?`, `CurrentSpectators` | `SpectatorDisconnected` |
 | `DeliveryReportMessage` | `PerClass` (`Reliable`, `Latest`, `Volatile` counters), `Gaps` (`DeliveryGap`: `FromPlayer`, `Epoch`, `FromSeq`, `ToSeq`) | `DeliveryReport` |
 | `RelayStatsMessage` | `IntervalMs`, `SentToYou`, `DroppedForYou`, `BackpressureEvents` | `RelayStats` |
-| `GoingAwayMessage` | `DeadlineMs`, `RetryAfterSecs` | `GoingAway` |
+| `GoingAwayMessage` | `DeadlineMs`, `RetryAfterSecs` (optional: check `HasRetryAfterSecs`) | `GoingAway` |
 | `SessionPlanMessage` | `Generation?`, `Topology`, `Transport`, `Host?`, `DirectEndpoint?`, `Peers`, `IceServers`, `Fallback` | `SessionPlan` |
 | `NewPeerMessage` | `PeerId` | `NewPeer` |
 | `PeerTransportStatusMessage` | `PeerId`, `Transport`, `Connected` | `PeerTransportStatus` |
