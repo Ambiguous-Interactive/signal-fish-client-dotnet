@@ -56,6 +56,10 @@ jobs:
 
       - name: Upload results
         if: always()
+        # Compare mode: diagnostics, so upload noise must not fail the gate.
+        # Record mode: the artifact is the deliverable the operator commits,
+        # so a failed upload must stay loud.
+        continue-on-error: ${{ inputs.update_baseline != true }}
         uses: actions/upload-artifact@v7
         # Artifact and baseline names are load-bearing: keep the paths in
         # sync with scripts/run-bench.ps1 and docs/benchmarks.md.
