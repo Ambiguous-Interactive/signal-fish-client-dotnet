@@ -9,6 +9,28 @@ Prune an entry once its knowledge has graduated into durable artifacts and
 its `Open` items are resolved — this file is staging, not storage (target
 under ~150 lines; the 300-line lint ceiling is the hard bound).
 
+## 2026-10-09 - session 066: e2e anchor keep-alive + upload transient
+
+- Trigger: test-infrastructure change (mandatory loop); drivers: the
+  Bugbot thread on PR #126, then #128's own Bugbot round 2.
+- Evidence: `ReconnectionConformanceTests` — pings fire only inside
+  `Poll` (`SignalFishPollingClient.RunHeartbeat`), `WaitForEventAsync`
+  polls only its target, and the e2e server reaps inbound-silent
+  connections at 3 s (`SIGNAL_FISH__WEBSOCKET__IDLE_TIMEOUT_SECS`).
+  Bugbot round 2 caught that the first fix still let two handshakes
+  run back-to-back before the anchor's next poll.
+- Findings: (1) the keep-alive invariant is "every phase boundary hands
+  the anchor a wait that is also an assertion"; sleeps and bare `Poll()`
+  calls are not keep-alives (a bare poll may send nothing). Documented
+  at `AnchorOptions` in the fixture — the SSOT for a test-local shape;
+  not promoted to `create-test` because no real flake ever reproduced
+  (red-green gate). (2) A new transient CI class: the artifact-upload
+  step failed with `ECONNRESET` after 20/20 green tests (run
+  37863039994) — re-run passed; issue #129 carries the remedy.
+- Applied: the fixture comment + interleaved waits (PR #128, merged);
+  issue #129 for the upload transient.
+- Open: #129 (bounded retry or `continue-on-error` on the upload step).
+
 ## 2026-10-08 - session 064: merge-on-green codified
 
 - Trigger: a `.llm` system change (mandatory loop); driver issue #124.
