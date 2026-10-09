@@ -232,6 +232,22 @@ it; permutation tests are the regression pin
 rationale lives in `progress/session-031-m64-binary-game-data.md`, and
 the filed fuzz target was superseded by the msgpack-frame fuzz corpus.)
 
+## 2026-10-09 - session 068: requiredness comes from serde attrs, not samples
+
+Seven decoders required wire fields the server marks optional
+(`Option` + `skip_serializing_if`), because requiredness was derived
+from what the golden samples happened to carry. Consequences scaled
+with the field: the default graceful drain hid its `GoingAway` deadline
+behind a violation; one peer's `unity_relay` connection info killed the
+whole `GameStarting` event; a self-hosted `Authenticated` (no
+organization) degraded its rate limits. Graduated into the
+[protocol-messages](./skills/protocol-messages/SKILL.md) rule 6:
+requiredness = server serde attributes + AsyncAPI `required` lists;
+golden samples pin shapes, not contracts. The sweep method (server
+`messages.rs` attrs × AsyncAPI `required` × client `TryDecode`, all
+three cross-checked) is reusable verbatim for the next drift check;
+the residue lives in #134.
+
 ## 2026-10-09 - session 067: bench fleet rotates CPU SKUs; records assert only verified facts
 
 (1) Shared-runner medians are not comparable across CPU models: the
