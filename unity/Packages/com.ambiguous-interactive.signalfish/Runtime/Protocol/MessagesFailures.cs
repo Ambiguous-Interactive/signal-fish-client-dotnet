@@ -13,14 +13,17 @@ namespace SignalFish.Client.Protocol
     /// the decoder accepts all three aliases for <see cref="Reason"/>; the
     /// first alias seen wins and a second alias is a repeated known key
     /// (rejected). <see cref="ErrorCode"/> is always <c>error_code</c> and
-    /// routing never keys on the prose text. Both fields are required.
+    /// routing never keys on the prose text. The reason is required; the
+    /// code is optional on <c>Error</c> and the join failures (empty when
+    /// the server omits it) and always present on
+    /// <c>AuthenticationError</c> / <c>ReconnectionFailed</c>.
     /// </summary>
     public readonly struct FailureMessage : IEquatable<FailureMessage>
     {
         /// <summary>Gets the human-readable failure reason (required).</summary>
         public string Reason { get; }
 
-        /// <summary>Gets the stable machine-readable error code (required).</summary>
+        /// <summary>Gets the stable machine-readable error code (empty when the server omits it).</summary>
         public string ErrorCode { get; }
 
         /// <summary>Initializes a new <see cref="FailureMessage"/> payload.</summary>
@@ -59,7 +62,8 @@ namespace SignalFish.Client.Protocol
         /// Decodes the <c>data</c> object of a failure envelope (the
         /// <see cref="EnvelopeEvent.Data"/> slice). Unknown fields are
         /// skipped; a repeated key (including a second
-        /// reason-alias) or a wrong-typed value is rejected. Returns
+        /// reason-alias) or a wrong-typed value is rejected.
+        /// <c>error_code</c> is optional on part of the family. Returns
         /// <see langword="false"/> for malformed input or a missing
         /// required field.
         /// </summary>
@@ -71,6 +75,7 @@ namespace SignalFish.Client.Protocol
 
             string? reason = null;
             string? errorCode = null;
+            bool errorCodeSeen = false;
 
             while (state == JsonMemberState.Member)
             {
@@ -93,7 +98,16 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "error_code"))
                 {
-                    if (errorCode is not null || !scanner.TryReadString(valueRaw, out errorCode))
+                    if (errorCodeSeen)
+                    {
+                        return false;
+                    }
+
+                    errorCodeSeen = true;
+                    if (
+                        !scanner.TryReadNull(valueRaw)
+                        && !scanner.TryReadString(valueRaw, out errorCode)
+                    )
                     {
                         return false;
                     }
@@ -102,12 +116,12 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (state != JsonMemberState.EndObject || reason is null || errorCode is null)
+            if (state != JsonMemberState.EndObject || reason is null)
             {
                 return false;
             }
 
-            message = new FailureMessage(reason, errorCode);
+            message = new FailureMessage(reason, errorCode ?? string.Empty);
             return true;
         }
     }

@@ -47,6 +47,19 @@ changes (CI, tests, tooling, docs) are not listed.
   notice, and a repeated notice refuses per the violation policy
   instead of passing silently. Sessions against a conforming server
   behave as before (one notice, JSON fallback, connection stays open).
+- Wire shapes the server may legally omit no longer fail decode.
+  `GoingAway` without the optional `retry_after_secs` hint (the default
+  graceful-drain shape) surfaced as a protocol violation and hid the
+  drain deadline; the hint now decodes as absent
+  (`GoingAwayMessage.HasRetryAfterSecs`). `GameStarting` lost the whole
+  event when a peer advertised a non-direct `connection_info`
+  (`unity_relay`, `webrtc`, `custom`); every variant of the union now
+  decodes onto `ConnectionEndpoint`. `Authenticated` without an
+  `organization` degraded its rate limits on self-hosted deployments;
+  the failure family without `error_code`, and the spectator events
+  without their optional identity/reason fields, degraded their
+  payloads the same way. All fields the server still requires stay
+  required; unknown variants and wrong-typed values stay rejected.
 
 ## [0.1.0] - 2026-10-06
 

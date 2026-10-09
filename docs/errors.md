@@ -191,7 +191,9 @@ The server's failure family shares one payload: `Reason` (human-readable
 prose — the wire names the field `reason`, `message`, or `error` depending
 on the message; the decoder accepts all three) and `ErrorCode` (always
 `error_code`, a stable machine-readable token). Routing never keys on the
-prose text.
+prose text. `error_code` is optional on `Error` and the join failures —
+`ErrorCode` is then empty, so handle the refusal by event kind rather than
+by code; `AuthenticationError` and `ReconnectionFailed` always carry one.
 
 The family surfaces as four event kinds, each carrying `ev.Failure`:
 

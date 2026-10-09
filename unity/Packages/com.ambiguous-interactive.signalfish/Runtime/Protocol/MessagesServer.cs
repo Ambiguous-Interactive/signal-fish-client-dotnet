@@ -331,27 +331,48 @@ namespace SignalFish.Client.Protocol
 
     /// <summary>
     /// Payload of the inbound v3 <c>GoingAway</c> message (S→C): the server
-    /// is draining and will close the connection at the deadline. Both
-    /// fields are required; the game owns the reconnect scheduling.
+    /// is draining and will close the connection at the deadline. The
+    /// deadline is required; the operator retry hint is optional (omitted
+    /// when the drain closes immediately). The game owns the reconnect
+    /// scheduling.
     /// </summary>
     public readonly struct GoingAwayMessage : IEquatable<GoingAwayMessage>
     {
         /// <summary>Gets the Unix-epoch millisecond deadline of the close (required).</summary>
         public ulong DeadlineMs { get; }
 
-        /// <summary>Gets the suggested wait before reconnecting, in seconds (required).</summary>
+        /// <summary>
+        /// Gets the suggested wait before reconnecting, in seconds, when
+        /// the operator supplied one — check
+        /// <see cref="HasRetryAfterSecs"/> first. The hint targets the
+        /// deployment, not this instance.
+        /// </summary>
         public ulong RetryAfterSecs { get; }
 
-        /// <summary>Initializes a new <see cref="GoingAwayMessage"/> payload.</summary>
+        /// <summary>Gets a value indicating whether the optional retry hint was present.</summary>
+        public bool HasRetryAfterSecs { get; }
+
+        /// <summary>Initializes a new <see cref="GoingAwayMessage"/> payload with a retry hint.</summary>
         public GoingAwayMessage(ulong deadlineMs, ulong retryAfterSecs)
         {
             DeadlineMs = deadlineMs;
             RetryAfterSecs = retryAfterSecs;
+            HasRetryAfterSecs = true;
+        }
+
+        /// <summary>Initializes a new <see cref="GoingAwayMessage"/> payload without a retry hint.</summary>
+        public GoingAwayMessage(ulong deadlineMs, ulong? retryAfterSecs)
+        {
+            DeadlineMs = deadlineMs;
+            RetryAfterSecs = retryAfterSecs.GetValueOrDefault();
+            HasRetryAfterSecs = retryAfterSecs.HasValue;
         }
 
         /// <inheritdoc />
         public bool Equals(GoingAwayMessage other) =>
-            DeadlineMs == other.DeadlineMs && RetryAfterSecs == other.RetryAfterSecs;
+            DeadlineMs == other.DeadlineMs
+            && RetryAfterSecs == other.RetryAfterSecs
+            && HasRetryAfterSecs == other.HasRetryAfterSecs;
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is GoingAwayMessage other && Equals(other);
@@ -362,6 +383,7 @@ namespace SignalFish.Client.Protocol
             HashCode hash = default;
             hash.Add(DeadlineMs);
             hash.Add(RetryAfterSecs);
+            hash.Add(HasRetryAfterSecs);
             return hash.ToHashCode();
         }
 
@@ -377,8 +399,10 @@ namespace SignalFish.Client.Protocol
         /// Decodes the <c>data</c> object of a <c>GoingAway</c> envelope
         /// (the <see cref="EnvelopeEvent.Data"/> slice). Unknown fields are
         /// skipped; a repeated key or a wrong-typed value is rejected.
-        /// Returns <see langword="false"/> for malformed input or a
-        /// missing required field.
+        /// <c>retry_after_secs</c> is optional and nullable (the server
+        /// omits it when the drain closes immediately). Returns
+        /// <see langword="false"/> for malformed input or a missing
+        /// required field.
         /// </summary>
         internal static bool TryDecode(ReadOnlyMemory<byte> data, out GoingAwayMessage message)
         {
@@ -387,7 +411,7 @@ namespace SignalFish.Client.Protocol
             JsonMemberState state = scanner.BeginObject();
 
             ulong deadlineMs = 0;
-            ulong retryAfterSecs = 0;
+            ulong? retryAfterSecs = null;
             bool deadlineSeen = false;
             bool retrySeen = false;
 
@@ -410,18 +434,30 @@ namespace SignalFish.Client.Protocol
                 }
                 else if (scanner.KeyIs(keyRaw, "retry_after_secs"))
                 {
-                    if (retrySeen || !scanner.TryReadUInt64(valueRaw, out retryAfterSecs))
+                    if (retrySeen)
                     {
                         return false;
                     }
 
                     retrySeen = true;
+                    if (scanner.TryReadNull(valueRaw))
+                    {
+                        retryAfterSecs = null;
+                    }
+                    else if (!scanner.TryReadUInt64(valueRaw, out ulong retry))
+                    {
+                        return false;
+                    }
+                    else
+                    {
+                        retryAfterSecs = retry;
+                    }
                 }
 
                 state = scanner.EndMember();
             }
 
-            if (state != JsonMemberState.EndObject || !deadlineSeen || !retrySeen)
+            if (state != JsonMemberState.EndObject || !deadlineSeen)
             {
                 return false;
             }

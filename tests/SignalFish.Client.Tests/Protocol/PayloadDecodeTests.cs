@@ -21,6 +21,12 @@ namespace SignalFish.Client.Tests
 
         private static readonly string[] JsonOnlyFormats = { "json" };
 
+        private static readonly string[] WebrtcIceCandidates =
+        {
+            "stun:stun.example.com",
+            "turn:turn.example.com",
+        };
+
         private static readonly TestCaseData[] SealedRoomFailureWires =
         {
             new TestCaseData(
@@ -47,6 +53,27 @@ namespace SignalFish.Client.Tests
             );
             Assert.That(message.AppName, Is.EqualTo("my-game"));
             Assert.That(message.Organization, Is.EqualTo("Ambiguous Interactive"));
+            Assert.That(message.RateLimits, Is.EqualTo(new RateLimits(60, 3600, 86400)));
+        }
+
+        [Test]
+        public void AuthenticatedWithoutOrganizationDecodesEmptyOrganization()
+        {
+            /*
+                organization is optional on the wire (serde
+                skip_serializing_if): self-hosted deployments without one
+                omit it, and the rate limits must still surface.
+            */
+            bool decoded = AuthenticatedMessage.TryDecode(
+                Bytes(
+                    "{\"app_name\": \"my-game\", \"rate_limits\": "
+                        + "{\"per_minute\": 60, \"per_hour\": 3600, \"per_day\": 86400}}"
+                ),
+                out AuthenticatedMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.AppName, Is.EqualTo("my-game"));
+            Assert.That(message.Organization, Is.Empty);
             Assert.That(message.RateLimits, Is.EqualTo(new RateLimits(60, 3600, 86400)));
         }
 
@@ -496,6 +523,161 @@ namespace SignalFish.Client.Tests
             Assert.That(relayed.ConnectionInfo, Is.Null);
         }
 
+        [Test]
+        public void GameStartingWithUnityRelayConnectionInfoDecodes()
+        {
+            /*
+                connection_info is a five-variant tagged union the server
+                stores and forwards verbatim; a Unity Relay peer must not
+                cost the whole GameStarting event.
+            */
+            bool decoded = GameStartingMessage.TryDecode(
+                Bytes(
+                    "{\"peer_connections\": [{\"player_id\": "
+                        + "\"00000000-0000-0000-0000-00000000000a\", "
+                        + "\"player_name\": \"Player 1\", \"is_authority\": true, "
+                        + "\"relay_type\": \"matchbox\", \"connection_info\": "
+                        + "{\"type\": \"unity_relay\", \"allocation_id\": \"alloc-1\", "
+                        + "\"connection_data\": \"conn-data\", \"key\": \"key-1\"}}]}"
+                ),
+                out GameStartingMessage message
+            );
+            Assert.That(decoded, Is.True);
+            ConnectionEndpoint info = message.PeerConnections[0].ConnectionInfo.GetValueOrDefault();
+            Assert.That(info.Type, Is.EqualTo("unity_relay"));
+            Assert.That(info.Host, Is.Empty);
+            Assert.That(info.Port, Is.EqualTo(0u));
+            Assert.That(info.AllocationId, Is.EqualTo("alloc-1"));
+            Assert.That(info.ConnectionData, Is.EqualTo("conn-data"));
+            Assert.That(info.Key, Is.EqualTo("key-1"));
+            Assert.That(info.Token, Is.Null);
+        }
+
+        [Test]
+        public void GameStartingWithRelayConnectionInfoDecodes()
+        {
+            bool decoded = GameStartingMessage.TryDecode(
+                Bytes(
+                    "{\"peer_connections\": [{\"player_id\": "
+                        + "\"00000000-0000-0000-0000-00000000000a\", "
+                        + "\"player_name\": \"Player 1\", \"is_authority\": true, "
+                        + "\"relay_type\": \"matchbox\", \"connection_info\": "
+                        + "{\"type\": \"relay\", \"host\": \"relay.example.com\", "
+                        + "\"port\": 3478, \"transport\": \"udp\", "
+                        + "\"allocation_id\": \"alloc-1\", \"token\": \"tok-1\", "
+                        + "\"client_id\": 7}}]}"
+                ),
+                out GameStartingMessage message
+            );
+            Assert.That(decoded, Is.True);
+            ConnectionEndpoint info = message.PeerConnections[0].ConnectionInfo.GetValueOrDefault();
+            Assert.That(info.Type, Is.EqualTo("relay"));
+            Assert.That(info.Host, Is.EqualTo("relay.example.com"));
+            Assert.That(info.Port, Is.EqualTo(3478u));
+            Assert.That(info.Transport, Is.EqualTo("udp"));
+            Assert.That(info.AllocationId, Is.EqualTo("alloc-1"));
+            Assert.That(info.Token, Is.EqualTo("tok-1"));
+            Assert.That(info.ClientId, Is.EqualTo(7u));
+        }
+
+        [Test]
+        public void GameStartingWithWebrtcConnectionInfoDecodes()
+        {
+            bool decoded = GameStartingMessage.TryDecode(
+                Bytes(
+                    "{\"peer_connections\": [{\"player_id\": "
+                        + "\"00000000-0000-0000-0000-00000000000a\", "
+                        + "\"player_name\": \"Player 1\", \"is_authority\": true, "
+                        + "\"relay_type\": \"matchbox\", \"connection_info\": "
+                        + "{\"type\": \"webrtc\", \"sdp\": null, "
+                        + "\"ice_candidates\": [\"stun:stun.example.com\", "
+                        + "\"turn:turn.example.com\"]}}]}"
+                ),
+                out GameStartingMessage message
+            );
+            Assert.That(decoded, Is.True);
+            ConnectionEndpoint info = message.PeerConnections[0].ConnectionInfo.GetValueOrDefault();
+            Assert.That(info.Type, Is.EqualTo("webrtc"));
+            Assert.That(info.Sdp, Is.Null);
+            Assert.That(info.IceCandidates, Is.EqualTo(WebrtcIceCandidates));
+            Assert.That(info.Host, Is.Empty);
+        }
+
+        [Test]
+        public void GameStartingWithCustomConnectionInfoDecodes()
+        {
+            bool decoded = GameStartingMessage.TryDecode(
+                Bytes(
+                    "{\"peer_connections\": [{\"player_id\": "
+                        + "\"00000000-0000-0000-0000-00000000000a\", "
+                        + "\"player_name\": \"Player 1\", \"is_authority\": true, "
+                        + "\"relay_type\": \"matchbox\", \"connection_info\": "
+                        + "{\"type\": \"custom\", \"data\": {\"endpoint\": "
+                        + "\"matchbox.example.com:7777\"}}}]}"
+                ),
+                out GameStartingMessage message
+            );
+            Assert.That(decoded, Is.True);
+            ConnectionEndpoint info = message.PeerConnections[0].ConnectionInfo.GetValueOrDefault();
+            Assert.That(info.Type, Is.EqualTo("custom"));
+            Assert.That(info.Data, Is.EqualTo("{\"endpoint\": \"matchbox.example.com:7777\"}"));
+        }
+
+        [Test]
+        public void GameStartingWithUnknownConnectionInfoTypeRejectsDecode()
+        {
+            /*
+                An unknown variant token stays fail-closed, matching the
+                Rust client's closed serde enum.
+            */
+            bool decoded = GameStartingMessage.TryDecode(
+                Bytes(
+                    "{\"peer_connections\": [{\"player_id\": "
+                        + "\"00000000-0000-0000-0000-00000000000a\", "
+                        + "\"player_name\": \"Player 1\", \"is_authority\": true, "
+                        + "\"relay_type\": \"matchbox\", \"connection_info\": "
+                        + "{\"type\": \"quantum\", \"host\": \"h\", \"port\": 1}}]}"
+                ),
+                out GameStartingMessage message
+            );
+            Assert.That(decoded, Is.False);
+            Assert.That(message, Is.EqualTo(default(GameStartingMessage)));
+        }
+
+        [TestCase(
+            "{\"type\": \"unity_relay\", \"allocation_id\": \"alloc-1\", \"connection_data\": \"c\"}",
+            TestName = "UnityRelay.MissingKey"
+        )]
+        [TestCase(
+            "{\"type\": \"relay\", \"host\": \"h\", \"port\": 1, \"allocation_id\": \"a\"}",
+            TestName = "Relay.MissingToken"
+        )]
+        [TestCase(
+            "{\"type\": \"webrtc\", \"ice_candidates\": \"stun:stun.example.com\"}",
+            TestName = "Webrtc.WrongTypedCandidates"
+        )]
+        [TestCase("{\"type\": \"custom\"}", TestName = "Custom.MissingData")]
+        [TestCase(
+            "{\"type\": \"direct\", \"host\": \"192.0.2.10\"}",
+            TestName = "Direct.MissingPort"
+        )]
+        public void GameStartingWithIncompleteConnectionInfoVariantRejectsDecode(string info)
+        {
+            bool decoded = GameStartingMessage.TryDecode(
+                Bytes(
+                    "{\"peer_connections\": [{\"player_id\": "
+                        + "\"00000000-0000-0000-0000-00000000000a\", "
+                        + "\"player_name\": \"Player 1\", \"is_authority\": true, "
+                        + "\"relay_type\": \"matchbox\", \"connection_info\": "
+                        + info
+                        + "}]}"
+                ),
+                out GameStartingMessage message
+            );
+            Assert.That(decoded, Is.False);
+            Assert.That(message, Is.EqualTo(default(GameStartingMessage)));
+        }
+
         // --- Golden fixtures: room snapshots ---------------------------------
         [Test]
         public void RoomJoinedGoldenFixtureDecodesMembershipAndRichSnapshot()
@@ -696,6 +878,63 @@ namespace SignalFish.Client.Tests
             Assert.That(message.CurrentSpectators, Is.Empty);
         }
 
+        [Test]
+        public void SpectatorLeftWithOptionalIdentityOmittedDecodes()
+        {
+            /*
+                room_id, room_code, and reason are optional on the wire
+                (serde skip_serializing_if); only current_spectators is
+                required, so a disconnect-driven departure still surfaces.
+            */
+            bool decoded = SpectatorLeftMessage.TryDecode(
+                Bytes("{\"current_spectators\": []}"),
+                out SpectatorLeftMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.RoomId, Is.EqualTo(Guid.Empty));
+            Assert.That(message.RoomCode, Is.Empty);
+            Assert.That(message.Reason, Is.Empty);
+            Assert.That(message.CurrentSpectators, Is.Empty);
+        }
+
+        [Test]
+        public void NewSpectatorJoinedWithoutReasonDecodesEmptyReason()
+        {
+            bool decoded = NewSpectatorJoinedMessage.TryDecode(
+                Bytes(
+                    "{\"spectator\": {\"id\": "
+                        + "\"00000000-0000-0000-0000-00000000000c\", \"name\": "
+                        + "\"Observer2\", \"connected_at\": "
+                        + "\"2026-09-20T12:00:02Z\"}, \"current_spectators\": []}"
+                ),
+                out NewSpectatorJoinedMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.Spectator.Name, Is.EqualTo("Observer2"));
+            Assert.That(message.Reason, Is.Empty);
+            Assert.That(message.CurrentSpectators, Is.Empty);
+        }
+
+        [Test]
+        public void SpectatorDisconnectedWithoutReasonDecodesEmptyReason()
+        {
+            bool decoded = SpectatorDisconnectedMessage.TryDecode(
+                Bytes(
+                    "{\"spectator_id\": "
+                        + "\"00000000-0000-0000-0000-00000000000c\", "
+                        + "\"current_spectators\": []}"
+                ),
+                out SpectatorDisconnectedMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(
+                message.SpectatorId,
+                Is.EqualTo(new Guid("00000000-0000-0000-0000-00000000000c"))
+            );
+            Assert.That(message.Reason, Is.Empty);
+            Assert.That(message.CurrentSpectators, Is.Empty);
+        }
+
         // --- Golden fixtures: failure family ---------------------------------
         [Test]
         public void ErrorGoldenFixtureDecodesReasonFromMessageAlias()
@@ -731,6 +970,85 @@ namespace SignalFish.Client.Tests
             );
             Assert.That(message.Reason, Is.EqualTo("Room is full"));
             Assert.That(message.ErrorCode, Is.EqualTo("ROOM_FULL"));
+        }
+
+        [Test]
+        public void FailureWithoutErrorCodeDecodesEmptyCode()
+        {
+            /*
+                error_code is optional on Error / RoomJoinFailed /
+                SpectatorJoinFailed (serde skip_serializing_if); only the
+                prose reason is required, and it must still surface.
+            */
+            bool decoded = FailureMessage.TryDecode(
+                Bytes("{\"reason\": \"Room is full\"}"),
+                out FailureMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.Reason, Is.EqualTo("Room is full"));
+            Assert.That(message.ErrorCode, Is.Empty);
+        }
+
+        [Test]
+        public void FailureWithRepeatedNullErrorCodeRejectsDecode()
+        {
+            bool decoded = FailureMessage.TryDecode(
+                Bytes(
+                    "{\"reason\": \"Room is full\", \"error_code\": null, "
+                        + "\"error_code\": \"ROOM_FULL\"}"
+                ),
+                out FailureMessage message
+            );
+            Assert.That(decoded, Is.False);
+            Assert.That(message, Is.EqualTo(default(FailureMessage)));
+        }
+
+        [Test]
+        public void AuthenticatedWithRepeatedNullOrganizationRejectsDecode()
+        {
+            bool decoded = AuthenticatedMessage.TryDecode(
+                Bytes(
+                    "{\"app_name\": \"my-game\", \"organization\": null, "
+                        + "\"organization\": \"Ambiguous Interactive\", "
+                        + "\"rate_limits\": {\"per_minute\": 60, \"per_hour\": 3600, "
+                        + "\"per_day\": 86400}}"
+                ),
+                out AuthenticatedMessage message
+            );
+            Assert.That(decoded, Is.False);
+            Assert.That(message, Is.EqualTo(default(AuthenticatedMessage)));
+        }
+
+        [Test]
+        public void SpectatorLeftWithRepeatedNullReasonRejectsDecode()
+        {
+            bool decoded = SpectatorLeftMessage.TryDecode(
+                Bytes(
+                    "{\"current_spectators\": [], \"reason\": null, "
+                        + "\"reason\": \"voluntary_leave\"}"
+                ),
+                out SpectatorLeftMessage message
+            );
+            Assert.That(decoded, Is.False);
+            Assert.That(message, Is.EqualTo(default(SpectatorLeftMessage)));
+        }
+
+        [Test]
+        public void GameStartingWithRepeatedNullSdpRejectsDecode()
+        {
+            bool decoded = GameStartingMessage.TryDecode(
+                Bytes(
+                    "{\"peer_connections\": [{\"player_id\": "
+                        + "\"00000000-0000-0000-0000-00000000000a\", "
+                        + "\"player_name\": \"Player 1\", \"is_authority\": true, "
+                        + "\"relay_type\": \"matchbox\", \"connection_info\": "
+                        + "{\"type\": \"webrtc\", \"sdp\": null, \"sdp\": \"v=0\", "
+                        + "\"ice_candidates\": []}}]}"
+                ),
+                out GameStartingMessage message
+            );
+            Assert.That(decoded, Is.False);
+            Assert.That(message, Is.EqualTo(default(GameStartingMessage)));
         }
 
         // --- Negative decode policies ------------------------------------------

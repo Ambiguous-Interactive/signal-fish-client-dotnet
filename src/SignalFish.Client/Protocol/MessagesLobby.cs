@@ -52,9 +52,11 @@ namespace SignalFish.Client.Protocol
 
     /// <summary>
     /// Payload of the inbound <c>Authenticated</c> message (S→C): the
-    /// accepted app identity plus the server-issued rate limits. All fields
-    /// are required. Wire order: <c>app_name</c>, <c>organization</c>,
-    /// <c>rate_limits</c>. (Distinct from the outbound
+    /// accepted app identity plus the server-issued rate limits.
+    /// <see cref="AppName"/> and <see cref="RateLimits"/> are required;
+    /// <see cref="Organization"/> is optional (self-hosted deployments
+    /// without one omit it). Wire order: <c>app_name</c>,
+    /// <c>organization</c>, <c>rate_limits</c>. (Distinct from the outbound
     /// <see cref="AuthenticateMessage"/>.)
     /// </summary>
     public readonly struct AuthenticatedMessage : IEquatable<AuthenticatedMessage>
@@ -62,7 +64,7 @@ namespace SignalFish.Client.Protocol
         /// <summary>Gets the public app name the deployment accepted (required).</summary>
         public string AppName { get; }
 
-        /// <summary>Gets the organization that owns the app (required).</summary>
+        /// <summary>Gets the organization that owns the app (empty when the deployment has none).</summary>
         public string Organization { get; }
 
         /// <summary>Gets the per-window message allowances (required).</summary>
@@ -121,6 +123,8 @@ namespace SignalFish.Client.Protocol
             string? appName = null;
             string? organization = null;
             RateLimits rateLimits = default;
+            bool appNameSeen = false;
+            bool organizationSeen = false;
             bool rateLimitsSeen = false;
 
             while (state == JsonMemberState.Member)
@@ -133,16 +137,31 @@ namespace SignalFish.Client.Protocol
 
                 if (scanner.KeyIs(keyRaw, "app_name"))
                 {
-                    if (appName is not null || !scanner.TryReadString(valueRaw, out appName))
+                    if (appNameSeen)
+                    {
+                        return false;
+                    }
+
+                    appNameSeen = true;
+                    if (
+                        !scanner.TryReadNull(valueRaw)
+                        && !scanner.TryReadString(valueRaw, out appName)
+                    )
                     {
                         return false;
                     }
                 }
                 else if (scanner.KeyIs(keyRaw, "organization"))
                 {
+                    if (organizationSeen)
+                    {
+                        return false;
+                    }
+
+                    organizationSeen = true;
                     if (
-                        organization is not null
-                        || !scanner.TryReadString(valueRaw, out organization)
+                        !scanner.TryReadNull(valueRaw)
+                        && !scanner.TryReadString(valueRaw, out organization)
                     )
                     {
                         return false;
@@ -169,17 +188,12 @@ namespace SignalFish.Client.Protocol
                 state = scanner.EndMember();
             }
 
-            if (
-                state != JsonMemberState.EndObject
-                || appName is null
-                || organization is null
-                || !rateLimitsSeen
-            )
+            if (state != JsonMemberState.EndObject || appName is null || !rateLimitsSeen)
             {
                 return false;
             }
 
-            message = new AuthenticatedMessage(appName, organization, rateLimits);
+            message = new AuthenticatedMessage(appName, organization ?? string.Empty, rateLimits);
             return true;
         }
 

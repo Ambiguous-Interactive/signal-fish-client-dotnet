@@ -268,6 +268,7 @@ namespace SignalFish.Client.Tests
                 Is.True
             );
             Assert.That(message.DeadlineMs, Is.EqualTo(1700000000000ul));
+            Assert.That(message.HasRetryAfterSecs, Is.True);
             Assert.That(message.RetryAfterSecs, Is.EqualTo(30ul));
         }
 
@@ -517,12 +518,62 @@ namespace SignalFish.Client.Tests
         }
 
         [Test]
-        public void GoingAwayWithMissingRetryAfterRejectsDecode()
+        public void GoingAwayWithMissingRetryAfterDecodesDeadlineOnly()
         {
+            /*
+                The server omits retry_after_secs when the drain is
+                configured for immediate close (serde
+                skip_serializing_if): only deadline_ms is required.
+            */
             bool decoded = GoingAwayMessage.TryDecode(
                 Bytes("{\"deadline_ms\": 1700000000000}"),
                 out GoingAwayMessage message
             );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.DeadlineMs, Is.EqualTo(1700000000000ul));
+            Assert.That(message.HasRetryAfterSecs, Is.False);
+            Assert.That(message.RetryAfterSecs, Is.EqualTo(0ul));
+        }
+
+        [Test]
+        public void GoingAwayWithNullRetryAfterTreatsHintAsAbsent()
+        {
+            bool decoded = GoingAwayMessage.TryDecode(
+                Bytes("{\"deadline_ms\": 1700000000000, \"retry_after_secs\": null}"),
+                out GoingAwayMessage message
+            );
+            Assert.That(decoded, Is.True);
+            Assert.That(message.DeadlineMs, Is.EqualTo(1700000000000ul));
+            Assert.That(message.HasRetryAfterSecs, Is.False);
+            Assert.That(message.RetryAfterSecs, Is.EqualTo(0ul));
+        }
+
+        [TestCase("\"soon\"", TestName = "WrongTyped.RetryAfterSecs")]
+        [TestCase("-5", TestName = "Negative.RetryAfterSecs")]
+        [TestCase("true", TestName = "Boolean.RetryAfterSecs")]
+        public void GoingAwayWithMalformedRetryAfterRejectsDecode(string retryValue)
+        {
+            bool decoded = GoingAwayMessage.TryDecode(
+                Bytes("{\"deadline_ms\": 1700000000000, \"retry_after_secs\": " + retryValue + "}"),
+                out GoingAwayMessage message
+            );
+            Assert.That(decoded, Is.False);
+            Assert.That(message, Is.EqualTo(default(GoingAwayMessage)));
+        }
+
+        [TestCase(
+            "{\"deadline_ms\": 1700000000000, \"retry_after_secs\": 30, "
+                + "\"retry_after_secs\": 60}",
+            TestName = "ValueThenValue"
+        )]
+        [TestCase(
+            "{\"deadline_ms\": 1700000000000, \"retry_after_secs\": null, "
+                + "\"retry_after_secs\": 30}",
+            TestName = "NullThenValue"
+        )]
+        public void GoingAwayWithRepeatedRetryAfterKeyRejectsDecode(string data)
+        {
+            bool decoded = GoingAwayMessage.TryDecode(Bytes(data), out GoingAwayMessage message);
             Assert.That(decoded, Is.False);
             Assert.That(message, Is.EqualTo(default(GoingAwayMessage)));
         }
