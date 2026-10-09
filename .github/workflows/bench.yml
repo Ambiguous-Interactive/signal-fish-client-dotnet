@@ -4,8 +4,10 @@
 # shared runners are noisy, so PR CI time stays flat (same policy as the
 # fuzz lane). The gate compares each scheduled run against the committed
 # baseline (tests/SignalFish.Client.PerfTests/baseline.json): median time
-# within -MaxRegression, allocated bytes exact, architecture pinned, and
-# removed or renamed benchmarks fail so the gate cannot silently rot.
+# within -MaxRegression on the same CPU model (the shared fleet rotates
+# EPYC SKUs; cross-SKU medians are not comparable), allocated bytes exact,
+# architecture pinned, and removed or renamed benchmarks fail so the gate
+# cannot silently rot.
 #
 # A fresh baseline is a reviewed change, never an automatic one: dispatch
 # with update_baseline to record one, download the bench-baseline

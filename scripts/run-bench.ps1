@@ -9,9 +9,14 @@
     baseline.json:
 
     - Median wall time may grow at most -MaxRegression (default 1.30;
-    shared runners are noisy, real regressions are larger).
+    shared runners are noisy, real regressions are larger). Time ratios
+    only compare within the same CPU model: the shared fleet rotates
+    EPYC SKUs (9V74, 7763, and 9V45 observed within one week), identical
+    code spans ~2.5x across them, and a different-CPU run reports
+    skipped time ratios instead of a false regression.
     - Bytes allocated per operation may not grow at all: allocation is
-    deterministic, and the codec budget is zero-alloc steady state.
+    deterministic and CPU-independent, and the codec budget is
+    zero-alloc steady state.
     - The runner architecture must match the baseline's (cross-arch
     medians are not comparable).
     - Baseline entries this run no longer produces (renamed or removed
@@ -79,6 +84,7 @@ function Read-Results {
     }
 
     $architectures = New-Object 'System.Collections.Generic.HashSet[string]'
+    $cpus = New-Object 'System.Collections.Generic.HashSet[string]'
     $versions = New-Object 'System.Collections.Generic.HashSet[string]'
     $byFullName = @{}
     foreach ($file in $files) {
@@ -100,6 +106,13 @@ function Read-Results {
         }
         $architectures.Add([string]$report.HostEnvironmentInfo.Architecture) | Out-Null
         $versions.Add([string]$report.HostEnvironmentInfo.BenchmarkDotNetVersion) | Out-Null
+        # ProcessorName is the CPU model the medians belong to; reports
+        # without it degrade to an unknown model (time ratios then skip).
+        $cpu = ''
+        if ($report.HostEnvironmentInfo.PSObject.Properties['ProcessorName']) {
+            $cpu = [string]$report.HostEnvironmentInfo.ProcessorName
+        }
+        if ($cpu) { $cpus.Add($cpu) | Out-Null }
 
         foreach ($bench in $report.Benchmarks) {
             if (-not $bench.PSObject.Properties['FullName'] -or
@@ -131,9 +144,13 @@ function Read-Results {
     if ($architectures.Count -gt 1) {
         throw "Results mix architectures ($($architectures -join ', ')); a run must use one host."
     }
+    if ($cpus.Count -gt 1) {
+        throw "Results mix CPUs ($($cpus -join ', ')); a run must use one host."
+    }
     $entries = @($byFullName.Values | Sort-Object -Property FullName)
     return [pscustomobject]@{
         Architecture           = [string]($architectures | Select-Object -First 1)
+        CpuModel               = [string]($cpus | Select-Object -First 1)
         BenchmarkDotNetVersion = [string]($versions | Select-Object -First 1)
         Entries                = $entries
     }
@@ -146,6 +163,7 @@ function Write-Baseline {
         schemaVersion          = 1
         job                    = 'medium'
         architecture           = $Run.Architecture
+        cpuModel               = $Run.CpuModel
         benchmarkDotNetVersion = $Run.BenchmarkDotNetVersion
         recordedAtUtc          = (Get-Date).ToUniversalTime().ToString(
             'yyyy-MM-ddTHH:mm:ssZ',
@@ -160,7 +178,7 @@ function Write-Baseline {
     }
     $json = ConvertTo-Json -InputObject $document -Depth 5
     [System.IO.File]::WriteAllText($Path, $json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
-    Write-Host "Baseline written: $Path ($($Run.Entries.Count) benchmarks, $($Run.Architecture))."
+    Write-Host "Baseline written: $Path ($($Run.Entries.Count) benchmarks, $($Run.Architecture)$(if ($Run.CpuModel) { ", $($Run.CpuModel)" }))."
     Write-Host 'Review the diff and commit it - the gate compares every future run against this file.'
 }
 
@@ -208,6 +226,20 @@ function Compare-Results {
         $warnings.Add("BenchmarkDotNet changed since the baseline ($($Baseline.benchmarkDotNetVersion) -> $($Run.BenchmarkDotNetVersion)); medians may shift without a code change. Re-record if the diff is tooling, not regression.") | Out-Null
     }
 
+    # Medians are only comparable on the same CPU model. The shared fleet
+    # rotates EPYC SKUs (9V74, 7763, 9V45 observed in one week) and
+    # identical code spans ~2.5x across them, so a different or unknown
+    # CPU skips the time gate instead of reporting a false regression;
+    # allocation and rot protection still gate the run.
+    $baselineCpu = ''
+    if ($Baseline.PSObject.Properties['cpuModel']) {
+        $baselineCpu = [string]$Baseline.cpuModel
+    }
+    $sameCpu = [bool]($baselineCpu -and $Run.CpuModel -and $baselineCpu -eq $Run.CpuModel)
+    if (-not $sameCpu) {
+        $warnings.Add("Time ratios skipped: CPU differs (baseline: '$baselineCpu', this run: '$($Run.CpuModel)'). Shared-fleet SKUs are not median-comparable; allocation and rot protection still gate. Re-record the baseline if the fleet settles on one CPU.") | Out-Null
+    }
+
     $runByName = @{}
     foreach ($entry in $Run.Entries) { $runByName[$entry.FullName] = $entry }
 
@@ -218,23 +250,26 @@ function Compare-Results {
         }
         $runEntry = $runByName[$base.fullName]
         $ratio = 0.0
+        $ratioText = '-'
         $verdict = 'OK'
         if ($base.medianNanoseconds -le 0) {
             $failures.Add("Baseline median must be positive for $($base.fullName).") | Out-Null
             $verdict = 'FAIL'
         }
-        else {
-            if ($runEntry.MedianNanoseconds -le 0) {
-                $failures.Add("Run median must be positive for $($base.fullName) (corrupt report?); got $($runEntry.MedianNanoseconds) ns.") | Out-Null
+        elseif ($runEntry.MedianNanoseconds -le 0) {
+            $failures.Add("Run median must be positive for $($base.fullName) (corrupt report?); got $($runEntry.MedianNanoseconds) ns.") | Out-Null
+            $verdict = 'FAIL'
+        }
+        elseif ($sameCpu) {
+            $ratio = $runEntry.MedianNanoseconds / $base.medianNanoseconds
+            $ratioText = '{0:N3}' -f $ratio
+            if ($ratio -gt $MaxRegression) {
+                $failures.Add("Median regression: $($base.fullName) $(Format-Us $base.medianNanoseconds) -> $(Format-Us $runEntry.MedianNanoseconds) ($('{0:N3}x' -f $ratio) > $('{0:N2}x' -f $MaxRegression) limit).") | Out-Null
                 $verdict = 'FAIL'
             }
-            else {
-                $ratio = $runEntry.MedianNanoseconds / $base.medianNanoseconds
-                if ($ratio -gt $MaxRegression) {
-                    $failures.Add("Median regression: $($base.fullName) $(Format-Us $base.medianNanoseconds) -> $(Format-Us $runEntry.MedianNanoseconds) ($('{0:N3}x' -f $ratio) > $('{0:N2}x' -f $MaxRegression) limit).") | Out-Null
-                    $verdict = 'FAIL'
-                }
-            }
+        }
+        else {
+            $verdict = 'CPU-SKIP'
         }
         if ($runEntry.BytesAllocatedPerOperation -gt $base.bytesAllocatedPerOperation) {
             $failures.Add("Allocation regression: $($base.fullName) $($base.bytesAllocatedPerOperation) B -> $($runEntry.BytesAllocatedPerOperation) B per op. The budget is exact; re-record only with a reviewed reason.") | Out-Null
@@ -244,7 +279,7 @@ function Compare-Results {
             FullName = $base.fullName
             Base     = Format-Us $base.medianNanoseconds
             Run      = Format-Us $runEntry.MedianNanoseconds
-            Ratio    = '{0:N3}' -f $ratio
+            Ratio    = $ratioText
             Alloc    = "$($base.bytesAllocatedPerOperation) -> $($runEntry.BytesAllocatedPerOperation) B"
             Verdict  = $verdict
         }) | Out-Null
@@ -311,7 +346,8 @@ if (-not $SkipBenchmarks) {
 }
 
 $run = Read-Results -Dir $ResultsDir
-Write-Host "Bench run: $($run.Entries.Count) benchmark(s) on $($run.Architecture), BenchmarkDotNet $($run.BenchmarkDotNetVersion)."
+$cpuText = if ($run.CpuModel) { " ($($run.CpuModel))" } else { '' }
+Write-Host "Bench run: $($run.Entries.Count) benchmark(s) on $($run.Architecture)$cpuText, BenchmarkDotNet $($run.BenchmarkDotNetVersion)."
 
 if ($UpdateBaseline) {
     Write-Baseline -Path $baselinePath -Run $run
