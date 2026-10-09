@@ -64,6 +64,15 @@ Optional v2: `AuthorityRequest`/`AuthorityResponse`, `JoinAsSpectator`,
 5. Client outbound message size must respect the server's inbound limit
    (`max_message_size`, default 64 KiB) — check
    [websocket-transport](../websocket-transport/SKILL.md).
+6. A field's requiredness comes from the server struct's serde
+   attributes (`Option` + `skip_serializing_if` ⇒ may be omitted) and
+   the AsyncAPI `required` list — never from a golden sample's shape.
+   Session 068: seven decoders required optional fields, so the
+   default graceful drain hid its `GoingAway` deadline and one peer's
+   `unity_relay` connection info killed the whole `GameStarting`
+   event. Accept omission for exactly the optional set; required stays
+   required; unknown variants stay rejected (the Rust client's closed
+   enum is the executable spec for tagged unions).
 
 ## Authoritative references
 
