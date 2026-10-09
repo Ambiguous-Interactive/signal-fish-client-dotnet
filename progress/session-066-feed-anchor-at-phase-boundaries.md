@@ -56,6 +56,11 @@ other surface needs the interleaved-wait shape today.
   broadcasts `ServerMessage::PlayerJoined` to the room except the joiner
   (`room_service.rs`, `broadcast_to_room_except_if_with_hook`), so the
   anchor provably receives carol's join.
+- Bugbot round 2 (on this PR) caught that the drill-1 wait still sat
+  after *both* handshakes — carol and bob2 connected back-to-back. The
+  reorder fixes the real invariant: carol connects, joins, the anchor
+  witnesses the join, and only then bob2 connects and reclaims, so
+  every handshake is separated by an anchor poll.
 - Bugbot thread on #126 answered with the fix link; the fixture-level
   comment documents the invariant for the next editor.
 - Local: fast-check green (982 tests), all six convention lints clean.
