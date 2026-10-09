@@ -71,9 +71,14 @@ medium job) is compared against the committed machine baseline
 `tests/SignalFish.Client.PerfTests/baseline.json`. The check fails when:
 
 - median wall time grows more than 30% (`-MaxRegression`, default 1.30 —
-  shared runners are noisy, real regressions are larger);
+  shared runners are noisy, real regressions are larger). Time ratios
+  only compare within the same CPU model: the shared fleet rotates
+  EPYC SKUs (9V74, 7763, and 9V45 observed in one week; identical code
+  spans ~2.5x across them), so a different-CPU run reports skipped time
+  ratios instead of a false regression;
 - bytes allocated per operation grow at all (allocation is
-  deterministic, and the codec budget is zero-alloc steady state);
+  deterministic and CPU-independent, and the codec budget is zero-alloc
+  steady state);
 - a baseline benchmark no longer exists in the run (renames and removals
   fail, so the gate cannot silently rot);
 - the runner architecture differs from the baseline's (Arm64 and x64
@@ -93,6 +98,10 @@ change — recorded deliberately, diff reviewed, then committed:
 2. Download the `bench-baseline` artifact (CI) or take the file in place
    (local).
 3. Commit `tests/SignalFish.Client.PerfTests/baseline.json`.
+
+When distilling a CI artifact's reports locally (`-SkipBenchmarks`),
+`recordedAtUtc` reflects the distillation time, not the measurement —
+name the source run in the PR so provenance stays traceable.
 
 An intentional regression (speed traded for correctness) follows the
 same path: the PR that updates the baseline is the review record.

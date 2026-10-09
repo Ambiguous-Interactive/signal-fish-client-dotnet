@@ -30,14 +30,17 @@ try {
             [object[]]$Benchmarks,
             [string]$Architecture = 'X64',
             [string]$Name = 'PerfTests-report-full-compressed.json',
-            [string]$Version = '0.15.8'
+            [string]$Version = '0.15.8',
+            [string]$Cpu = 'AMD EPYC Test 2.45GHz'
         )
+        $hostInfo = [ordered]@{
+            Architecture           = $Architecture
+            BenchmarkDotNetVersion = $Version
+        }
+        if ($Cpu) { $hostInfo.ProcessorName = $Cpu }
         $report = [ordered]@{
-            HostEnvironmentInfo = [ordered]@{
-                Architecture           = $Architecture
-                BenchmarkDotNetVersion = $Version
-            }
-            Benchmarks = @($Benchmarks)
+            HostEnvironmentInfo = $hostInfo
+            Benchmarks          = @($Benchmarks)
         }
         Write-TestFile -Path (Join-Path $resultsDir $Name) -Content ($report | ConvertTo-Json -Depth 6)
     }
@@ -67,6 +70,7 @@ try {
     $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json
     Assert-Equal 1 $baseline.schemaVersion 'baseline schema version'
     Assert-Equal 'X64' $baseline.architecture 'baseline records architecture'
+    Assert-Equal 'AMD EPYC Test 2.45GHz' $baseline.cpuModel 'baseline records the CPU model'
     Assert-Equal 'medium' $baseline.job 'baseline records the job'
     Assert-Equal 2 @($baseline.entries).Count 'baseline entries count'
     Assert-Equal $queue $baseline.entries[0].fullName 'baseline entries sorted by full name'
@@ -194,6 +198,82 @@ try {
     Assert-OutputContains -Run $run -Pattern ([regex]::Escape($codec)) 'first failure reported'
     Assert-OutputContains -Run $run -Pattern ([regex]::Escape($queue)) 'second failure reported'
     Assert-OutputContains -Run $run -Pattern 'Allocation regression' 'allocation failure still reported'
+
+    # 16. A different-CPU run skips time ratios instead of reporting a
+    # false regression (the shared fleet rotates EPYC SKUs).
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median (55000 * 2) -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64' -Cpu 'AMD EPYC Other 2.60GHz'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-Equal 0 $run.ExitCode 'cross-CPU time shift passes without a false regression'
+    Assert-OutputContains -Run $run -Pattern 'Time ratios skipped' 'cross-CPU warning names the cause'
+    Assert-OutputContains -Run $run -Pattern 'CPU-SKIP' 'cross-CPU rows are marked in the table'
+
+    # 17. Allocation growth still fails on a different CPU.
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median (55000 * 2) -Alloc 8),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64' -Cpu 'AMD EPYC Other 2.60GHz'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-True ($run.ExitCode -ne 0) 'cross-CPU allocation growth still fails'
+    Assert-OutputContains -Run $run -Pattern 'Allocation regression' 'allocation gate is CPU-independent'
+
+    # 18. Two report files from different CPUs fail loudly.
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median 55000 -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64' -Cpu 'AMD EPYC Test 2.45GHz'
+    Write-Report -Benchmarks @((New-Entry -FullName $codec -Median 55000 -Alloc 0)) `
+        -Architecture 'X64' -Cpu 'AMD EPYC Other 2.60GHz' -Name 'PerfTests-report-brief.json'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-True ($run.ExitCode -ne 0) 'mixed-CPU results fail'
+    Assert-OutputContains -Run $run -Pattern 'Results mix CPUs' 'mixed-CPU message'
+
+    # 19. A pre-cpuModel baseline skips time ratios instead of comparing
+    # against an unknown CPU (backward compatible).
+    Remove-Item -Path (Join-Path $resultsDir '*') -Force
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median (55000 * 2) -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64'
+    $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json
+    $baseline.PSObject.Properties.Remove('cpuModel')
+    Write-TestFile -Path $baselinePath -Content ($baseline | ConvertTo-Json -Depth 6)
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-Equal 0 $run.ExitCode 'old baseline without cpuModel skips time ratios'
+    Assert-OutputContains -Run $run -Pattern "baseline: ''" 'missing cpuModel is named as unknown'
+
+    # 20. Mirror of 19: the baseline carries a CPU, the run's report
+    # does not — also skipped, never compared against unknown silicon.
+    Remove-Item -Path (Join-Path $resultsDir '*') -Force
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median 55000 -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir, '-UpdateBaseline')
+    Assert-Equal 0 $run.ExitCode 'baseline re-recorded with a CPU model'
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median (55000 * 2) -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64' -Cpu ''
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-Equal 0 $run.ExitCode 'run without a CPU model skips time ratios'
+    Assert-OutputContains -Run $run -Pattern 'Time ratios skipped' 'run-unknown CPU warns'
+
+    # 21. Recording refuses CPU-less reports: an unknown model must never
+    # enter the baseline, or later unknown-CPU runs would "match" it and
+    # time-compare across unidentified silicon.
+    Remove-Item -Path $baselinePath -Force
+    Remove-Item -Path (Join-Path $resultsDir '*') -Force
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median 55000 -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64' -Cpu ''
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir, '-UpdateBaseline')
+    Assert-True ($run.ExitCode -ne 0) 'baseline recording refuses a CPU-less report'
+    Assert-OutputContains -Run $run -Pattern 'do not name a CPU model' 'record refusal names the cause'
+    Assert-True (-not (Test-Path -LiteralPath $baselinePath)) 'no baseline file is written on refusal'
 }
 finally {
     Remove-TestRepo $repo

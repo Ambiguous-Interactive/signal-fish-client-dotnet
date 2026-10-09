@@ -262,11 +262,15 @@ jobs:
           -reporttypes:HtmlInline_AzurePipelines\;Cobertura
 
       - name: Upload test results and coverage
+        # Diagnostics, not the gate: the retried dotnet test exit code
+        # already decided the run (#129). Upload failures — including a
+        # missing-files glob regression — degrade to a visible warning.
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.os }}-${{ matrix.framework }}
           path: |
             TestResults/**/*
             coverage-report/**/*
-          if-no-files-found: error
+          if-no-files-found: warn

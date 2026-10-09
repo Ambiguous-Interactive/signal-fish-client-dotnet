@@ -2,37 +2,38 @@
   "schemaVersion": 1,
   "job": "medium",
   "architecture": "X64",
+  "cpuModel": "AMD EPYC 9V45",
   "benchmarkDotNetVersion": "0.15.8",
-  "recordedAtUtc": "2026-10-06T19:21:26Z",
+  "recordedAtUtc": "2026-10-09T02:08:30Z",
   "entries": [
     {
       "fullName": "SignalFish.Client.PerfTests.BoundedQueueBenchmarks.ChannelsAwaitHandoff",
-      "medianNanoseconds": 11875.855377197266,
+      "medianNanoseconds": 10561.381576538086,
       "bytesAllocatedPerOperation": 72
     },
     {
       "fullName": "SignalFish.Client.PerfTests.BoundedQueueBenchmarks.ChannelsTryRoundtrip",
-      "medianNanoseconds": 25399.509796142578,
+      "medianNanoseconds": 28288.066925048828,
       "bytesAllocatedPerOperation": 0
     },
     {
       "fullName": "SignalFish.Client.PerfTests.BoundedQueueBenchmarks.HandRolledAwaitHandoff",
-      "medianNanoseconds": 8825.677513122559,
+      "medianNanoseconds": 9566.917236328125,
       "bytesAllocatedPerOperation": 72
     },
     {
       "fullName": "SignalFish.Client.PerfTests.BoundedQueueBenchmarks.HandRolledTryRoundtrip",
-      "medianNanoseconds": 20884.949157714844,
+      "medianNanoseconds": 25522.48080444336,
       "bytesAllocatedPerOperation": 0
     },
     {
       "fullName": "SignalFish.Client.PerfTests.CodecBenchmarks.DecodeFullCorpus",
-      "medianNanoseconds": 16904.794830322266,
+      "medianNanoseconds": 11874.025650024414,
       "bytesAllocatedPerOperation": 0
     },
     {
       "fullName": "SignalFish.Client.PerfTests.CodecBenchmarks.EncodeRepresentativeSession",
-      "medianNanoseconds": 1007.9975147247314,
+      "medianNanoseconds": 701.2846822738647,
       "bytesAllocatedPerOperation": 0
     }
   ]
