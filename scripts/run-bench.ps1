@@ -61,6 +61,11 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# Placeholder for reports that name no CPU; used only to detect
+# known/unknown mixes within one results dir — unknown silicon is not a
+# model and never time-compares.
+$script:UnknownCpu = '(unknown)'
+
 if (-not $RepoRoot) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
@@ -113,7 +118,7 @@ function Read-Results {
             $cpu = [string]$report.HostEnvironmentInfo.ProcessorName
         }
         if ($cpu) { $cpus.Add($cpu) | Out-Null }
-        else { $cpus.Add('(unknown)') | Out-Null }
+        else { $cpus.Add($script:UnknownCpu) | Out-Null }
 
         foreach ($bench in $report.Benchmarks) {
             if (-not $bench.PSObject.Properties['FullName'] -or
@@ -148,10 +153,14 @@ function Read-Results {
     if ($cpus.Count -gt 1) {
         throw "Results mix CPUs ($($cpus -join ', ')); a run must use one host."
     }
+    # The sentinel exists only to detect known/unknown mixes above; an
+    # unknown model degrades to '' so record refuses it and compares skip.
+    $cpuModel = [string]($cpus | Select-Object -First 1)
+    if ($cpuModel -eq $script:UnknownCpu) { $cpuModel = '' }
     $entries = @($byFullName.Values | Sort-Object -Property FullName)
     return [pscustomobject]@{
         Architecture           = [string]($architectures | Select-Object -First 1)
-        CpuModel               = [string]($cpus | Select-Object -First 1)
+        CpuModel               = $cpuModel
         BenchmarkDotNetVersion = [string]($versions | Select-Object -First 1)
         Entries                = $entries
     }
@@ -163,7 +172,7 @@ function Write-Baseline {
     # Recording is the audited escape hatch: a baseline without a CPU
     # model could never time-compare, so refuse instead of pinning ''.
     if (-not $Run.CpuModel) {
-        throw "Results do not name a CPU model (HostEnvironmentInfo.ProcessorName missing); refusing to record a baseline whose time gate could never compare."
+        throw "Results do not name a CPU model (HostEnvironmentInfo.ProcessorName missing or unknown); refusing to record a baseline whose time gate could never compare."
     }
 
     $document = [ordered]@{

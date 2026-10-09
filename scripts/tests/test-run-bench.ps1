@@ -260,6 +260,20 @@ try {
     $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
     Assert-Equal 0 $run.ExitCode 'run without a CPU model skips time ratios'
     Assert-OutputContains -Run $run -Pattern 'Time ratios skipped' 'run-unknown CPU warns'
+
+    # 21. Recording refuses CPU-less reports: an unknown model must never
+    # enter the baseline, or later unknown-CPU runs would "match" it and
+    # time-compare across unidentified silicon.
+    Remove-Item -Path $baselinePath -Force
+    Remove-Item -Path (Join-Path $resultsDir '*') -Force
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median 55000 -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64' -Cpu ''
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir, '-UpdateBaseline')
+    Assert-True ($run.ExitCode -ne 0) 'baseline recording refuses a CPU-less report'
+    Assert-OutputContains -Run $run -Pattern 'do not name a CPU model' 'record refusal names the cause'
+    Assert-True (-not (Test-Path -LiteralPath $baselinePath)) 'no baseline file is written on refusal'
 }
 finally {
     Remove-TestRepo $repo
