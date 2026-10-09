@@ -26,9 +26,11 @@ namespace SignalFish.Client.E2E
         private static readonly string[] RelayOnlyTopologies = { "relay" };
 
         /*
-            The anchor outlives every wait in its drill, and the CI server
-            reaps inbound-silent connections after ~3 s — the pings keep it
-            fed no matter how a slow runner stretches a phase.
+            The anchor witnesses the whole drill, and the CI server reaps
+            inbound-silent connections after ~3 s. Pings fire only while
+            the harness polls the anchor, so every phase boundary waits
+            on the anchor, and the 500 ms cadence feeds it through a
+            stalled phase.
         */
         private static readonly PollingClientOptions AnchorOptions = new PollingClientOptions(
             heartbeatIntervalMilliseconds: 500,
@@ -115,10 +117,6 @@ namespace SignalFish.Client.E2E
                     RelayOnlyTransports,
                     RelayOnlyTopologies
                 );
-                SignalFishPollingClient bob2 = await E2EHarness.ConnectV3ClientAsync(
-                    RelayOnlyTransports,
-                    RelayOnlyTopologies
-                );
                 try
                 {
                     /*
@@ -133,84 +131,107 @@ namespace SignalFish.Client.E2E
                         roomCode: bobSeat.RoomCode
                     );
 
-                    Assert.That(
-                        bob2.SendReconnect(
-                            new ReconnectMessage(
-                                bobSeat.PlayerId.ToString(),
-                                bobSeat.RoomId.ToString(),
-                                wireToken
-                            )
-                        ).Accepted,
-                        Is.True
-                    );
-                    PollEvent reconnected = await E2EHarness.WaitForEventAsync(
-                        bob2,
-                        e =>
-                            e.Kind == PollEventKind.Reconnected
-                            || e.Kind == PollEventKind.ReconnectionFailed
-                    );
-                    Assert.That(
-                        reconnected.Kind,
-                        Is.EqualTo(PollEventKind.Reconnected),
-                        $"the reclaim must succeed (got {reconnected.Kind}: "
-                            + $"{reconnected.Failure.ErrorCode} — {reconnected.Failure.Reason})"
-                    );
-                    Assert.That(reconnected.Membership, Is.EqualTo(bobSeat));
-
-                    string rotated =
-                        bob2.Snapshot.ReconnectionToken
-                        ?? throw new InvalidOperationException(
-                            "every successful reclaim rotates in a fresh token"
-                        );
-                    Assert.That(
-                        rotated,
-                        Is.Not.EqualTo(wireToken),
-                        "the consumed token must not be re-issued"
-                    );
-
-                    bool carolPresent = false;
-                    foreach (PlayerInfo player in reconnected.Snapshot.CurrentPlayers)
-                    {
-                        if (player.Id == carolSeat.PlayerId)
-                        {
-                            carolPresent = true;
-                            break;
-                        }
-                    }
-
-                    Assert.That(
-                        carolPresent,
-                        Is.True,
-                        "the reclaim must carry the current roster — carol joined during the gap"
-                    );
-
+                    /*
+                        The anchor's mid-gap join witness: it proves the
+                        roster broadcast reaches the surviving seats, and
+                        it splits the setup so the anchor is polled between
+                        every handshake (see AnchorOptions).
+                    */
                     await E2EHarness.WaitForEventAsync(
                         alice,
                         e =>
-                            e.Kind == PollEventKind.PlayerReconnected
-                            && e.LeftPlayerId == bobSeat.PlayerId
+                            e.Kind == PollEventKind.PlayerJoined
+                            && e.PlayerJoined.Player.Id == carolSeat.PlayerId
                     );
 
-                    Assert.That(
-                        E2EHarness.SendRelayPayload(alice, @"{""phase"": ""live""}").Accepted,
-                        Is.True
+                    SignalFishPollingClient bob2 = await E2EHarness.ConnectV3ClientAsync(
+                        RelayOnlyTransports,
+                        RelayOnlyTopologies
                     );
-                    PollEvent live = await E2EHarness.WaitForEventAsync(
-                        bob2,
-                        e => e.Kind == PollEventKind.GameData
-                    );
-                    Assert.That(
-                        E2EHarness.PayloadJsonEquals(
-                            live.GameData.Payload.Span,
-                            @"{""phase"": ""live""}"
-                        ),
-                        Is.True,
-                        "the reclaimed seat's first relayed frame is the fresh one — gameplay never replays"
-                    );
+                    try
+                    {
+                        Assert.That(
+                            bob2.SendReconnect(
+                                new ReconnectMessage(
+                                    bobSeat.PlayerId.ToString(),
+                                    bobSeat.RoomId.ToString(),
+                                    wireToken
+                                )
+                            ).Accepted,
+                            Is.True
+                        );
+                        PollEvent reconnected = await E2EHarness.WaitForEventAsync(
+                            bob2,
+                            e =>
+                                e.Kind == PollEventKind.Reconnected
+                                || e.Kind == PollEventKind.ReconnectionFailed
+                        );
+                        Assert.That(
+                            reconnected.Kind,
+                            Is.EqualTo(PollEventKind.Reconnected),
+                            $"the reclaim must succeed (got {reconnected.Kind}: "
+                                + $"{reconnected.Failure.ErrorCode} — {reconnected.Failure.Reason})"
+                        );
+                        Assert.That(reconnected.Membership, Is.EqualTo(bobSeat));
+
+                        string rotated =
+                            bob2.Snapshot.ReconnectionToken
+                            ?? throw new InvalidOperationException(
+                                "every successful reclaim rotates in a fresh token"
+                            );
+                        Assert.That(
+                            rotated,
+                            Is.Not.EqualTo(wireToken),
+                            "the consumed token must not be re-issued"
+                        );
+
+                        bool carolPresent = false;
+                        foreach (PlayerInfo player in reconnected.Snapshot.CurrentPlayers)
+                        {
+                            if (player.Id == carolSeat.PlayerId)
+                            {
+                                carolPresent = true;
+                                break;
+                            }
+                        }
+
+                        Assert.That(
+                            carolPresent,
+                            Is.True,
+                            "the reclaim must carry the current roster — carol joined during the gap"
+                        );
+
+                        await E2EHarness.WaitForEventAsync(
+                            alice,
+                            e =>
+                                e.Kind == PollEventKind.PlayerReconnected
+                                && e.LeftPlayerId == bobSeat.PlayerId
+                        );
+
+                        Assert.That(
+                            E2EHarness.SendRelayPayload(alice, @"{""phase"": ""live""}").Accepted,
+                            Is.True
+                        );
+                        PollEvent live = await E2EHarness.WaitForEventAsync(
+                            bob2,
+                            e => e.Kind == PollEventKind.GameData
+                        );
+                        Assert.That(
+                            E2EHarness.PayloadJsonEquals(
+                                live.GameData.Payload.Span,
+                                @"{""phase"": ""live""}"
+                            ),
+                            Is.True,
+                            "the reclaimed seat's first relayed frame is the fresh one — gameplay never replays"
+                        );
+                    }
+                    finally
+                    {
+                        await bob2.DisposeAsync();
+                    }
                 }
                 finally
                 {
-                    await bob2.DisposeAsync();
                     await carol.DisposeAsync();
                 }
             }
@@ -312,6 +333,18 @@ namespace SignalFish.Client.E2E
                         rotated,
                         Is.Not.EqualTo(wireToken),
                         "the consumed token must not be re-issued"
+                    );
+
+                    /*
+                        The anchor witnesses the first reclaim, which also
+                        keeps it fed before the re-drop and its
+                        PlayerLeft wait (see AnchorOptions).
+                    */
+                    await E2EHarness.WaitForEventAsync(
+                        alice,
+                        e =>
+                            e.Kind == PollEventKind.PlayerReconnected
+                            && e.LeftPlayerId == bobSeat.PlayerId
                     );
 
                     await secondProxy.DisposeAsync();
