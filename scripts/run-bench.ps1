@@ -113,6 +113,7 @@ function Read-Results {
             $cpu = [string]$report.HostEnvironmentInfo.ProcessorName
         }
         if ($cpu) { $cpus.Add($cpu) | Out-Null }
+        else { $cpus.Add('(unknown)') | Out-Null }
 
         foreach ($bench in $report.Benchmarks) {
             if (-not $bench.PSObject.Properties['FullName'] -or
@@ -158,6 +159,12 @@ function Read-Results {
 
 function Write-Baseline {
     param([string]$Path, [object]$Run)
+
+    # Recording is the audited escape hatch: a baseline without a CPU
+    # model could never time-compare, so refuse instead of pinning ''.
+    if (-not $Run.CpuModel) {
+        throw "Results do not name a CPU model (HostEnvironmentInfo.ProcessorName missing); refusing to record a baseline whose time gate could never compare."
+    }
 
     $document = [ordered]@{
         schemaVersion          = 1
@@ -300,7 +307,9 @@ function Compare-Results {
         }
     }
 
-    return [pscustomobject]@{ Rows = $rows; Failures = $failures; Warnings = $warnings }
+    return [pscustomobject]@{
+        Rows = $rows; Failures = $failures; Warnings = $warnings; SameCpu = $sameCpu
+    }
 }
 
 function Write-Comparison {
@@ -317,6 +326,7 @@ function Write-Comparison {
         foreach ($row in $Comparison.Rows) {
             $lines += "| $($row.FullName) | $($row.Base) | $($row.Run) | $($row.Ratio) | $($row.Alloc) | $($row.Verdict) |"
         }
+        foreach ($warning in $Comparison.Warnings) { $lines += "`nWARNING: $warning" }
         foreach ($failure in $Comparison.Failures) { $lines += "`nFAIL: $failure" }
         Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($lines -join "`n")
     }
@@ -326,7 +336,11 @@ function Write-Comparison {
         foreach ($failure in $Comparison.Failures) { Write-Host "FAIL: $failure" -ForegroundColor Red }
         exit 1
     }
-    Write-Host "Perf gate passed: $($Comparison.Rows.Count) benchmark(s) within budget (median x$MaxRegression, allocation exact)."
+    $budget = 'median x{0}, allocation exact' -f $MaxRegression
+    if (-not $Comparison.SameCpu) {
+        $budget = 'allocation exact; time ratios skipped (CPU differs)'
+    }
+    Write-Host "Perf gate passed: $($Comparison.Rows.Count) benchmark(s) within budget ($budget)."
 }
 
 if (-not $SkipBenchmarks) {

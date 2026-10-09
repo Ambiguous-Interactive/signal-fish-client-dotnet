@@ -99,5 +99,9 @@ change — recorded deliberately, diff reviewed, then committed:
    (local).
 3. Commit `tests/SignalFish.Client.PerfTests/baseline.json`.
 
+When distilling a CI artifact's reports locally (`-SkipBenchmarks`),
+`recordedAtUtc` reflects the distillation time, not the measurement —
+name the source run in the PR so provenance stays traceable.
+
 An intentional regression (speed traded for correctness) follows the
 same path: the PR that updates the baseline is the review record.

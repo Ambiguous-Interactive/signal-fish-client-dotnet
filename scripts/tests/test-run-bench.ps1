@@ -243,6 +243,23 @@ try {
     $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
     Assert-Equal 0 $run.ExitCode 'old baseline without cpuModel skips time ratios'
     Assert-OutputContains -Run $run -Pattern "baseline: ''" 'missing cpuModel is named as unknown'
+
+    # 20. Mirror of 19: the baseline carries a CPU, the run's report
+    # does not — also skipped, never compared against unknown silicon.
+    Remove-Item -Path (Join-Path $resultsDir '*') -Force
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median 55000 -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64'
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir, '-UpdateBaseline')
+    Assert-Equal 0 $run.ExitCode 'baseline re-recorded with a CPU model'
+    Write-Report -Benchmarks @(
+        (New-Entry -FullName $codec -Median (55000 * 2) -Alloc 0),
+        (New-Entry -FullName $queue -Median 66000 -Alloc 0)
+    ) -Architecture 'X64' -Cpu ''
+    $run = Invoke-Pwsh -ScriptPath $scriptPath -Arguments @('-RepoRoot', $repo, '-SkipBenchmarks', '-ResultsDir', $resultsDir)
+    Assert-Equal 0 $run.ExitCode 'run without a CPU model skips time ratios'
+    Assert-OutputContains -Run $run -Pattern 'Time ratios skipped' 'run-unknown CPU warns'
 }
 finally {
     Remove-TestRepo $repo

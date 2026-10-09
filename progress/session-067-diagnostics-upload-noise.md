@@ -77,15 +77,20 @@ durable fix.
   regressions); green = the same 7763 reports pass against the new
   baseline with `CPU-SKIP` rows, same-CPU compares still enforce the
   median gate, and 54 assertions pass in the extended
-  `test-run-bench.ps1` (all 18 self-test files green).
+  `test-run-bench.ps1` (all 18 self-test files green). The green CI
+  proof is dispatch 37873896852 — it landed on a 7763 instance again,
+  skipped every time ratio, and passed; it ran on the pre-amend commit
+  3049968, whose tree is identical to the head bbb9311 (message-only
+  amend, empty diff, same parent).
 
 ## The bench surprise: the first compare run ever failed
 
-The bench lane has run exactly once before: the Oct 6 recording of the
-committed baseline (#105). This session's two compare dispatches are
-its first comparisons, and both failed the same codec rows with stable
-ratios — which looked like a real regression until the re-record
-landed on a *faster than baseline* instance and broke that theory:
+The bench lane had run exactly once before this session's first
+compare: the Oct 6 recording of the committed baseline (#105). This
+session's compare dispatches are its first comparisons, and the first
+two failed the same codec rows with stable ratios — which looked like
+a real regression until the re-record landed on a *faster than
+baseline* instance and broke that theory:
 
 | Run | CPU | DecodeFullCorpus | Encode |
 | --- | --- | --- | --- |
