@@ -1,6 +1,6 @@
 # Session 067 — Diagnostics uploads can no longer fail a green lane
 
-Date: 2026-10-09.
+Date: 2026-10-09. PR: #131.
 
 ## Driver
 
@@ -64,8 +64,9 @@ honest setting for a warning-only step.
   triggers on schedule/dispatch only). Expression semantics verified by
   review against the documented `inputs` behavior (empty on schedule →
   non-blocking; `false` → non-blocking; `true` → blocking) and a
-  compare-mode dispatch run on this branch; the first scheduled run
-  after merge is the empty-inputs proof (tracked below).
+  compare-mode dispatch on this branch (run 37870208725 — the gate ran
+  under the new conditional); the first scheduled run after merge is
+  the empty-inputs proof (tracked below).
 
 ## Deliberately not done
 
