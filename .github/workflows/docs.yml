@@ -40,7 +40,7 @@ jobs:
           persist-credentials: false
 
       - name: Run markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@v24.2.0
+        uses: DavidAnson/markdownlint-cli2-action@v25.0.0
         with:
           globs: |
             **/*.md
@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
 
       - name: Run typos spell checker
-        uses: crate-ci/typos@v1.50.3
+        uses: crate-ci/typos@v1.51.1
         with:
           config: .typos.toml
 
